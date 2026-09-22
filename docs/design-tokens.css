@@ -1,0 +1,111 @@
+/* =====================================================================
+   BPL SUPPLY — design tokens
+   ตรงกับแบบบนแคนวาส Design ใช้เป็นต้นทางเดียวของสี ฟอนต์ ระยะ
+   ===================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&family=Kanit:wght@500;600&display=swap');
+
+:root {
+  /* --- สีหลัก ------------------------------------------------------ */
+  --yellow-500: #F5B301;   /* ปุ่มหลัก แถบหัว จุดเน้น */
+  --yellow-300: #F3E2AE;   /* เส้นขอบโทนเหลือง */
+  --yellow-100: #FFF4D1;   /* พื้นอ่อน ป้ายสถานะ */
+  --yellow-050: #FFF7E0;   /* กล่องข้อความเตือนอ่อน */
+
+  --ink:        #1A1712;   /* ตัวอักษรหลัก พื้นเข้ม */
+  --ink-700:    #4E4738;   /* ป้ายกำกับ */
+  --ink-500:    #6B6558;   /* เนื้อหารอง */
+  --ink-400:    #8E8778;   /* คำอธิบาย */
+  --ink-300:    #A8A091;   /* จาง */
+
+  --canvas:     #FAF8F3;   /* พื้นหน้าจอ */
+  --surface:    #FFFFFF;   /* การ์ด */
+  --surface-2:  #F5F2EA;   /* ช่องค้นหา พื้นรอง */
+  --border:     #EDE7D9;   /* เส้นขอบการ์ด */
+  --border-2:   #E2DBC9;   /* เส้นขอบช่องกรอก */
+
+  /* --- สีสถานะ ----------------------------------------------------- */
+  --success:     #1E7A4B;
+  --success-bg:  #E8F2EC;
+  --success-txt: #17603B;
+  --warn:        #B4820A;
+  --warn-txt:    #8A5A00;
+  --warn-bg:     #FFF4D1;
+  --danger:      #B42318;
+  --danger-txt:  #8C2F26;
+  --danger-bg:   #FBE9E7;
+  --neutral-bg:  #F0EBE0;
+
+  /* --- พื้นเข้มฝั่งแอดมิน ------------------------------------------- */
+  --dark:        #1A1712;
+  --dark-2:      #232220;   /* การ์ดบนพื้นเข้ม */
+  --dark-3:      #2C2A26;   /* เมนูที่เลือกอยู่ */
+  --dark-text:   #D8D5CE;
+  --dark-muted:  #918D84;
+
+  /* --- ตัวอักษร ---------------------------------------------------- */
+  --font-display: 'Kanit', system-ui, sans-serif;        /* หัวเรื่อง ตัวเลข ปุ่มหลัก */
+  --font-body:    'IBM Plex Sans Thai', system-ui, sans-serif;
+  --font-mono:    ui-monospace, Menlo, Consolas, monospace; /* แถบรหัสสถานะย่อ */
+
+  --text-xs:   11px;
+  --text-sm:   12px;
+  --text-base: 14px;
+  --text-md:   16px;
+  --text-lg:   20px;
+  --text-xl:   26px;
+
+  /* --- ระยะและมุมโค้ง ---------------------------------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 22px;
+  --space-6: 32px;
+
+  --radius-btn:   11px;
+  --radius-input: 12px;
+  --radius-card:  14px;
+  --radius-panel: 18px;
+  --radius-pill:  999px;
+
+  --tap-min: 44px;   /* พื้นที่กดขั้นต่ำ — พนักงานใส่ถุงมือ */
+}
+
+/* =====================================================================
+   กฎที่ห้ามละเมิด
+   1. ตัวอักษรบนพื้น --yellow-500 ต้องเป็น --ink เสมอ
+      ห้ามใช้สีขาว คอนทราสต์ไม่ผ่าน WCAG และอ่านไม่ออกกลางแดด
+   2. ปุ่มและลิงก์ที่กดได้ต้องไม่เล็กกว่า --tap-min
+   3. ห้าม hardcode สี ใช้ตัวแปรเท่านั้น
+   ===================================================================== */
+
+/* ตัวอย่างการแปลงเป็น Tailwind (tailwind.config.js)
+   theme: {
+     extend: {
+       colors: {
+         yellow: { 500: '#F5B301', 300: '#F3E2AE', 100: '#FFF4D1', 50: '#FFF7E0' },
+         ink:    { DEFAULT: '#1A1712', 700: '#4E4738', 500: '#6B6558', 400: '#8E8778', 300: '#A8A091' },
+         canvas: '#FAF8F3', surface: '#FFFFFF', line: '#EDE7D9',
+       },
+       fontFamily: {
+         display: ['Kanit', 'system-ui', 'sans-serif'],
+         body:    ['IBM Plex Sans Thai', 'system-ui', 'sans-serif'],
+       },
+       borderRadius: { btn: '11px', card: '14px', panel: '18px' },
+     }
+   }
+*/
+
+/* --- คลาสแถบรหัสสถานะย่อ (ใช้บนหน้าพนักงาน) ------------------------ */
+.sync-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 4px 7px;
+}
+.sync-chip--done    { color: var(--success-txt); background: var(--success-bg); }  /* ✓ */
+.sync-chip--running { color: var(--warn-txt);    background: var(--warn-bg); }     /* … */
+.sync-chip--idle    { color: var(--ink-500);     background: var(--neutral-bg); }  /* — */
+.sync-chip--failed  { color: var(--danger-txt);  background: var(--danger-bg); }   /* ! */

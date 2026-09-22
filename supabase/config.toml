@@ -1,0 +1,12 @@
+# ตั้งค่าโปรเจกต์สำหรับ Supabase CLI
+project_id = "ajcdzmfefoyyisgwnpky"
+
+[functions.upload-evidence]
+verify_jwt = true
+
+[functions.export-sheet]
+verify_jwt = true
+
+# สร้างบัญชีพนักงาน / รีเซ็ตรหัสผ่าน — ตรวจซ้ำในโค้ดอีกชั้นว่าผู้เรียกต้องเป็น admin
+[functions.admin-users]
+verify_jwt = true

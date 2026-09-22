@@ -1,0 +1,18 @@
+ไฟล์ SQL ในโฟลเดอร์นี้ใช้ยังไง
+====================================
+
+ติดตั้งใหม่ตั้งแต่ต้น (เครื่องใหม่ / โปรเจกต์ใหม่)
+  -> ใช้ setup-all.sql ไฟล์เดียว ก๊อปวางใน SQL Editor กด Run จบ
+
+อัปเดตจากที่รันไปแล้ว
+  -> update-005-006.sql   ธง "ต้องอนุมัติ" รายตัว + จัดการหมวด   [รันไปแล้ว]
+  -> update-007-008.sql   แกลเลอรีหลักฐาน + แก้ Sheet อืด        [ยังไม่ได้รัน]
+
+ไฟล์ PASTE-*.ts คือโค้ด Edge Function
+ก๊อปทั้งไฟล์ไปวางใน Supabase Dashboard -> Edge Functions
+ชื่อ function ต้องตรงกับชื่อไฟล์ (ตัดคำว่า PASTE- และ .ts ออก)
+
+  PASTE-admin-users.ts      -> admin-users      [deploy แล้ว]
+  PASTE-upload-evidence.ts  -> upload-evidence  [deploy แล้ว]
+  PASTE-evidence-image.ts   -> evidence-image   [ยังไม่ได้ deploy]
+  PASTE-export-sheet.ts     -> export-sheet     [มีเวอร์ชันใหม่ ต้อง deploy ทับ]

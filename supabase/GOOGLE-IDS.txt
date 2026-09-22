@@ -1,0 +1,16 @@
+BPL SUPPLY — ค่าที่ต้องใส่ใน Supabase Edge Function Secrets
+(ไฟล์นี้เก็บเฉพาะ ID ที่ไม่ใช่ความลับ — ห้ามเอา private key มาใส่ที่นี่)
+
+GDRIVE_FOLDER_ID = 1DgIUINNEwmikNLM340pQ5YHWlKLmQLtY
+  https://drive.google.com/drive/folders/1DgIUINNEwmikNLM340pQ5YHWlKLmQLtY
+
+GSHEET_ID = 1Ga4v_v7U2Nu8GqK-x8up8xjDLf1LmKuGD7X1sVz3kVY
+  https://docs.google.com/spreadsheets/d/1Ga4v_v7U2Nu8GqK-x8up8xjDLf1LmKuGD7X1sVz3kVY/edit
+
+GSHEET_TAB = บันทึกการเบิก-คืน
+  (ระบบสร้างแท็บนี้ให้เองถ้ายังไม่มี)
+
+GOOGLE_SA_EMAIL       = <ยังไม่มี — ได้จากขั้นที่ 2>
+GOOGLE_SA_PRIVATE_KEY = <ยังไม่มี — อยู่ในไฟล์ JSON ที่ดาวน์โหลด ห้าม commit>
+
+โปรเจกต์ Supabase: ajcdzmfefoyyisgwnpky
