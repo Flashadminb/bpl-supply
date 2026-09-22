@@ -228,7 +228,7 @@ supabase functions deploy admin-users
 
 ---
 
-## ขั้นที่ 8 — ขึ้นออนไลน์ด้วย Cloudflare Pages
+## ขั้นที่ 8 — ขึ้นออนไลน์ด้วย Cloudflare
 
 1. ตรวจว่า build ผ่านก่อน
 
@@ -236,17 +236,43 @@ supabase functions deploy admin-users
 npm run build
 ```
 
-2. push โค้ดขึ้น GitHub (สร้าง repo ใหม่แบบ private)
-3. <https://dash.cloudflare.com> → **Workers & Pages → Create → Pages → Connect to Git**
+2. push โค้ดขึ้น GitHub (repo แบบ private ได้ Cloudflare อ่านได้)
+3. <https://dash.cloudflare.com> → **Workers & Pages** → **Create** → **Import a repository**
 4. เลือก repo แล้วตั้งค่า
-   - Framework preset: **Vite**
-   - Build command: `npm run build`
-   - Build output directory: `dist`
-5. **Settings → Environment variables** ใส่ 2 ตัว (ทั้ง Production และ Preview)
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-6. **เส้นทางหน้าใน ๆ** — จัดการโดย  ผ่าน 
-7. Deploy → ได้ URL `https://bpl-supply.pages.dev`
+
+   | ช่อง | ค่า |
+   |---|---|
+   | Project name | `bpl-supply` |
+   | Build command | `npm run build` |
+   | Deploy command | `npx wrangler deploy` |
+
+5. **Advanced settings → Variables** ใส่ 3 ตัว แบบ **Text ธรรมดา ห้าม Encrypt**
+   (ถ้า encrypt ตอน build จะอ่านไม่เจอ เพราะ Vite ฝังค่าลงไฟล์ตอน build ไม่ใช่ตอนรัน)
+
+   | ชื่อ | ค่า |
+   |---|---|
+   | `VITE_SUPABASE_URL` | URL ของโปรเจกต์ Supabase |
+   | `VITE_SUPABASE_ANON_KEY` | publishable / anon key |
+   | `VITE_AUTH_EMAIL_DOMAIN` | `bpl.local` |
+
+6. กด **Deploy** → ได้ URL แบบ `https://bpl-supply.<ชื่อบัญชี>.workers.dev`
+
+### เส้นทางหน้าใน ๆ จัดการที่ไหน
+
+อยู่ในไฟล์ `wrangler.jsonc` ที่ root ของโปรเจกต์
+
+```jsonc
+"assets": {
+  "directory": "./dist",
+  "not_found_handling": "single-page-application"
+}
+```
+
+จำเป็นเพราะเส้นทางอย่าง `/admin/stock` ไม่มีไฟล์จริงบนเซิร์ฟเวอร์ ถ้าไม่ตั้ง พอรีเฟรชหน้าลึก ๆ จะเจอ 404
+
+> ⚠️ **ห้ามมีไฟล์ `public/_redirects`** ในโหมดนี้ — มันจะชนกับ `not_found_handling`
+> แล้ว Cloudflare จะปฏิเสธ deploy ด้วยข้อความ *Infinite loop detected in this rule*
+> (ไฟล์นั้นใช้กับ Cloudflare Pages แบบเก่าเท่านั้น โปรเจกต์นี้ลบทิ้งไปแล้ว)
 
 ---
 
