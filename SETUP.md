@@ -245,8 +245,7 @@ npm run build
 5. **Settings → Environment variables** ใส่ 2 ตัว (ทั้ง Production และ Preview)
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
-6. **Settings → Redirects** — SPA ต้องมี fallback ไม่งั้นรีเฟรชหน้าใน ๆ แล้ว 404
-   สร้างไฟล์ `public/_redirects` ในโปรเจกต์ (ทำให้แล้ว) เนื้อหา `/* /index.html 200`
+6. **เส้นทางหน้าใน ๆ** — จัดการโดย  ผ่าน 
 7. Deploy → ได้ URL `https://bpl-supply.pages.dev`
 
 ---
