@@ -1,8 +1,14 @@
 import { useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
-import { adjustStock, listAllItemsForAdmin, listCategories, listHubs, upsertItem, type ItemDraft } from '../../lib/api'
+import {
+  adjustStock,
+  listAllItemsForAdmin,
+  listCategories,
+  listDepartments,
+  upsertItem,
+  type ItemDraft,
+} from '../../lib/api'
 import { readableError } from '../../lib/supabase'
-import { useAuth } from '../../lib/auth'
 import { ErrorBox, Loading, Modal, Spinner, StockBadge } from '../../components/ui'
 import type { Item } from '../../lib/types'
 import { CategoryManager } from '../../components/CategoryManager'
@@ -16,11 +22,12 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'returnable', label: 'ประเภทยืม-คืน' },
 ]
 
-function emptyDraft(hub: string): ItemDraft {
+function emptyDraft(): ItemDraft {
   return {
     sku: '',
     name: '',
-    hub_code: hub,
+    hub_code: 'BPL',
+    dept_code: 'ALL',
     unit: 'ชิ้น',
     category_id: null,
     shelf_code: '',
@@ -34,10 +41,9 @@ function emptyDraft(hub: string): ItemDraft {
 }
 
 export default function Stock() {
-  const { profile } = useAuth()
   const items = useAsync(() => listAllItemsForAdmin(), [])
   const cats = useAsync(() => listCategories(), [])
-  const hubs = useAsync(() => listHubs(), [])
+  const depts = useAsync(() => listDepartments(), [])
 
   const [filter, setFilter] = useState<Filter>('all')
   const [search, setSearch] = useState('')
@@ -111,7 +117,7 @@ export default function Stock() {
           <button type="button" className="btn-ghost" onClick={() => setCatsOpen(true)}>
             จัดการหมวด
           </button>
-          <button type="button" className="btn-primary" onClick={() => setDraft(emptyDraft(profile?.hub_code ?? 'BPL'))}>
+          <button type="button" className="btn-primary" onClick={() => setDraft(emptyDraft())}>
             เพิ่มวัสดุ
           </button>
         </div>
@@ -193,6 +199,7 @@ export default function Stock() {
                           sku: i.sku,
                           name: i.name,
                           hub_code: i.hub_code,
+                          dept_code: i.dept_code ?? 'ALL',
                           unit: i.unit,
                           category_id: i.category_id,
                           shelf_code: i.shelf_code ?? '',
@@ -254,18 +261,21 @@ export default function Stock() {
               </select>
             </div>
             <div>
-              <label className="label">ฮับ</label>
+              <label className="label">แผนกที่เห็นของชิ้นนี้</label>
               <select
                 className="input"
-                value={draft.hub_code}
-                onChange={(e) => setDraft({ ...draft, hub_code: e.target.value })}
+                value={draft.dept_code ?? 'ALL'}
+                onChange={(e) => setDraft({ ...draft, dept_code: e.target.value })}
               >
-                {(hubs.data ?? []).map((h) => (
-                  <option key={h.code} value={h.code}>
-                    {h.code} — {h.name}
+                {(depts.data ?? []).map((d) => (
+                  <option key={d.code} value={d.code}>
+                    {d.name}
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-xs text-ink-400">
+                เลือก “ทุกแผนก” = ทุกคนเห็น · เลือกแผนกเดียว = เห็นเฉพาะคนในแผนกนั้น
+              </p>
             </div>
             <div>
               <label className="label">ชั้นวาง</label>

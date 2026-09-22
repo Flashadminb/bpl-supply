@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
 import {
   createEmployee,
-  listHubs,
+  listDepartments,
   listProfiles,
   resetEmployeePassword,
   updateProfile,
@@ -36,18 +36,19 @@ function suggestPassword(): string {
 interface Draft {
   employee_code: string
   full_name: string
-  hub_code: string
+  dept_code: string
   role: UserRole
   password: string
 }
 
 export default function Users() {
   const users = useAsync(() => listProfiles(), [])
-  const hubs = useAsync(() => listHubs(), [])
+  const depts = useAsync(() => listDepartments(), [])
   const [error, setError] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
 
   const [draft, setDraft] = useState<Draft | null>(null)
+  const [extra, setExtra] = useState<Profile | null>(null)
   const [resetting, setResetting] = useState<Profile | null>(null)
   const [newPwd, setNewPwd] = useState('')
   const [busy, setBusy] = useState(false)
@@ -71,7 +72,7 @@ export default function Users() {
     setDraft({
       employee_code: '',
       full_name: '',
-      hub_code: hubs.data?.[0]?.code ?? 'BPL',
+      dept_code: 'ALL',
       role: 'staff',
       password: suggestPassword(),
     })
@@ -86,7 +87,7 @@ export default function Users() {
       await createEmployee({
         employeeCode: draft.employee_code,
         fullName: draft.full_name,
-        hubCode: draft.hub_code,
+        deptCode: draft.dept_code,
         role: draft.role,
         password: draft.password,
       })
@@ -146,7 +147,7 @@ export default function Users() {
               <tr className="border-b border-line">
                 <th className="p-2 font-medium">ชื่อ</th>
                 <th className="p-2 font-medium">รหัสพนักงาน</th>
-                <th className="p-2 font-medium">ฮับ</th>
+                <th className="p-2 font-medium">แผนก</th>
                 <th className="p-2 font-medium">บทบาท</th>
                 <th className="p-2 font-medium">สถานะ</th>
                 <th className="p-2 font-medium">รหัสผ่าน</th>
@@ -160,16 +161,24 @@ export default function Users() {
                   <td className="p-2">
                     <select
                       className="input h-tap"
-                      value={u.hub_code}
+                      value={u.dept_code ?? 'ALL'}
                       disabled={savingId === u.id}
-                      onChange={(e) => void patch(u.id, { hub_code: e.target.value })}
+                      onChange={(e) => void patch(u.id, { dept_code: e.target.value })}
                     >
-                      {(hubs.data ?? []).map((h) => (
-                        <option key={h.code} value={h.code}>
-                          {h.code}
+                      {(depts.data ?? []).map((d) => (
+                        <option key={d.code} value={d.code}>
+                          {d.name}
                         </option>
                       ))}
                     </select>
+                    {/* แผนกพิเศษที่คนนี้เห็นของเพิ่ม นอกจากแผนกตัวเอง */}
+                    <button
+                      type="button"
+                      className="mt-1 block text-xs text-ink-500 underline"
+                      onClick={() => setExtra(u)}
+                    >
+                      เห็นแผนกอื่น: {u.extra_depts?.length ? u.extra_depts.length + ' แผนก' : 'ไม่มี'}
+                    </button>
                   </td>
                   <td className="p-2">
                     <select
@@ -280,18 +289,21 @@ export default function Users() {
               />
             </div>
             <div>
-              <label className="label">ฮับ</label>
+              <label className="label">แผนก</label>
               <select
                 className="input"
-                value={draft.hub_code}
-                onChange={(e) => setDraft({ ...draft, hub_code: e.target.value })}
+                value={draft.dept_code}
+                onChange={(e) => setDraft({ ...draft, dept_code: e.target.value })}
               >
-                {(hubs.data ?? []).map((h) => (
-                  <option key={h.code} value={h.code}>
-                    {h.code} — {h.name}
+                {(depts.data ?? []).map((d) => (
+                  <option key={d.code} value={d.code}>
+                    {d.name}
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-xs text-ink-400">
+                เห็นเฉพาะของแผนกตัวเอง · เลือก “ทุกแผนก” ถ้าต้องการให้เห็นหมด
+              </p>
             </div>
             <div>
               <label className="label">บทบาท</label>
@@ -352,6 +364,57 @@ export default function Users() {
               </button>
             </div>
           </div>
+        )}
+      </Modal>
+
+      {/* ------------------------------ สิทธิพิเศษ: เห็นของแผนกอื่นเพิ่ม */}
+      <Modal
+        open={Boolean(extra)}
+        onClose={() => setExtra(null)}
+        title={`ให้เห็นของแผนกอื่น — ${extra?.full_name ?? ''}`}
+      >
+        {extra && (
+          <>
+            <p className="rounded-card bg-brand-50 px-3 py-2 text-sm text-warn-txt">
+              ปกติพนักงานเห็นเฉพาะของ<b>แผนก {depts.data?.find((d) => d.code === extra.dept_code)?.name ?? '—'}</b>
+              <br />
+              ติ๊กแผนกเพิ่มตรงนี้ถ้าต้องการให้คนนี้เห็นของแผนกอื่นด้วย เช่นหัวหน้ากะที่ดูแลหลายแผนก
+            </p>
+
+            <ul className="mt-3 space-y-1">
+              {(depts.data ?? [])
+                .filter((d) => d.code !== 'ALL' && d.code !== extra.dept_code)
+                .map((d) => {
+                  const on = (extra.extra_depts ?? []).includes(d.code)
+                  return (
+                    <li key={d.code}>
+                      <label className="flex min-h-tap items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="h-5 w-5 accent-[var(--yellow-500)]"
+                          checked={on}
+                          disabled={savingId === extra.id}
+                          onChange={() => {
+                            const next = on
+                              ? (extra.extra_depts ?? []).filter((c) => c !== d.code)
+                              : [...(extra.extra_depts ?? []), d.code]
+                            setExtra({ ...extra, extra_depts: next })
+                            void patch(extra.id, { extra_depts: next })
+                          }}
+                        />
+                        {d.name}
+                      </label>
+                    </li>
+                  )
+                })}
+            </ul>
+
+            <div className="mt-4 flex justify-end">
+              <button type="button" className="btn-ghost" onClick={() => setExtra(null)}>
+                ปิด
+              </button>
+            </div>
+          </>
         )}
       </Modal>
 

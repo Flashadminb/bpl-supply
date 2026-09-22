@@ -19,6 +19,8 @@ export interface Profile {
   role: UserRole
   is_active: boolean
   must_change_password: boolean
+  dept_code: string | null
+  extra_depts: string[]
   created_at: string
 }
 
@@ -40,6 +42,7 @@ export interface Item {
   min_qty: number
   is_returnable: boolean
   requires_approval: boolean
+  dept_code: string | null
   image_path: string | null
   qr_payload: string | null
   is_active: boolean
@@ -123,4 +126,11 @@ export interface CartLine {
   is_returnable: boolean
   requires_approval: boolean
   qty: number
+}
+
+export interface Department {
+  code: string
+  name: string
+  sort_no: number
+  is_active: boolean
 }

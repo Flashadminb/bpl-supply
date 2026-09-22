@@ -10,10 +10,11 @@ import type {
   SyncChannel,
   SyncState,
   UserRole,
+  Department,
 } from './types'
 
 const ITEM_COLS =
-  'id,sku,name,category_id,hub_code,unit,shelf_code,qty_on_hand,min_qty,is_returnable,requires_approval,image_path,qr_payload,is_active,updated_at,categories(id,name,auto_approvable)'
+  'id,sku,name,category_id,hub_code,unit,shelf_code,qty_on_hand,min_qty,is_returnable,requires_approval,dept_code,image_path,qr_payload,is_active,updated_at,categories(id,name,auto_approvable)'
 
 const REQ_COLS =
   'id,ref_no,requester_id,hub_code,purpose,note,status,evidence_file_id,evidence_web_link,evidence_bytes,created_at,decided_by,decided_at,reject_reason,' +
@@ -190,22 +191,31 @@ export async function listOpenBorrowings(mineOnly = true, userId?: string): Prom
   return unwrap(await q) as unknown as OpenBorrowing[]
 }
 
+/** คืนของ — ต้องมีรูปอย่างน้อย 1 ใบเสมอ ฐานข้อมูลปฏิเสธถ้าไม่มี */
 export async function createReturn(args: {
   lineId: number
   qty: number
   condition: ReturnCond
-  fileId?: string | null
-  link?: string | null
+  photos: { file_id: string; web_link: string | null; bytes: number | null }[]
 }) {
   const { data, error } = await supabase.rpc('create_return', {
     p_line_id: args.lineId,
     p_qty: args.qty,
     p_condition: args.condition,
-    p_file_id: args.fileId ?? null,
-    p_link: args.link ?? null,
+    p_file_id: args.photos[0]?.file_id ?? null,
+    p_link: args.photos[0]?.web_link ?? null,
+    p_photos: args.photos,
   })
   if (error) throw new Error(readableError(error))
-  return data as { id: number; qty_after: number | null }
+  return data as { id: number; qty_after: number | null; photos: number }
+}
+
+/* -------------------------------------------------------------- แผนก */
+
+export async function listDepartments(): Promise<Department[]> {
+  return unwrap(
+    await supabase.from('departments').select('*').eq('is_active', true).order('sort_no'),
+  ) as unknown as Department[]
 }
 
 /* ------------------------------------------------------------------ admin */
@@ -216,7 +226,7 @@ export async function listProfiles(): Promise<Profile[]> {
 
 export async function updateProfile(
   id: string,
-  patch: Partial<Pick<Profile, 'role' | 'is_active' | 'hub_code'>>,
+  patch: Partial<Pick<Profile, 'role' | 'is_active' | 'hub_code' | 'dept_code' | 'extra_depts'>>,
 ) {
   const { error } = await supabase.from('profiles').update(patch).eq('id', id)
   if (error) throw new Error(readableError(error))
@@ -235,7 +245,7 @@ export async function changeMyPassword(newPassword: string) {
 export async function createEmployee(args: {
   employeeCode: string
   fullName: string
-  hubCode: string
+  deptCode: string
   role: UserRole
   password: string
 }) {
@@ -245,7 +255,8 @@ export async function createEmployee(args: {
       action: 'create',
       employee_code: args.employeeCode.trim(),
       full_name: args.fullName.trim(),
-      hub_code: args.hubCode,
+      hub_code: 'BPL',
+      dept_code: args.deptCode,
       role: args.role,
       password: args.password,
       email: emailFromEmployeeCode(args.employeeCode),
@@ -268,6 +279,7 @@ export type ItemDraft = {
   sku: string
   name: string
   hub_code: string
+  dept_code: string | null
   unit: string
   category_id: number | null
   shelf_code: string | null
@@ -385,12 +397,19 @@ export async function addRequisitionPhotos(
 export async function listEvidence(opts: {
   returnableOnly?: boolean
   includeArchived?: boolean
+  /** 'all' | 'requisition' (เบิก) | 'return' (คืน) */
+  kind?: 'all' | 'requisition' | 'return'
+  fromISO?: string
+  toISO?: string
   limit?: number
 }): Promise<EvidenceRow[]> {
   let q = supabase.from('evidence_feed').select('*').order('created_at', { ascending: false })
   if (opts.returnableOnly) q = q.eq('has_returnable', true)
   if (!opts.includeArchived) q = q.eq('archived', false)
-  return unwrap(await q.limit(opts.limit ?? 120)) as unknown as EvidenceRow[]
+  if (opts.kind && opts.kind !== 'all') q = q.eq('kind', opts.kind)
+  if (opts.fromISO) q = q.gte('created_at', opts.fromISO)
+  if (opts.toISO) q = q.lte('created_at', opts.toISO)
+  return unwrap(await q.limit(opts.limit ?? 500)) as unknown as EvidenceRow[]
 }
 
 export async function setEvidenceArchived(row: EvidenceRow, archived: boolean) {

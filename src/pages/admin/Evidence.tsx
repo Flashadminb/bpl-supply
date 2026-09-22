@@ -16,31 +16,97 @@ type Scope = 'borrow' | 'all'
 const PAGE = 25
 
 
+/** ช่วงเวลาสำเร็จรูป — เลือกเองก็ได้ด้วยปฏิทิน */
+type RangeKey = 'today' | '7d' | '30d' | 'month' | 'custom'
+
+const RANGES: { key: RangeKey; label: string }[] = [
+  { key: 'today', label: 'วันนี้' },
+  { key: '7d', label: '7 วันล่าสุด' },
+  { key: '30d', label: '30 วันล่าสุด' },
+  { key: 'month', label: 'เดือนนี้' },
+  { key: 'custom', label: 'เลือกช่วงเอง' },
+]
+
+const isoDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(d)
+
+function rangeOf(key: RangeKey, from: string, to: string): { fromISO?: string; toISO?: string } {
+  const now = new Date()
+  if (key === 'custom') {
+    return {
+      fromISO: from ? new Date(`${from}T00:00:00`).toISOString() : undefined,
+      toISO: to ? new Date(`${to}T23:59:59`).toISOString() : undefined,
+    }
+  }
+  if (key === 'today') {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    return { fromISO: d.toISOString(), toISO: now.toISOString() }
+  }
+  if (key === 'month') {
+    const d = new Date(now.getFullYear(), now.getMonth(), 1)
+    return { fromISO: d.toISOString(), toISO: now.toISOString() }
+  }
+  const days = key === '7d' ? 7 : 30
+  return { fromISO: new Date(Date.now() - days * 864e5).toISOString(), toISO: now.toISOString() }
+}
+
 export default function Evidence() {
   const [scope, setScope] = useState<Scope>('borrow')
   const [showArchived, setShowArchived] = useState(false)
+  const [kind, setKind] = useState<'all' | 'requisition' | 'return'>('all')
+  const [rangeKey, setRangeKey] = useState<RangeKey>('30d')
+  const [from, setFrom] = useState(isoDay(new Date(Date.now() - 30 * 864e5)))
+  const [to, setTo] = useState(isoDay(new Date()))
   const [page, setPage] = useState(0)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [big, setBig] = useState<{ row: EvidenceRow; index: number } | null>(null)
+  /** แถวที่เพิ่งกด "ใช้แล้ว" — ซ่อนทันทีโดยไม่รอเซิร์ฟเวอร์ตอบ */
+  const [hidden, setHidden] = useState<Set<string>>(new Set())
 
   const withPhotos = scope === 'borrow'
+  const range = rangeOf(rangeKey, from, to)
 
   const feed = useAsync(
-    () => listEvidence({ returnableOnly: scope === 'borrow', includeArchived: showArchived }),
-    [scope, showArchived],
+    () =>
+      listEvidence({
+        returnableOnly: scope === 'borrow',
+        includeArchived: showArchived,
+        kind,
+        fromISO: range.fromISO,
+        toISO: range.toISO,
+      }),
+    [scope, showArchived, kind, range.fromISO, range.toISO],
   )
-  const all = feed.data ?? []
+
+  const all = useMemo(
+    () => (feed.data ?? []).filter((r) => !hidden.has(`${r.kind}-${r.source_id}`)),
+    [feed.data, hidden],
+  )
   const pages = Math.max(1, Math.ceil(all.length / PAGE))
   const rows = useMemo(() => all.slice(page * PAGE, page * PAGE + PAGE), [all, page])
 
+  /**
+   * ซ่อนทันทีที่กด แล้วค่อยบอกเซิร์ฟเวอร์เบื้องหลัง
+   * ถ้าเซิร์ฟเวอร์ปฏิเสธค่อยเอากลับมาแสดงพร้อมข้อความ — จะได้ไม่ต้องรอ 1-2 วินาทีต่อแถว
+   */
   async function toggle(row: EvidenceRow) {
-    setBusyId(row.source_id)
+    const key = `${row.kind}-${row.source_id}`
+    if (!row.archived && !showArchived) {
+      setHidden((s) => new Set(s).add(key))
+    } else {
+      setBusyId(row.source_id)
+    }
     setError(null)
     try {
       await setEvidenceArchived(row, !row.archived)
-      feed.reload()
+      if (row.archived || showArchived) feed.reload()
     } catch (e) {
+      setHidden((s) => {
+        const next = new Set(s)
+        next.delete(key)
+        return next
+      })
       setError(readableError(e))
     } finally {
       setBusyId(null)
@@ -99,18 +165,103 @@ export default function Evidence() {
         )}
       </p>
 
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-end gap-2">
+        <div>
+          <label className="label mb-1" htmlFor="ev-kind">
+            ประเภท
+          </label>
+          <select
+            id="ev-kind"
+            className="input h-tap w-[150px]"
+            value={kind}
+            onChange={(e) => {
+              setKind(e.target.value as typeof kind)
+              setPage(0)
+            }}
+          >
+            <option value="all">เบิกและคืน</option>
+            <option value="requisition">เฉพาะเบิก</option>
+            <option value="return">เฉพาะคืน</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="label mb-1" htmlFor="ev-range">
+            ช่วงเวลา
+          </label>
+          <select
+            id="ev-range"
+            className="input h-tap w-[170px]"
+            value={rangeKey}
+            onChange={(e) => {
+              setRangeKey(e.target.value as RangeKey)
+              setPage(0)
+            }}
+          >
+            {RANGES.map((r) => (
+              <option key={r.key} value={r.key}>
+                {r.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {rangeKey === 'custom' && (
+          <>
+            <div>
+              <label className="label mb-1" htmlFor="ev-from">
+                ตั้งแต่
+              </label>
+              <input
+                id="ev-from"
+                type="date"
+                className="input h-tap"
+                value={from}
+                max={to}
+                onChange={(e) => {
+                  setFrom(e.target.value)
+                  setPage(0)
+                }}
+              />
+            </div>
+            <div>
+              <label className="label mb-1" htmlFor="ev-to">
+                ถึง
+              </label>
+              <input
+                id="ev-to"
+                type="date"
+                className="input h-tap"
+                value={to}
+                min={from}
+                onChange={(e) => {
+                  setTo(e.target.value)
+                  setPage(0)
+                }}
+              />
+            </div>
+          </>
+        )}
+
         <button
           type="button"
           className={`chip ${showArchived ? 'chip-on' : ''}`}
           onClick={() => {
             setShowArchived((v) => !v)
+            setHidden(new Set())
             setPage(0)
           }}
         >
           {showArchived ? 'แสดงที่ใช้แล้วด้วย' : 'ซ่อนที่ใช้แล้ว'}
         </button>
-        <button type="button" className="btn-soft h-tap px-3 text-sm" onClick={feed.reload}>
+        <button
+          type="button"
+          className="btn-soft h-tap px-3 text-sm"
+          onClick={() => {
+            setHidden(new Set())
+            feed.reload()
+          }}
+        >
           รีเฟรช
         </button>
       </div>

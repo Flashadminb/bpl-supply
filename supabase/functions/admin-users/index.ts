@@ -8,16 +8,17 @@
 // ต้องอยู่ฝั่งเซิร์ฟเวอร์เพราะใช้คีย์ service role ที่ข้าม RLS ได้
 // ห้ามย้ายตรรกะนี้ไปฝั่ง client เด็ดขาด
 //
-// body: { action: 'create', employee_code, full_name, hub_code, role, password, email }
+// body: { action: 'create', employee_code, full_name, dept_code, role, password, email }
 //       { action: 'reset',  user_id, password }
 // =====================================================================
 
+const VERSION = 'dept-v2'
 const MIN_PASSWORD = 8
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 }
 
 function json(body: unknown, status = 200): Response {
@@ -127,6 +128,7 @@ async function requireOwner(req: Request): Promise<string> {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
+  if (req.method === 'GET') return json({ name: 'admin-users', version: VERSION })
   if (req.method !== 'POST') return json({ error: 'ใช้ได้เฉพาะ POST' }, 405)
 
   try {
@@ -153,11 +155,11 @@ Deno.serve(async (req) => {
 
     // ------------------------------------------------------ สร้างบัญชีใหม่
     if (body.action === 'create') {
-      const { employee_code, full_name, hub_code, role, password, email } = body as Record<string, string>
+      const { employee_code, full_name, hub_code, dept_code, role, password, email } = body as Record<string, string>
 
       if (!employee_code || !employee_code.trim()) return json({ error: 'ต้องใส่รหัสพนักงาน' }, 400)
       if (!full_name || !full_name.trim()) return json({ error: 'ต้องใส่ชื่อ-นามสกุล' }, 400)
-      if (!hub_code || !hub_code.trim()) return json({ error: 'ต้องเลือกฮับ' }, 400)
+      if (!dept_code || !dept_code.trim()) return json({ error: 'ต้องเลือกแผนก' }, 400)
       if (!['staff', 'supervisor'].includes(role)) {
         return json({ error: 'เพิ่มได้เฉพาะบทบาทหน้างานหรือแอดมิน' }, 400)
       }
@@ -190,7 +192,8 @@ Deno.serve(async (req) => {
             id: created.id,
             employee_code: code,
             full_name: full_name.trim(),
-            hub_code,
+            hub_code: hub_code || 'BPL',
+            dept_code: dept_code || 'ALL',
             role,
             is_active: true,
             // รหัสที่เจ้าของระบบตั้งเป็นของชั่วคราว เจ้าตัวต้องตั้งเองตอนล็อกอินครั้งแรก
