@@ -12,6 +12,7 @@ import { readableError } from '../../lib/supabase'
 import { ErrorBox, Loading, Modal, Spinner, StockBadge } from '../../components/ui'
 import type { Item } from '../../lib/types'
 import { CategoryManager } from '../../components/CategoryManager'
+import { DepartmentManager } from '../../components/DepartmentManager'
 
 type Filter = 'all' | 'low' | 'out' | 'returnable'
 
@@ -54,6 +55,7 @@ export default function Stock() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [catsOpen, setCatsOpen] = useState(false)
+  const [deptsOpen, setDeptsOpen] = useState(false)
 
   const rows = useMemo(() => {
     const s = search.trim().toLowerCase()
@@ -113,6 +115,9 @@ export default function Stock() {
             title="พิมพ์หน้านี้เป็นรายการติดชั้นวางไปก่อน — หน้าพิมพ์ QR เต็มรูปแบบยังไม่ได้ออกแบบ"
           >
             พิมพ์รายการ
+          </button>
+          <button type="button" className="btn-ghost" onClick={() => setDeptsOpen(true)}>
+            จัดการแผนก
           </button>
           <button type="button" className="btn-ghost" onClick={() => setCatsOpen(true)}>
             จัดการหมวด
@@ -401,6 +406,16 @@ export default function Stock() {
         categories={cats.data ?? []}
         onChanged={() => {
           cats.reload()
+          items.reload()
+        }}
+      />
+
+      <DepartmentManager
+        open={deptsOpen}
+        onClose={() => setDeptsOpen(false)}
+        departments={depts.data ?? []}
+        onChanged={() => {
+          depts.reload()
           items.reload()
         }}
       />

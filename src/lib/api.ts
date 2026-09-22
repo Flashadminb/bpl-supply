@@ -218,6 +218,23 @@ export async function listDepartments(): Promise<Department[]> {
   ) as unknown as Department[]
 }
 
+/** รหัสแผนกสร้างให้อัตโนมัติ กรอกแค่ชื่อ — รหัสตายตัวเพื่อให้เปลี่ยนชื่อทีหลังได้โดยของที่ผูกไว้ไม่ขาด */
+export async function createDepartment(name: string) {
+  const { error } = await supabase.rpc('create_department', { p_name: name.trim() })
+  if (error) throw new Error(readableError(error))
+}
+
+export async function renameDepartment(code: string, name: string) {
+  const { error } = await supabase.from('departments').update({ name: name.trim() }).eq('code', code)
+  if (error) throw new Error(readableError(error))
+}
+
+/** ลบผ่าน RPC เพราะต้องกันไม่ให้ลบแผนกที่ยังมีคนหรือของผูกอยู่ */
+export async function deleteDepartment(code: string) {
+  const { error } = await supabase.rpc('delete_department', { p_code: code })
+  if (error) throw new Error(readableError(error))
+}
+
 /* ------------------------------------------------------------------ admin */
 
 export async function listProfiles(): Promise<Profile[]> {
