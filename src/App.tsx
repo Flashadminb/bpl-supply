@@ -15,6 +15,7 @@ import Success from './pages/staff/Success'
 import History from './pages/staff/History'
 import Account from './pages/staff/Account'
 import FirstPassword from './pages/staff/FirstPassword'
+import { Privacy, Terms } from './pages/Legal'
 
 // หน้าที่ลากไลบรารีหนัก (zxing) หรือใช้เฉพาะแอดมิน — โหลดเมื่อเปิดจริงเท่านั้น
 // เน็ตในฮับไม่นิ่ง หน้าแรกต้องเบาที่สุด
@@ -76,6 +77,10 @@ export default function App() {
     <Suspense fallback={<Fallback />}>
     <Routes>
       <Route path="/login" element={<Login />} />
+
+      {/* เปิดได้โดยไม่ต้องล็อกอิน — Google ต้องตามมาเช็คได้ */}
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
 
       {/* ฝั่งพนักงาน */}
       <Route path="/" element={<Guard><Home /></Guard>} />
