@@ -6,6 +6,10 @@
 -- หน้า "ของค้างคืน" ต้องตอบให้ได้ว่า "ใคร" ยังไม่คืน จึงต้องมีชื่อติดมาด้วย
 -- =====================================================================
 
+-- Postgres ไม่ยอมให้ create or replace view สลับตำแหน่งคอลัมน์
+-- (ERROR 42P16) จึงต้อง drop ทิ้งก่อนแล้วสร้างใหม่ — view ไม่เก็บข้อมูล ไม่มีอะไรหาย
+drop view if exists open_borrowings;
+
 create or replace view open_borrowings
 with (security_invoker = true) as
 select
