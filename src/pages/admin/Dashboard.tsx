@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
+import { useAuth } from '../../lib/auth'
 import {
   countAssetExportRows,
   countSheetExportRows,
@@ -19,6 +20,8 @@ import {
 } from '../../lib/api'
 import { ErrorBox, Loading } from '../../components/ui'
 import { BarsH, Columns, DataTable, Stat, STATUS, type Datum } from '../../components/charts'
+import { StockLevels } from '../../components/StockLevels'
+import { OutstandingNow } from '../../components/OutstandingNow'
 import { STATUS_TH, fmtDateTime, relativeAge, statusClass } from '../../lib/format'
 
 /**
@@ -48,6 +51,9 @@ const dayShort = (key: string) => {
 const COND_TH: Record<string, string> = { damaged: 'ชำรุด', lost: 'สูญหาย', ok: 'ใช้ได้' }
 
 export default function Dashboard() {
+  // ชำรุดค้างเป็นงานของเจ้าของระบบ ไม่ต้องขึ้นกวนแอดมิน
+  const { can } = useAuth()
+  const isOwner = can('admin')
   const [days, setDays] = useState(30)
   const [dept, setDept] = useState('')
 
@@ -224,7 +230,52 @@ export default function Dashboard() {
   }, [rows])
 
   /* ------------------------------------------------ เรื่องที่ต้องลงมือ */
+  /** แจ้งซ่อมที่เพิ่งแจ้งมาใน 24 ชั่วโมง — เร่งกว่ากองที่ค้างมานาน */
+  const freshIssues = issues.filter(
+    (i) => Date.now() - Date.parse(i.reported_at) < 24 * 3600_000,
+  )
+  const lost = bad.filter((b) => b.condition === 'lost')
+
+  // เรียงตามความเร่ง ของที่ไม่ได้คืนกับของหายมาก่อนเสมอ
   const todo = [
+    lateAssets.length > 0 && {
+      key: 'lateasset',
+      tone: 'danger' as const,
+      to: '/admin/assets-out',
+      title: `ไม่ได้คืนเกินเวลา ${lateAssets.length} เครื่อง`,
+      detail: `${new Set(lateAssets.map((h) => h.holder_code)).size} คนที่ต้องตาม`,
+    },
+    lateBorrow.length > 0 && {
+      key: 'lateitem',
+      tone: 'danger' as const,
+      to: '/admin/outstanding',
+      title: `วัสดุยืม-คืนค้างเกิน ${LATE_HOURS} ชม. ${lateBorrow.length} รายการ`,
+      detail: 'ประมาณ 2 กะแล้ว',
+    },
+    lost.length > 0 && {
+      key: 'lost',
+      tone: 'danger' as const,
+      to: '/admin/evidence',
+      title: `แจ้งของสูญหาย ${lost.length} ครั้ง`,
+      detail: lost
+        .slice(0, 2)
+        .map((b) => b.requisition_items?.items?.name ?? '—')
+        .join(', '),
+    },
+    freshIssues.length > 0 && {
+      key: 'freshissue',
+      tone: 'danger' as const,
+      to: '/admin/assets',
+      title: `แจ้งซ่อมใหม่วันนี้ ${freshIssues.length} ใบ`,
+      detail: freshIssues[0] ? `${freshIssues[0].asset_code} · ${freshIssues[0].symptom}` : '',
+    },
+    outOfStock.length > 0 && {
+      key: 'out',
+      tone: 'danger' as const,
+      to: '/admin/stock',
+      title: `ของหมดสต็อก ${outOfStock.length} รายการ`,
+      detail: outOfStock.slice(0, 3).map((i) => i.name).join(', '),
+    },
     stats.pending.length > 0 && {
       key: 'approve',
       tone: 'warn' as const,
@@ -239,27 +290,6 @@ export default function Dashboard() {
       title: `บาร์โค้ด BY รอตัดสต็อก ${byCount} รายการ`,
       detail: 'หน้างานส่งรูปมาแล้ว รอไปตัดในระบบ BY',
     },
-    lateAssets.length > 0 && {
-      key: 'lateasset',
-      tone: 'danger' as const,
-      to: '/admin/assets-out',
-      title: `Asset เลยเวลาคืน ${lateAssets.length} เครื่อง`,
-      detail: `${new Set(lateAssets.map((h) => h.holder_code)).size} คนที่ต้องตาม`,
-    },
-    issues.length > 0 && {
-      key: 'issue',
-      tone: 'danger' as const,
-      to: '/admin/assets',
-      title: `เครื่องชำรุดยังไม่เคลียร์ ${issueAssets.size} เครื่อง`,
-      detail: issues[0] ? `ล่าสุด ${issues[0].asset_code} · ${issues[0].symptom}` : '',
-    },
-    outOfStock.length > 0 && {
-      key: 'out',
-      tone: 'danger' as const,
-      to: '/admin/stock',
-      title: `ของหมดสต็อก ${outOfStock.length} รายการ`,
-      detail: outOfStock.slice(0, 3).map((i) => i.name).join(', '),
-    },
     low.length - outOfStock.length > 0 && {
       key: 'low',
       tone: 'warn' as const,
@@ -267,20 +297,22 @@ export default function Dashboard() {
       title: `ของใกล้หมด ${low.length - outOfStock.length} รายการ`,
       detail: 'ต่ำกว่าจุดสั่งซื้อแล้ว',
     },
-    lateBorrow.length > 0 && {
-      key: 'lateitem',
-      tone: 'danger' as const,
-      to: '/admin/outstanding',
-      title: `วัสดุยืม-คืนค้างเกิน ${LATE_HOURS} ชม. ${lateBorrow.length} รายการ`,
-      detail: 'ประมาณ 2 กะแล้ว',
-    },
-    bad.length > 0 && {
+    bad.length - lost.length > 0 && {
       key: 'bad',
       tone: 'warn' as const,
       to: '/admin/evidence',
-      title: `คืนของแบบชำรุด/สูญหาย ${bad.length} ครั้ง`,
+      title: `คืนของแบบชำรุด ${bad.length - lost.length} ครั้ง`,
       detail: `ใน ${days} วันที่ผ่านมา`,
     },
+    // กองชำรุดที่ค้างสะสม เห็นเฉพาะเจ้าของระบบ
+    isOwner &&
+      issues.length > 0 && {
+        key: 'issue',
+        tone: 'mute' as const,
+        to: '/admin/assets',
+        title: `เครื่องชำรุดยังไม่เคลียร์ ${issueAssets.size} เครื่อง`,
+        detail: 'สะสมทั้งหมด — เคลียร์เมื่อซ่อมเสร็จ',
+      },
     pendingSheet + assetPendingSheet > 0 && {
       key: 'sheet',
       tone: 'mute' as const,
@@ -348,7 +380,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {issues.length > 0 && (
+        {isOwner && issues.length > 0 && (
           <div className="mt-2 rounded-card border border-warn/30 bg-warn-bg p-3">
             <div className="mb-1 flex items-center justify-between gap-2">
               <p className="font-display text-warn-txt">
@@ -378,6 +410,12 @@ export default function Dashboard() {
           </div>
         )}
       </section>
+
+      {/* --------------------------- สองรายการที่เปิดมาแล้วต้องเห็นก่อนเพื่อน */}
+      <div className="mb-6 grid gap-3 xl:grid-cols-2">
+        <StockLevels items={items.data ?? []} />
+        <OutstandingNow holdings={holdings} borrowings={openBorrow} />
+      </div>
 
       {reqs.loading && <Loading />}
       {reqs.error && <ErrorBox message={reqs.error} onRetry={reqs.reload} />}
