@@ -11,7 +11,8 @@
 //
 // secrets ที่ต้องตั้ง:
 //   GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET,
-//   GOOGLE_OAUTH_REFRESH_TOKEN, GDRIVE_FOLDER_ID
+//   GOOGLE_OAUTH_REFRESH_TOKEN
+//   (GDRIVE_FOLDER_ID ไม่ต้องตั้งแล้ว แอปสร้างโฟลเดอร์เองและจำรหัสไว้ในฐานข้อมูล)
 // =====================================================================
 
 const MAX_BYTES = 8 * 1024 * 1024
@@ -107,8 +108,85 @@ async function requireUser(req: Request): Promise<string> {
   return user.id
 }
 
+/* ------------------------------------------------ โฟลเดอร์ปลายทางใน Drive */
+
+const FOLDER_NAME = 'BPL SUPPLY หลักฐาน'
+const SETTING_KEY = 'gdrive_folder_id'
+
+/**
+ * สิทธิ์ที่ขอจาก Google เป็นแบบ drive.file คือแตะได้เฉพาะไฟล์ที่แอปสร้างเอง
+ * โฟลเดอร์ที่คนไปสร้างเองในเว็บ Drive แอปจะมองไม่เห็น อัปเข้าไม่ได้
+ *
+ * จึงให้แอปสร้างโฟลเดอร์ของตัวเองครั้งแรก แล้วจำรหัสไว้ในฐานข้อมูล
+ * ถ้าโฟลเดอร์ถูกลบหรือย้ายไปถังขยะ ครั้งต่อไปจะสร้างใหม่ให้เอง
+ * ไม่ต้องมาตั้งค่า GDRIVE_FOLDER_ID ด้วยมืออีก
+ */
+async function setting(key: string, value?: string): Promise<string | null> {
+  const base = Deno.env.get('SUPABASE_URL')
+  const svc = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SB_SECRET_KEY')
+  if (!base || !svc) return null
+  const headers = { apikey: svc, Authorization: `Bearer ${svc}`, 'Content-Type': 'application/json' }
+
+  if (value === undefined) {
+    const res = await fetch(
+      `${base}/rest/v1/private_settings?key=eq.${encodeURIComponent(key)}&select=value`,
+      { headers },
+    )
+    if (!res.ok) return null
+    const rows = (await res.json()) as { value: string }[]
+    return rows[0]?.value ?? null
+  }
+
+  await fetch(`${base}/rest/v1/private_settings?on_conflict=key`, {
+    method: 'POST',
+    headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ key, value }),
+  }).catch(() => undefined)
+  return value
+}
+
+let folderCache: { id: string; at: number } | null = null
+
+async function driveFolderOk(id: string, token: string): Promise<boolean> {
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${id}?fields=id,trashed,mimeType`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  if (!res.ok) return false
+  const f = (await res.json()) as { trashed?: boolean; mimeType?: string }
+  return !f.trashed && f.mimeType === 'application/vnd.google-apps.folder'
+}
+
+async function createFolder(token: string): Promise<string> {
+  const res = await fetch('https://www.googleapis.com/drive/v3/files?fields=id', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' }),
+  })
+  const data = (await res.json()) as { id?: string; error?: { message?: string } }
+  if (!res.ok || !data.id) {
+    throw new Error(`สร้างโฟลเดอร์ใน Drive ไม่สำเร็จ: ${data.error?.message ?? res.status}`)
+  }
+  return data.id
+}
+
+async function ensureFolder(token: string): Promise<string> {
+  if (folderCache && Date.now() - folderCache.at < 10 * 60_000) return folderCache.id
+
+  const saved = (await setting(SETTING_KEY)) ?? Deno.env.get('GDRIVE_FOLDER_ID') ?? null
+  if (saved && (await driveFolderOk(saved, token))) {
+    folderCache = { id: saved, at: Date.now() }
+    return saved
+  }
+
+  const fresh = await createFolder(token)
+  await setting(SETTING_KEY, fresh)
+  folderCache = { id: fresh, at: Date.now() }
+  return fresh
+}
+
 // ป้ายบอกเวอร์ชัน — เรียกด้วย GET เพื่อเช็คว่าโค้ดที่ deploy อยู่เป็นตัวไหน
-const VERSION = 'folder-v3'
+const VERSION = 'folder-v4'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -123,8 +201,8 @@ Deno.serve(async (req) => {
           Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET') &&
           Deno.env.get('GOOGLE_OAUTH_REFRESH_TOKEN'),
       ),
-      folderIdSet: Boolean(Deno.env.get('GDRIVE_FOLDER_ID')),
-      folderId: Deno.env.get('GDRIVE_FOLDER_ID') ?? null,
+      folderId: (await setting(SETTING_KEY)) ?? Deno.env.get('GDRIVE_FOLDER_ID') ?? null,
+      folderName: FOLDER_NAME,
     })
   }
 
@@ -138,8 +216,8 @@ Deno.serve(async (req) => {
     if (!(file instanceof File)) return json({ error: 'ไม่พบไฟล์รูปในคำขอ' }, 400)
     if (file.size > MAX_BYTES) return json({ error: 'ไฟล์ใหญ่เกิน 8 MB' }, 413)
 
-    const folderId = envOrThrow('GDRIVE_FOLDER_ID')
     const token = await getAccessToken()
+    const folderId = await ensureFolder(token)
     const mime = file.type || 'image/webp'
 
     // นามสกุลต้องตรงกับชนิดไฟล์จริง — iPhone บางรุ่นทำ WebP ไม่ได้ จะได้ JPEG มาแทน
