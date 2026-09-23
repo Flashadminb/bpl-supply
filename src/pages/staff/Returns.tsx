@@ -8,6 +8,7 @@ import type { OpenBorrowing, ReturnCond } from '../../lib/types'
 import { StaffPage, TopBar } from '../../components/Shell'
 import { EmptyState, ErrorBox, Loading, QtyStepper, Sheet, Spinner } from '../../components/ui'
 import { fmtDateTime } from '../../lib/format'
+import { AssetReturn } from '../../components/AssetReturn'
 
 const CONDITIONS: { key: ReturnCond; label: string }[] = [
   { key: 'ok', label: 'ใช้ได้' },
@@ -42,6 +43,7 @@ export default function Returns() {
   const [compressing, setCompressing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
+  const [assetCount, setAssetCount] = useState<number | null>(null)
 
   useEffect(() => {
     shotsRef.current = shots
@@ -195,14 +197,23 @@ export default function Returns() {
 
   return (
     <>
-      <TopBar title="คืนวัสดุ" back="/" />
+      <TopBar title="คืนของ" back="/" />
       <StaffPage>
+        <AssetReturn onCount={setAssetCount} />
+
         {open.loading && <Loading />}
         {open.error && <ErrorBox message={open.error} onRetry={open.reload} />}
         {done && <p className="mb-3 rounded-card bg-success-bg p-3 text-sm text-success-txt">{done}</p>}
 
-        {!open.loading && !open.error && (open.data ?? []).length === 0 && (
-          <EmptyState title="ไม่มีของค้างคืน" hint="ของประเภทยืม-คืนที่เบิกไปจะขึ้นที่นี่" />
+        {!open.loading && !open.error && (open.data ?? []).length === 0 && assetCount === 0 && (
+          <EmptyState
+            title="ไม่มีของค้างคืน"
+            hint="อุปกรณ์และวัสดุประเภทยืม-คืนที่เบิกไปจะขึ้นที่นี่"
+          />
+        )}
+
+        {(open.data ?? []).length > 0 && (
+          <h2 className="mb-2 font-display text-md">วัสดุยืม-คืน</h2>
         )}
 
         <ul className="space-y-2">

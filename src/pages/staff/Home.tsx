@@ -2,7 +2,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { useCart } from '../../lib/cart'
 import { useAsync } from '../../lib/useAsync'
-import { listMyRequisitions, listOpenBorrowings } from '../../lib/api'
+import { listAssetHoldings, listMyRequisitions, listOpenBorrowings } from '../../lib/api'
 import { StaffPage } from '../../components/Shell'
 import { EmptyState, ErrorBox, Loading } from '../../components/ui'
 import { STATUS_TH, fmtDateTime, statusClass } from '../../lib/format'
@@ -19,7 +19,10 @@ export default function Home() {
 
   const recent = useAsync(() => listMyRequisitions(3), [])
   const borrow = useAsync(() => listOpenBorrowings(true, profile?.id), [profile?.id])
+  const heldAssets = useAsync(() => listAssetHoldings(true, profile?.id), [profile?.id])
   const openCount = (borrow.data ?? []).reduce((n, b) => n + b.qty_open, 0)
+  const assetCount = (heldAssets.data ?? []).length
+  const owing = openCount + assetCount
   const approvals = usePendingApprovals()
 
   return (
@@ -110,9 +113,18 @@ export default function Home() {
             <span className="text-md" aria-hidden>
               ↩
             </span>
-            <span className="font-display text-md">คืนวัสดุ</span>
-            <span className={`text-sm ${openCount > 0 ? 'text-warn-txt' : 'text-ink-400'}`}>
-              {borrow.loading ? 'กำลังตรวจ…' : openCount > 0 ? `ค้างคืน ${openCount} ชิ้น` : 'ไม่มีของค้าง'}
+            <span className="font-display text-md">คืนของ</span>
+            <span className={`text-sm ${owing > 0 ? 'text-warn-txt' : 'text-ink-400'}`}>
+              {borrow.loading || heldAssets.loading
+                ? 'กำลังตรวจ…'
+                : owing > 0
+                  ? [
+                      assetCount > 0 ? `อุปกรณ์ ${assetCount} เครื่อง` : null,
+                      openCount > 0 ? `วัสดุ ${openCount} ชิ้น` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')
+                  : 'ไม่มีของค้าง'}
             </span>
           </Link>
         </div>

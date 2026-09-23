@@ -11,6 +11,7 @@ const LINKS = [
   { to: '/admin/outstanding', label: 'ของค้างคืน', end: false, adminOnly: false },
   { to: '/admin/evidence', label: 'หลักฐานการเบิก-คืน', end: false, adminOnly: false },
   { to: '/admin/assets', label: 'ทะเบียนเครื่อง', end: false, adminOnly: false },
+  { to: '/admin/assets-out', label: 'Asset ที่ยังไม่คืน', end: false, adminOnly: false },
   { to: '/admin/qr', label: 'พิมพ์ QR ติดชั้นวาง', end: false, adminOnly: false },
   { to: '/admin/export', label: 'ส่งออก Google Sheet', end: false, adminOnly: false },
   { to: '/admin/users', label: 'ผู้ใช้และสิทธิ์', end: false, adminOnly: true },
