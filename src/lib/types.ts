@@ -362,3 +362,44 @@ export interface AssetHistoryRow {
   out_file_ids: string[]
   in_file_ids: string[]
 }
+
+/* ------------------------------------------------------ เช็คอินเข้าประชุม */
+
+export type MeetingStatus = 'pending' | 'confirmed' | 'rejected'
+
+export interface MeetingRow {
+  id: string
+  ref_no: string
+  user_id: string
+  full_name: string
+  employee_code: string
+  dept_code: string | null
+  sub_dept: string | null
+  shift_start: string | null
+  shift_end: string | null
+  note: string | null
+  file_id: string
+  web_link: string | null
+  status: MeetingStatus
+  decided_by: string | null
+  decided_by_name: string | null
+  decided_at: string | null
+  decide_note: string | null
+  created_at: string
+  /** วันที่ตามเวลาไทย — ใช้จัดกลุ่มตามวันประชุม */
+  day: string
+}
+
+/** สรุปรายคนในช่วงที่เลือก — รวมคนที่ไม่เคยเช็คอินเลยด้วย */
+export interface MeetingStat {
+  user_id: string
+  full_name: string
+  employee_code: string
+  dept_code: string | null
+  sub_dept: string | null
+  confirmed: number
+  pending: number
+  rejected: number
+  total: number
+  last_at: string | null
+}

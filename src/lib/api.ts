@@ -26,6 +26,9 @@ import type {
   AssetTxnKind,
   AssetHistoryRow,
   TransferNotice,
+  MeetingRow,
+  MeetingStat,
+  MeetingStatus,
 } from './types'
 
 const ITEM_COLS =
@@ -994,4 +997,88 @@ export async function listAssetHistory(args: {
   if (args.toISO) q = q.lte('taken_at', args.toISO)
   if (args.userId) q = q.eq('user_id', args.userId)
   return unwrap(await q.limit(args.limit ?? 500)) as unknown as AssetHistoryRow[]
+}
+
+/* ------------------------------------------------------ เช็คอินเข้าประชุม */
+
+/**
+ * เช็คอินเข้าประชุม — ส่งแค่รูปเซลฟี่
+ *
+ * ชื่อ เวลา แผนก กะ ฐานข้อมูลเติมให้เองจากโปรไฟล์และ now() ของเซิร์ฟเวอร์
+ * ไม่ส่งเวลาจากเครื่องขึ้นไป เพราะนาฬิกามือถือตั้งเองได้
+ *
+ * กดซ้ำภายใน 10 นาทีจะได้ใบเดิมกลับมาพร้อม duplicate = true
+ * ไม่ใช่ error เพราะสิ่งที่ผู้ใช้ต้องการคือ "เช็คอินแล้ว" ซึ่งเป็นจริง
+ */
+export async function meetingCheckin(args: {
+  fileId: string
+  webLink?: string | null
+  bytes?: number | null
+  note?: string | null
+}) {
+  const { data, error } = await supabase.rpc('meeting_checkin', {
+    p_file_id: args.fileId,
+    p_web_link: args.webLink ?? null,
+    p_bytes: args.bytes ?? null,
+    p_note: args.note ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { id: string; ref_no: string; created_at: string; duplicate: boolean }
+}
+
+/** ประวัติเช็คอินของตัวเอง */
+export async function listMyMeetings(limit = 30): Promise<MeetingRow[]> {
+  const { data: auth } = await supabase.auth.getUser()
+  const uid = auth.user?.id
+  if (!uid) return []
+  return unwrap(
+    await supabase
+      .from('meeting_rows')
+      .select('*')
+      .eq('user_id', uid)
+      .order('created_at', { ascending: false })
+      .limit(limit),
+  ) as unknown as MeetingRow[]
+}
+
+/** รายชื่อประชุมสำหรับหน้าตรวจสอบ — กรองด้วยวันตามเวลาไทย */
+export async function listMeetings(opts: {
+  fromDay?: string
+  toDay?: string
+  status?: MeetingStatus | ''
+} = {}): Promise<MeetingRow[]> {
+  let q = supabase.from('meeting_rows').select('*').order('created_at', { ascending: false })
+  if (opts.fromDay) q = q.gte('day', opts.fromDay)
+  if (opts.toDay) q = q.lte('day', opts.toDay)
+  if (opts.status) q = q.eq('status', opts.status)
+  return unwrap(await q) as unknown as MeetingRow[]
+}
+
+/** วันที่ที่มีคนเช็คอิน — ใช้ทำดรอปดาวน์เลือกวัน */
+export async function listMeetingDays(limit = 400): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('meeting_rows')
+    .select('day')
+    .order('day', { ascending: false })
+    .limit(limit)
+  if (error) throw new Error(readableError(error))
+  return [...new Set(((data ?? []) as { day: string }[]).map((r) => r.day))]
+}
+
+/** ยืนยันหรือตีตกหลายรายการในครั้งเดียว */
+export async function setMeetingStatus(ids: string[], status: MeetingStatus, note?: string) {
+  const { data, error } = await supabase.rpc('set_meeting_status', {
+    p_ids: ids,
+    p_status: status,
+    p_note: note ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+  return (data as number) ?? 0
+}
+
+/** สรุปรายคนว่าเข้าประชุมกี่ครั้งในช่วงที่เลือก */
+export async function meetingStats(fromDay: string, toDay: string): Promise<MeetingStat[]> {
+  const { data, error } = await supabase.rpc('meeting_stats', { p_from: fromDay, p_to: toDay })
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as MeetingStat[]
 }

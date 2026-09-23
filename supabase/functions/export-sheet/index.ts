@@ -1,20 +1,22 @@
 // =====================================================================
 // export-sheet — เขียนข้อมูลลง Google Sheet
 //
-// สี่ชุดแยกแท็บกัน แต่ละชุดแยกรายเดือนอีกที
+// ห้าชุดแยกแท็บกัน แต่ละชุดแยกรายเดือนอีกที
 //   เบิก-คืน 2569-09   วัสดุสิ้นเปลือง 1 แถวต่อ 1 รายการ
 //   Asset 2569-09      อุปกรณ์ 1 แถวต่อ 1 เครื่องต่อครั้งที่เบิกหรือคืน
 //   ชำรุด 2569-09      ใบแจ้งชำรุด 1 แถวต่อ 1 ใบ
 //   บาร์โค้ด BY 2569-09  ของที่หน้างานส่งบาร์โค้ดมาให้ตัดสต็อกในระบบ BY
+//   ประชุม 2569-09     เช็คอินเข้าประชุม — ลงคนละไฟล์ ดู GSHEET_MEETING_ID
 //
 // กันแถวซ้ำโดยจำตำแหน่งไว้ในฐานข้อมูล (แท็บ + เลขแถว)
 // จึงไม่ต้องอ่านทั้งชีตมาเทียบทุกครั้ง — เร็วคงที่ไม่ว่าชีตจะใหญ่แค่ไหน
 //
 // ไฟล์นี้เขียนให้จบในตัวเอง ก๊อปวางใน Supabase Dashboard ได้ตรง ๆ
 // secrets: GOOGLE_SA_EMAIL, GOOGLE_SA_PRIVATE_KEY, GSHEET_ID
+// ไม่บังคับ: GSHEET_MEETING_ID (ไม่ตั้งก็ใช้ไฟล์ที่ฝังไว้ในโค้ด)
 // =====================================================================
 
-const VERSION = 'by-v6'
+const VERSION = 'meeting-v7'
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
 
 const HEADER = ['เลขที่คำขอ', 'วันเวลา', 'ผู้เบิก (ฮับ)', 'วัสดุ', 'จำนวน', 'หลักฐาน', 'Drive File ID']
@@ -62,6 +64,43 @@ const BY_HEADER = [
   'หลักฐาน',
   'Drive File ID',
 ]
+
+// ไฟล์รายชื่อประชุมแยกจากไฟล์เบิก-คืน · ตั้ง GSHEET_MEETING_ID ทับได้ถ้าย้ายไฟล์
+const MEETING_SHEET_ID = '15_ES88gZhq8ZWBaAwoFekP-3o3HKnNW52jPimSIjHRY'
+
+const MEETING_HEADER = [
+  'เลขที่',
+  'วันเวลาเช็คอิน',
+  'ชื่อ',
+  'รหัสพนักงาน',
+  'แผนก',
+  'กะ',
+  'สถานะ',
+  'ผู้ตรวจสอบ',
+  'เวลาที่ตรวจ',
+  'หมายเหตุผู้ตรวจ',
+  'หมายเหตุผู้เช็คอิน',
+  'รูปเซลฟี่',
+  'Drive File ID',
+]
+
+interface DbMeeting {
+  id: string
+  ref_no: string
+  created_at: string
+  full_name: string | null
+  employee_code: string | null
+  dept_code: string | null
+  sub_dept: string | null
+  shift_start: string | null
+  shift_end: string | null
+  note: string | null
+  file_id: string | null
+  status: string
+  decided_by_name: string | null
+  decided_at: string | null
+  decide_note: string | null
+}
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -688,6 +727,66 @@ Deno.serve(async (req) => {
             headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
             body: JSON.stringify(
               out.fresh.map((r, i) => ({ by_id: r.key, tab: r.tab, row_no: out.rowNos[i] })),
+            ),
+          })
+        }
+      }
+    }
+
+    /* ------------------------------------------------- เช็คอินเข้าประชุม */
+    // ลงคนละไฟล์กับของเบิก เพราะเป็นคนละเรื่องและคนดูก็คนละคน
+    // ปนกันแล้วคนที่เปิดดูรายชื่อประชุมต้องเลื่อนผ่านแท็บเบิกของทุกเดือน
+    if (scope === 'all' || scope === 'meeting') {
+      const meetSheet = Deno.env.get('GSHEET_MEETING_ID') || MEETING_SHEET_ID
+      const mqs = new URLSearchParams({
+        select:
+          'id,ref_no,created_at,full_name,employee_code,dept_code,sub_dept,' +
+          'shift_start,shift_end,note,file_id,status,decided_by_name,decided_at,decide_note',
+        order: 'created_at.asc',
+      })
+      if (payload.from) mqs.append('created_at', `gte.${payload.from}`)
+      if (payload.to) mqs.append('created_at', `lte.${payload.to}`)
+
+      const meets = await db<DbMeeting[]>(`meeting_rows?${mqs}`)
+      const mrows: OutRow[] = meets.map((m) => ({
+        key: m.id,
+        tab: `ประชุม ${monthOf(m.created_at)}`,
+        values: [
+          m.ref_no,
+          thaiDateTime(m.created_at),
+          m.full_name ?? '—',
+          m.employee_code ?? '',
+          [m.dept_code ?? '', m.sub_dept ?? ''].filter(Boolean).join(' · '),
+          shiftText(m.shift_start, m.shift_end),
+          m.status === 'confirmed' ? 'ยืนยันแล้ว' : m.status === 'rejected' ? 'ไม่นับ' : 'รอตรวจ',
+          m.decided_by_name ?? '',
+          m.decided_at ? thaiDateTime(m.decided_at) : '',
+          m.decide_note ?? '',
+          m.note ?? '',
+          m.file_id ? driveLink(m.file_id, 'ดูรูป') : '',
+          m.file_id ?? '',
+        ],
+      }))
+
+      if (mrows.length > 0) {
+        const ids = mrows.map((r) => `"${r.key}"`).join(',')
+        const known = await db<{ meeting_id: string; tab: string; row_no: number }[]>(
+          `meeting_sheet_exports?meeting_id=in.(${ids})&select=meeting_id,tab,row_no`,
+        )
+        const placed = new Map<RowKey, { tab: string; row_no: number }>(
+          known.map((k) => [k.meeting_id, k]),
+        )
+        const out = await pushRows(meetSheet, token, mrows, placed, MEETING_HEADER)
+        updated += out.updated
+        appended += out.appended
+        out.tabs.forEach((t) => tabs.add(t))
+
+        if (out.fresh.length > 0) {
+          await db('meeting_sheet_exports?on_conflict=meeting_id', {
+            method: 'POST',
+            headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+            body: JSON.stringify(
+              out.fresh.map((r, i) => ({ meeting_id: r.key, tab: r.tab, row_no: out.rowNos[i] })),
             ),
           })
         }

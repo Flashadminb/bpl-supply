@@ -4,6 +4,7 @@ import { useAuth } from '../../lib/auth'
 import { usePendingApprovals } from '../../lib/usePendingApprovals'
 import { usePendingExports } from '../../lib/usePendingExports'
 import { Icon, type IconName } from '../../components/icons'
+import { MANAGER_ROLES } from '../../lib/roles'
 
 // adminOnly = เห็นเฉพาะ "ผู้ดูแลระบบ" (role admin) ส่วน "แอดมิน" (supervisor) เห็นที่เหลือทั้งหมด
 //
@@ -21,6 +22,8 @@ interface Link {
   adminOnly?: boolean
   /** เลขค้างท้ายเมนู ดึงจากตัวนับคนละตัวกัน */
   badge?: 'approvals' | 'exports'
+  /** ผู้ตรวจสอบเห็นเมนูนี้ด้วย — นอกนั้นเห็นเฉพาะแอดมินขึ้นไป */
+  audit?: boolean
 }
 
 const GROUPS: { title: string | null; links: Link[] }[] = [
@@ -29,6 +32,13 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
     links: [
       { to: '/admin', label: 'หน้าแรก', icon: 'home', end: true },
       { to: '/admin/evidence', label: 'หลักฐานการเบิก-คืน', icon: 'photo' },
+    ],
+  },
+  {
+    title: 'ตรวจสอบ',
+    links: [
+      { to: '/admin/meetings', label: 'รายชื่อประชุม', icon: 'clipboard', audit: true },
+      { to: '/admin/supply-history', label: 'ประวัติเบิกสิ้นเปลือง', icon: 'history', audit: true },
     ],
   },
   {
@@ -69,6 +79,7 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
 
 export default function AdminLayout() {
   const { profile, signOut, can } = useAuth()
+  const isManager = can(...MANAGER_ROLES)
   const [menu, setMenu] = useState(false)
   const pending = usePendingApprovals()
   const exports = usePendingExports()
@@ -77,7 +88,10 @@ export default function AdminLayout() {
   const nav = (
     <nav className="flex flex-col gap-1">
       {GROUPS.map((g) => {
-        const links = g.links.filter((l) => !l.adminOnly || can('admin'))
+        const links = g.links
+          .filter((l) => !l.adminOnly || can('admin'))
+          // ผู้ตรวจสอบเข้าได้แค่สองหน้า ที่เหลือไม่ต้องขึ้นให้เห็นด้วยซ้ำ
+          .filter((l) => isManager || l.audit)
         if (links.length === 0) return null
         return (
           <div key={g.title ?? 'top'} className={g.title ? 'mt-3' : ''}>

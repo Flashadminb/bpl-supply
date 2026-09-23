@@ -6,9 +6,10 @@ import { listAssetHoldings, listMyRequisitions, listOpenBorrowings } from '../..
 import { StaffPage } from '../../components/Shell'
 import { EmptyState, ErrorBox, Loading } from '../../components/ui'
 import { STATUS_TH, fmtDateTime, statusClass } from '../../lib/format'
-import { MANAGER_ROLES, ROLE_TH } from '../../lib/roles'
+import { MANAGER_ROLES, roleLabel } from '../../lib/roles'
 import { usePendingApprovals } from '../../lib/usePendingApprovals'
 import { NotifyBell } from '../../components/NotifyBell'
+import { MeetingCheckIn } from '../../components/MeetingCheckIn'
 import { relativeAge } from '../../lib/format'
 
 
@@ -34,18 +35,20 @@ export default function Home() {
             <p className="text-sm">สวัสดี</p>
             <p className="font-display text-lg font-semibold">{profile?.full_name}</p>
             <p className="mt-[2px] font-mono text-xs">
-              {profile?.employee_code} · {hubName} · {profile ? ROLE_TH[profile.role] : ''}
+              {profile?.employee_code} · {hubName} · {profile ? roleLabel(profile) : ''}
             </p>
           </div>
           <div className="flex flex-col items-end gap-1">
-            {can(...MANAGER_ROLES) && (
-              <span className="flex items-center gap-2">
-                <NotifyBell />
+            <span className="flex items-center gap-2">
+              {/* เช็คอินประชุมเห็นทุกคน ไม่ใช่ของแอดมิน */}
+              <MeetingCheckIn />
+              {can(...MANAGER_ROLES) && <NotifyBell />}
+              {(can(...MANAGER_ROLES) || profile?.can_dispatch) && (
                 <Link to="/admin" className="rounded-btn bg-ink px-3 py-2 text-sm text-white">
-                  หน้าแอดมิน
+                  {can(...MANAGER_ROLES) ? 'หน้าแอดมิน' : 'หน้าตรวจสอบ'}
                 </Link>
-              </span>
-            )}
+              )}
+            </span>
             <Link to="/account" className="min-h-tap px-1 py-2 text-sm underline">
               บัญชีของฉัน
             </Link>

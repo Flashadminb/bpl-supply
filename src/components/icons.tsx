@@ -23,6 +23,8 @@ export type IconName =
   | 'sheet'
   | 'users'
   | 'bell'
+  | 'clipboard'
+  | 'history'
 
 const PATHS: Record<IconName, JSX.Element> = {
   // บ้าน — หน้าแรก
@@ -123,6 +125,23 @@ const PATHS: Record<IconName, JSX.Element> = {
       <path d="M2.8 20c0-3.4 2.8-5.5 6.2-5.5s6.2 2.1 6.2 5.5" />
       <path d="M16 5.2a3.5 3.5 0 0 1 0 6.6" />
       <path d="M17.6 14.9c2.2.6 3.6 2.3 3.6 5.1" />
+    </>
+  ),
+  // คลิปบอร์ด — รายชื่อประชุม
+  clipboard: (
+    <>
+      <rect x="4.5" y="4" width="15" height="17" rx="2.5" />
+      <path d="M9 4V3a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 3v1z" />
+      <path d="M8.5 11.5l1.8 1.8 3.7-3.8" />
+      <path d="M8.5 17h7" />
+    </>
+  ),
+  // นาฬิกาหมุนย้อน — ประวัติ
+  history: (
+    <>
+      <path d="M3.6 12a8.4 8.4 0 1 0 2.7-6.2" />
+      <path d="M3.5 4v4h4" />
+      <path d="M12 7.6V12l3 1.8" />
     </>
   ),
   // กระดิ่ง — แจ้งเตือน
