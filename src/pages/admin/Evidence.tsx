@@ -28,10 +28,10 @@ const isoDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/B
 export default function Evidence() {
   const [scope, setScope] = useState<Scope>('borrow')
   const [showArchived, setShowArchived] = useState(false)
-  const [kind, setKind] = useState<'all' | 'requisition' | 'return'>('all')
+  const [kind, setKind] = useState('all')
   // เก็บเป็น "HH:MM|HH:MM" เพื่อให้ค่าใน <select> เป็นข้อความเดียว
   const [shiftKey, setShiftKey] = useState('')
-  const [itemId, setItemId] = useState('')
+  const [pick, setPick] = useState('')
   const [from, setFrom] = useState(isoDay(new Date(Date.now() - 30 * 864e5)))
   const [to, setTo] = useState(isoDay(new Date()))
   const [page, setPage] = useState(0)
@@ -63,14 +63,14 @@ export default function Evidence() {
         returnableOnly: scope === 'borrow',
         includeArchived: showArchived,
         kind,
-        itemId: itemId ? Number(itemId) : null,
+        pick: pick || null,
         shift: shiftKey
           ? { start: shiftKey.split('|')[0], end: shiftKey.split('|')[1] }
           : null,
         fromISO: range.fromISO,
         toISO: range.toISO,
       }),
-    [scope, showArchived, kind, shiftKey, itemId, range.fromISO, range.toISO],
+    [scope, showArchived, kind, shiftKey, pick, range.fromISO, range.toISO],
   )
 
   const all = useMemo(
@@ -169,13 +169,17 @@ export default function Evidence() {
             className="input h-tap w-[150px]"
             value={kind}
             onChange={(e) => {
-              setKind(e.target.value as typeof kind)
+              setKind(e.target.value)
               setPage(0)
             }}
           >
-            <option value="all">เบิกและคืน</option>
-            <option value="requisition">เฉพาะเบิก</option>
-            <option value="return">เฉพาะคืน</option>
+            <option value="all">ทั้งหมด</option>
+            <option value="supply">สิ้นเปลืองทั้งหมด</option>
+            <option value="requisition">สิ้นเปลือง · เบิก</option>
+            <option value="return">สิ้นเปลือง · คืน</option>
+            <option value="asset">Asset ทั้งหมด</option>
+            <option value="asset_out">Asset · เบิก</option>
+            <option value="asset_in">Asset · คืน</option>
           </select>
         </div>
 
@@ -186,18 +190,31 @@ export default function Evidence() {
           <select
             id="ev-item"
             className="input h-tap w-[210px]"
-            value={itemId}
+            value={pick}
             onChange={(e) => {
-              setItemId(e.target.value)
+              setPick(e.target.value)
               setPage(0)
             }}
           >
             <option value="">ทุกรายการ</option>
-            {(evItems.data ?? []).map((it) => (
-              <option key={it.item_id} value={it.item_id}>
-                {it.name} ({it.photo_rows})
-              </option>
-            ))}
+            <optgroup label="อุปกรณ์ Asset">
+              {(evItems.data ?? [])
+                .filter((it) => it.kind === 'asset')
+                .map((it) => (
+                  <option key={it.key} value={it.key}>
+                    {it.name} ({it.photo_rows})
+                  </option>
+                ))}
+            </optgroup>
+            <optgroup label="วัสดุสิ้นเปลือง">
+              {(evItems.data ?? [])
+                .filter((it) => it.kind === 'supply')
+                .map((it) => (
+                  <option key={it.key} value={it.key}>
+                    {it.name} ({it.photo_rows})
+                  </option>
+                ))}
+            </optgroup>
           </select>
         </div>
 
@@ -303,8 +320,18 @@ export default function Evidence() {
                   <td className="p-2 font-mono text-xs">{r.ref_no}</td>
                   <td className="p-2 text-ink-500">{fmtDateTime(r.created_at)}</td>
                   <td className="p-2">
-                    <span className={r.kind === 'return' ? 'badge-ok' : 'badge-mute'}>
-                      {r.kind === 'return' ? 'คืนของ' : 'เบิกของ'}
+                    <span
+                      className={
+                        r.kind === 'return' || r.kind === 'asset_in' ? 'badge-ok' : 'badge-mute'
+                      }
+                    >
+                      {r.kind === 'return'
+                        ? 'คืนของ'
+                        : r.kind === 'asset_in'
+                          ? 'คืนเครื่อง'
+                          : r.kind === 'asset_out'
+                            ? 'เบิกเครื่อง'
+                            : 'เบิกของ'}
                     </span>
                   </td>
                   <td className="p-2">

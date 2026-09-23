@@ -310,3 +310,28 @@ export interface ByStatRow {
   done: number
   rejected: number
 }
+
+/** หนึ่งแถวต่อหนึ่งเครื่องต่อหนึ่งครั้งที่เบิก — คืนแล้วแถวยังอยู่ */
+export interface AssetHistoryRow {
+  out_item_id: number
+  asset_code: string
+  type_code: string
+  type_name: string
+  asset_dept: string | null
+  txn_id: string
+  ref_no: string
+  user_id: string
+  who: string
+  employee_code: string
+  holder_dept: string | null
+  sub_dept: string | null
+  shift_start: string | null
+  shift_end: string | null
+  due_at: string | null
+  taken_at: string
+  returned_at: string | null
+  return_ref: string | null
+  returned_by: string | null
+  still_out: boolean
+  held_hours: number | null
+}

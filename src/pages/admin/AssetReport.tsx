@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
 import {
   listAssetHoldings,
+  listAssetHistory,
   listAssetIssuesBetween,
   listAssetLinesBetween,
   listAssetTypes,
@@ -66,6 +67,7 @@ export default function AssetReport() {
   const held = useAsync(() => listAssetHoldings(false), [])
   const lines = useAsync(() => listAssetLinesBetween(range.fromISO, range.toISO), [range])
   const issues = useAsync(() => listAssetIssuesBetween(range.fromISO, range.toISO), [range])
+  const history = useAsync(() => listAssetHistory({ ...range, limit: 1000 }), [range])
 
   const assetBy = useMemo(() => new Map((assets.data ?? []).map((a) => [a.code, a])), [assets.data])
   const typeName = useMemo(
@@ -112,7 +114,6 @@ export default function AssetReport() {
     [lines.data, assetBy, type, dept, asset],
   )
   const outs = moves.filter((m) => m.asset_txns?.kind === 'out')
-  const ins = moves.filter((m) => m.asset_txns?.kind === 'in')
 
   /* ------------------------------------------------------- ใบแจ้งชำรุด */
   const faults = useMemo(() => {
@@ -230,6 +231,21 @@ export default function AssetReport() {
     ],
     [pool, takenSet],
   )
+
+  /** ประวัติการเบิก-คืนตามตัวกรอง — คืนไปแล้วก็ยังอยู่ในนี้ */
+  const histRows = useMemo(() => {
+    let out = (history.data ?? []).filter((h) => passes(h.asset_code))
+    if (person) out = out.filter((h) => h.user_id === person)
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history.data, assetBy, type, dept, asset, person])
+
+  /** ถือเฉลี่ยนานแค่ไหนต่อครั้ง นับเฉพาะที่คืนแล้ว */
+  const avgHeld = useMemo(() => {
+    const done = histRows.filter((h) => h.held_hours !== null)
+    if (done.length === 0) return null
+    return done.reduce((n, h) => n + (h.held_hours ?? 0), 0) / done.length
+  }, [histRows])
 
   const loading = assets.loading || issues.loading || lines.loading
 
@@ -359,7 +375,17 @@ export default function AssetReport() {
       </div>
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi hue={0} icon="📤" label="ครั้งที่เบิก" value={outs.length} sub={`คืนแล้ว ${ins.length}`} />
+        <Kpi
+          hue={0}
+          icon="📤"
+          label="ครั้งที่เบิก"
+          value={histRows.length}
+          sub={
+            avgHeld === null
+              ? `คืนแล้ว ${histRows.filter((h) => !h.still_out).length}`
+              : `ถือเฉลี่ย ${avgHeld < 24 ? `${avgHeld.toFixed(1)} ชม.` : `${(avgHeld / 24).toFixed(1)} วัน`}`
+          }
+        />
         <Kpi hue={1} icon="🔒" label="ถูกยืมอยู่" value={holdings.length} sub={`จาก ${pool.length} เครื่อง`} />
         <Kpi
           icon="⏰"
@@ -426,6 +452,81 @@ export default function AssetReport() {
         <PanelHead title="เครื่องที่ถูกหยิบบ่อยที่สุด" hint="นับจำนวนครั้งที่ถูกเบิกในช่วงที่เลือก" />
         <BarsH data={busiest} unit="ครั้ง" />
         <DataTable rows={busiest} head={['เครื่อง', 'ครั้งที่เบิก']} />
+      </section>
+
+      <section className="panel mb-3 p-4">
+        <PanelHead
+          title="ประวัติการเบิก-คืนเครื่อง"
+          hint="คืนไปแล้วก็ยังอยู่ในประวัติ ไล่ย้อนได้ว่าเครื่องไหนเคยอยู่กับใครเมื่อไหร่"
+          hue={2}
+        />
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[860px] text-left text-sm">
+            <thead className="text-ink-500">
+              <tr className="border-b border-line">
+                <th className="py-2 font-medium">เครื่อง</th>
+                <th className="py-2 font-medium">ผู้เบิก</th>
+                <th className="py-2 font-medium">เบิกเมื่อ</th>
+                <th className="py-2 font-medium">คืนเมื่อ</th>
+                <th className="py-2 font-medium">ถือนาน</th>
+                <th className="py-2 font-medium">เลขที่</th>
+              </tr>
+            </thead>
+            <tbody>
+              {histRows.slice(0, 60).map((h) => (
+                <tr key={h.out_item_id} className="border-b border-line last:border-0">
+                  <td className="py-2">
+                    <p className="font-display">{h.asset_code}</p>
+                    <p className="text-xs text-ink-400">{h.type_name}</p>
+                  </td>
+                  <td className="py-2">
+                    {h.who}
+                    <span className="ml-1 font-mono text-xs text-ink-400">{h.employee_code}</span>
+                    <p className="text-xs text-ink-400">
+                      {h.holder_dept}
+                      {h.sub_dept ? ` · ${h.sub_dept}` : ''}
+                    </p>
+                  </td>
+                  <td className="py-2 text-ink-500">{fmtDateTime(h.taken_at)}</td>
+                  <td className="py-2">
+                    {h.returned_at ? (
+                      <>
+                        <span className="text-ink-500">{fmtDateTime(h.returned_at)}</span>
+                        {h.returned_by && h.returned_by !== h.who && (
+                          <p className="text-xs text-ink-400">โดย {h.returned_by}</p>
+                        )}
+                      </>
+                    ) : (
+                      <span className="badge-warn">ยังไม่คืน</span>
+                    )}
+                  </td>
+                  <td className="py-2">
+                    {h.held_hours === null ? (
+                      <span className="text-warn-txt">{relativeAge(h.taken_at)}</span>
+                    ) : h.held_hours < 24 ? (
+                      `${h.held_hours.toFixed(1)} ชม.`
+                    ) : (
+                      `${(h.held_hours / 24).toFixed(1)} วัน`
+                    )}
+                  </td>
+                  <td className="py-2 font-mono text-xs">{h.ref_no}</td>
+                </tr>
+              ))}
+              {!loading && histRows.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-6 text-center text-ink-400">
+                    ไม่มีประวัติตามตัวกรอง
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        {histRows.length > 60 && (
+          <p className="mt-2 text-sm text-ink-400">
+            แสดง 60 แถวแรกจาก {histRows.length} — แคบช่วงวันที่ลงถ้าอยากไล่ดูให้ครบ
+          </p>
+        )}
       </section>
 
       {/* ------------------------------------------------------ ตารางท้าย */}

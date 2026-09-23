@@ -1,25 +1,33 @@
 import { useMemo, useState } from 'react'
-import { listMyRequisitions } from '../../lib/api'
+import { listAssetHistory, listMyRequisitions } from '../../lib/api'
 import { useAsync } from '../../lib/useAsync'
 import { StaffPage, TopBar } from '../../components/Shell'
 import { EmptyState, ErrorBox, Loading } from '../../components/ui'
 import { SyncBar, syncMapFromRows } from '../../components/SyncBar'
-import { STATUS_TH, dayLabel, fmtTime, statusClass } from '../../lib/format'
+import { useAuth } from '../../lib/auth'
+import { STATUS_TH, dayLabel, fmtDateTime, fmtTime, statusClass } from '../../lib/format'
 import type { Requisition } from '../../lib/types'
 
-type Filter = 'all' | 'pending' | 'approved' | 'returned'
+type Filter = 'all' | 'pending' | 'approved' | 'returned' | 'asset'
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all', label: 'ทั้งหมด' },
   { key: 'pending', label: 'รออนุมัติ' },
   { key: 'approved', label: 'อนุมัติแล้ว' },
   { key: 'returned', label: 'ของยืม-คืน' },
+  { key: 'asset', label: 'อุปกรณ์ Asset' },
 ]
 
 /** ประวัติของพนักงาน — ห้ามมีลิงก์เปิดรูปหลักฐาน */
 export default function History() {
   const [filter, setFilter] = useState<Filter>('all')
+  const { profile } = useAuth()
   const all = useAsync(() => listMyRequisitions(100), [])
+  // ประวัติเครื่องของตัวเอง — คืนไปแล้วก็ยังอยู่
+  const assetHist = useAsync(
+    () => listAssetHistory({ userId: profile?.id, limit: 200 }),
+    [profile?.id],
+  )
 
   const groups = useMemo(() => {
     const rows = (all.data ?? []).filter((r) => {
@@ -55,6 +63,43 @@ export default function History() {
           ))}
         </div>
 
+        {/* ---------------------------------------- ประวัติอุปกรณ์ Asset */}
+        {filter === 'asset' ? (
+          <>
+            {assetHist.loading && <Loading />}
+            {assetHist.error && <ErrorBox message={assetHist.error} onRetry={assetHist.reload} />}
+            {!assetHist.loading && (assetHist.data ?? []).length === 0 && (
+              <EmptyState
+                title="ยังไม่เคยเบิกอุปกรณ์"
+                hint="เครื่องที่เคยเบิกจะอยู่ในนี้ ถึงคืนไปแล้วก็ยังดูย้อนได้"
+              />
+            )}
+            <ul className="mt-3 space-y-2">
+              {(assetHist.data ?? []).map((h) => (
+                <li key={h.out_item_id} className="card p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-display">{h.asset_code}</span>
+                    <span className={h.still_out ? 'badge-warn' : 'badge-ok'}>
+                      {h.still_out ? 'ยังไม่คืน' : 'คืนแล้ว'}
+                    </span>
+                  </div>
+                  <p className="mt-[2px] text-sm text-ink-500">{h.type_name}</p>
+                  <p className="mt-1 text-xs text-ink-400">
+                    เบิก {fmtDateTime(h.taken_at)}
+                    {h.returned_at ? ` · คืน ${fmtDateTime(h.returned_at)}` : ''}
+                  </p>
+                  <p className="text-xs text-ink-400">
+                    {h.ref_no}
+                    {h.held_hours !== null
+                      ? ` · ถือไว้ ${h.held_hours < 24 ? `${h.held_hours.toFixed(1)} ชม.` : `${(h.held_hours / 24).toFixed(1)} วัน`}`
+                      : ''}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <>
         {all.loading && <Loading />}
         {all.error && <ErrorBox message={all.error} onRetry={all.reload} />}
         {!all.loading && !all.error && groups.length === 0 && (
@@ -106,6 +151,8 @@ export default function History() {
             </ul>
           </section>
         ))}
+          </>
+        )}
       </StaffPage>
     </>
   )

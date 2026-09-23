@@ -24,6 +24,7 @@ import type {
   ByStatRow,
   ByStatus,
   AssetTxnKind,
+  AssetHistoryRow,
 } from './types'
 
 const ITEM_COLS =
@@ -426,7 +427,7 @@ export async function uploadEvidence(blob: Blob, filename: string) {
 /* -------------------------------------------------------- แกลเลอรีหลักฐาน */
 
 export interface EvidenceRow {
-  kind: 'requisition' | 'return'
+  kind: 'requisition' | 'return' | 'asset_out' | 'asset_in'
   source_id: string
   ref_no: string
   created_at: string
@@ -438,6 +439,7 @@ export interface EvidenceRow {
   employee_code: string
   dept_code: string | null
   sub_dept: string | null
+  asset_type_code: string | null
   shift_start: string | null
   shift_end: string | null
   has_returnable: boolean
@@ -466,24 +468,27 @@ export async function addRequisitionPhotos(
 export async function listEvidence(opts: {
   returnableOnly?: boolean
   includeArchived?: boolean
-  /** 'all' | 'requisition' (เบิก) | 'return' (คืน) */
-  kind?: 'all' | 'requisition' | 'return'
+  /** 'all' | 'requisition' | 'return' | 'asset_out' | 'asset_in' | 'supply' | 'asset' */
+  kind?: string
   fromISO?: string
   toISO?: string
   /** กรองรายกะ — ส่งเวลาเข้ากะกับเลิกกะเป็นคู่ */
   shift?: { start: string; end: string } | null
-  /** ดูเฉพาะหลักฐานที่มีวัสดุชิ้นนี้อยู่ */
-  itemId?: number | null
+  /** ตัวเลือกจากดรอปดาวน์ของ — 'i:<id>' วัสดุรายชิ้น หรือ 't:<code>' ประเภทเครื่อง */
+  pick?: string | null
   limit?: number
 }): Promise<EvidenceRow[]> {
   let q = supabase.from('evidence_feed').select('*').order('created_at', { ascending: false })
   if (opts.returnableOnly) q = q.eq('has_returnable', true)
   if (!opts.includeArchived) q = q.eq('archived', false)
-  if (opts.kind && opts.kind !== 'all') q = q.eq('kind', opts.kind)
+  if (opts.kind === 'supply') q = q.in('kind', ['requisition', 'return'])
+  else if (opts.kind === 'asset') q = q.in('kind', ['asset_out', 'asset_in'])
+  else if (opts.kind && opts.kind !== 'all') q = q.eq('kind', opts.kind)
   if (opts.fromISO) q = q.gte('created_at', opts.fromISO)
   if (opts.toISO) q = q.lte('created_at', opts.toISO)
   if (opts.shift) q = q.eq('shift_start', opts.shift.start).eq('shift_end', opts.shift.end)
-  if (opts.itemId) q = q.contains('item_ids', [opts.itemId])
+  if (opts.pick?.startsWith('i:')) q = q.contains('item_ids', [Number(opts.pick.slice(2))])
+  else if (opts.pick?.startsWith('t:')) q = q.eq('asset_type_code', opts.pick.slice(2))
   return unwrap(await q.limit(opts.limit ?? 500)) as unknown as EvidenceRow[]
 }
 
@@ -721,9 +726,10 @@ export async function setAssetDepts(code: string, dept: string | null, shares: s
 
 /** วัสดุที่มีหลักฐานอยู่จริง ใช้ทำดรอปดาวน์เลือกดูเฉพาะของชิ้นนั้น */
 export interface EvidenceItemOption {
-  item_id: number
-  sku: string
+  key: string
   name: string
+  sub: string
+  kind: 'supply' | 'asset'
   photo_rows: number
 }
 
@@ -902,4 +908,18 @@ export async function listAssetIssuesBetween(fromISO: string, toISO: string): Pr
       .order('reported_at', { ascending: false })
       .limit(2000),
   ) as unknown as AssetIssue[]
+}
+
+/** ประวัติการเบิก-คืนเครื่อง — รวมที่คืนไปแล้วด้วย */
+export async function listAssetHistory(args: {
+  fromISO?: string
+  toISO?: string
+  userId?: string
+  limit?: number
+}): Promise<AssetHistoryRow[]> {
+  let q = supabase.from('asset_history').select('*').order('taken_at', { ascending: false })
+  if (args.fromISO) q = q.gte('taken_at', args.fromISO)
+  if (args.toISO) q = q.lte('taken_at', args.toISO)
+  if (args.userId) q = q.eq('user_id', args.userId)
+  return unwrap(await q.limit(args.limit ?? 500)) as unknown as AssetHistoryRow[]
 }
