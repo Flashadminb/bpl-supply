@@ -406,49 +406,7 @@ export default function SupplyReport() {
       </div>
 
       {/* ------------------------------------------------------ ตารางท้าย */}
-      <div className="grid gap-3 xl:grid-cols-[1.4fr_1fr]">
-        <section className="panel p-4">
-          <PanelHead title="รายการตามตัวกรอง" />
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="text-ink-500">
-                <tr className="border-b border-line">
-                  <th className="py-2 font-medium">เลขที่</th>
-                  <th className="py-2 font-medium">เวลา</th>
-                  <th className="py-2 font-medium">ผู้เบิก</th>
-                  <th className="py-2 font-medium">วัสดุ</th>
-                  <th className="py-2 font-medium">จำนวน</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.slice(0, 40).map((l, i) => (
-                  <tr key={`${l.reqId}-${l.itemId}-${i}`} className="border-b border-line last:border-0">
-                    <td className="py-2 font-mono text-xs">{l.ref}</td>
-                    <td className="py-2 text-ink-500">{fmtDateTime(l.at)}</td>
-                    <td className="py-2">{l.who}</td>
-                    <td className="py-2">{l.name}</td>
-                    <td className="py-2 font-display">
-                      {l.qty} {l.unit}
-                    </td>
-                  </tr>
-                ))}
-                {!loading && lines.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="py-6 text-center text-ink-400">
-                      ไม่มีข้อมูลตามตัวกรอง
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          {lines.length > 40 && (
-            <p className="mt-2 text-sm text-ink-400">
-              แสดง 40 บรรทัดแรกจาก {lines.length} — ตัวเลขและกราฟด้านบนนับครบทั้งหมด
-            </p>
-          )}
-        </section>
-
+      <div className="grid gap-3">
         <section className="panel p-4">
           <PanelHead title="คืนมาชำรุด / สูญหาย" hue={3} />
           <ul className="space-y-2 text-sm">

@@ -10,8 +10,7 @@ import {
   listDepartments,
   listProfiles,
 } from '../../lib/api'
-import { ErrorBox, Loading, Modal } from '../../components/ui'
-import { EvidenceImg, ThumbStrip } from '../../components/EvidenceThumbs'
+import { ErrorBox, Loading } from '../../components/ui'
 import { DateRangePicker } from '../../components/DateRangePicker'
 import { SearchSelect, type Option } from '../../components/SearchSelect'
 import {
@@ -53,7 +52,6 @@ export default function AssetReport() {
   const [asset, setAsset] = useState('')
   const [issueView, setIssueView] = useState<'all' | 'open' | 'fixed'>('all')
   // รูปที่กดเปิดดูเต็มจอ — เก็บชุดรูปกับตำแหน่งที่กำลังดู
-  const [big, setBig] = useState<{ title: string; ids: string[]; index: number } | null>(null)
 
   const range = useMemo(
     () => ({
@@ -456,136 +454,6 @@ export default function AssetReport() {
         <BarsH data={busiest} unit="ครั้ง" />
         <DataTable rows={busiest} head={['เครื่อง', 'ครั้งที่เบิก']} />
       </section>
-
-      <section className="panel mb-3 p-4">
-        <PanelHead
-          title="ประวัติการเบิก-คืนเครื่อง"
-          hint="คืนไปแล้วก็ยังอยู่ในประวัติ ไล่ย้อนได้ว่าเครื่องไหนเคยอยู่กับใครเมื่อไหร่"
-          hue={2}
-        />
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-left text-sm">
-            <thead className="text-ink-500">
-              <tr className="border-b border-line">
-                <th className="py-2 font-medium">เครื่อง</th>
-                <th className="py-2 font-medium">ผู้เบิก</th>
-                <th className="py-2 font-medium">เบิกเมื่อ</th>
-                <th className="py-2 font-medium">รูปตอนเบิก</th>
-                <th className="py-2 font-medium">คืนเมื่อ</th>
-                <th className="py-2 font-medium">รูปตอนคืน</th>
-                <th className="py-2 font-medium">ถือนาน</th>
-                <th className="py-2 font-medium">เลขที่</th>
-              </tr>
-            </thead>
-            <tbody>
-              {histRows.slice(0, 60).map((h) => (
-                <tr key={h.out_item_id} className="border-b border-line last:border-0">
-                  <td className="py-2">
-                    <p className="font-display">{h.asset_code}</p>
-                    <p className="text-xs text-ink-400">{h.type_name}</p>
-                  </td>
-                  <td className="py-2">
-                    {h.who}
-                    <span className="ml-1 font-mono text-xs text-ink-400">{h.employee_code}</span>
-                    <p className="text-xs text-ink-400">
-                      {h.holder_dept}
-                      {h.sub_dept ? ` · ${h.sub_dept}` : ''}
-                    </p>
-                  </td>
-                  <td className="py-2 text-ink-500">{fmtDateTime(h.taken_at)}</td>
-                  <td className="py-2">
-                    {h.out_file_ids?.length > 0 ? (
-                      <ThumbStrip
-                        fileIds={h.out_file_ids}
-                        onOpen={(index) =>
-                          setBig({ title: `${h.asset_code} · ตอนเบิก`, ids: h.out_file_ids, index })
-                        }
-                      />
-                    ) : (
-                      <span className="text-ink-300">—</span>
-                    )}
-                  </td>
-                  <td className="py-2">
-                    {h.returned_at ? (
-                      <>
-                        <span className="text-ink-500">{fmtDateTime(h.returned_at)}</span>
-                        {h.returned_by && h.returned_by !== h.who && (
-                          <p className="text-xs text-ink-400">โดย {h.returned_by}</p>
-                        )}
-                      </>
-                    ) : (
-                      <span className="badge-warn">ยังไม่คืน</span>
-                    )}
-                  </td>
-                  <td className="py-2">
-                    {h.in_file_ids?.length > 0 ? (
-                      <ThumbStrip
-                        fileIds={h.in_file_ids}
-                        onOpen={(index) =>
-                          setBig({ title: `${h.asset_code} · ตอนคืน`, ids: h.in_file_ids, index })
-                        }
-                      />
-                    ) : (
-                      <span className="text-ink-300">—</span>
-                    )}
-                  </td>
-                  <td className="py-2">
-                    {h.held_hours === null ? (
-                      <span className="text-warn-txt">{relativeAge(h.taken_at)}</span>
-                    ) : h.held_hours < 24 ? (
-                      `${h.held_hours.toFixed(1)} ชม.`
-                    ) : (
-                      `${(h.held_hours / 24).toFixed(1)} วัน`
-                    )}
-                  </td>
-                  <td className="py-2 font-mono text-xs">{h.ref_no}</td>
-                </tr>
-              ))}
-              {!loading && histRows.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="py-6 text-center text-ink-400">
-                    ไม่มีประวัติตามตัวกรอง
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        {histRows.length > 60 && (
-          <p className="mt-2 text-sm text-ink-400">
-            แสดง 60 แถวแรกจาก {histRows.length} — แคบช่วงวันที่ลงถ้าอยากไล่ดูให้ครบ
-          </p>
-        )}
-      </section>
-
-      <Modal open={Boolean(big)} onClose={() => setBig(null)} title={big?.title ?? ''}>
-        {big && (
-          <>
-            <EvidenceImg fileId={big.ids[big.index]} enabled className="w-full rounded-card" />
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <button
-                type="button"
-                className="btn-soft"
-                disabled={big.index === 0}
-                onClick={() => setBig({ ...big, index: big.index - 1 })}
-              >
-                ‹ ก่อนหน้า
-              </button>
-              <span className="text-sm text-ink-500">
-                {big.index + 1} / {big.ids.length}
-              </span>
-              <button
-                type="button"
-                className="btn-soft"
-                disabled={big.index >= big.ids.length - 1}
-                onClick={() => setBig({ ...big, index: big.index + 1 })}
-              >
-                ถัดไป ›
-              </button>
-            </div>
-          </>
-        )}
-      </Modal>
 
       {/* ------------------------------------------------------ ตารางท้าย */}
       <div className="grid gap-3 xl:grid-cols-[1.3fr_1fr]">

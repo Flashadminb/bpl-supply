@@ -149,7 +149,7 @@ export default function Users() {
   }
 
   return (
-    <div className="mx-auto max-w-[1180px]">
+    <div className="mx-auto max-w-[1500px]">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-lg">ผู้ใช้และสิทธิ์</h1>
         <button type="button" className="btn-soft h-tap px-3 text-sm" onClick={() => setImporting(true)}>
@@ -190,28 +190,30 @@ export default function Users() {
         </span>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
+      {/* ตารางกินเต็มความกว้าง ตารางสิทธิ์ย้ายลงไปพับไว้ข้างล่าง
+          เพราะเปิดดูปีละครั้ง แต่เมื่อก่อนมันแย่งที่ช่องกะกับแผนกไปหนึ่งในสาม */}
+      <div className="grid gap-4">
         <section className="panel overflow-x-auto p-2">
           {users.loading && <Loading />}
           {users.error && <ErrorBox message={users.error} onRetry={users.reload} />}
-          <table className="w-full min-w-[720px] text-left text-sm">
+          <table className="w-full min-w-[1080px] text-left text-sm">
             <thead className="text-ink-500">
               <tr className="border-b border-line">
-                <th className="p-2 font-medium">ชื่อ</th>
-                <th className="p-2 font-medium">รหัสพนักงาน</th>
-                <th className="p-2 font-medium">แผนก</th>
-                <th className="p-2 font-medium">กะ</th>
-                <th className="p-2 font-medium">บทบาท</th>
-                <th className="p-2 font-medium">สถานะ</th>
-                <th className="p-2 font-medium">รหัสผ่าน</th>
+                <th className="px-3 py-2 font-medium">ชื่อ</th>
+                <th className="w-[124px] px-3 py-2 font-medium">รหัสพนักงาน</th>
+                <th className="w-[210px] px-3 py-2 font-medium">แผนก</th>
+                <th className="w-[250px] px-3 py-2 font-medium">กะ / แผนกย่อย</th>
+                <th className="w-[160px] px-3 py-2 font-medium">บทบาท</th>
+                <th className="w-[110px] px-3 py-2 font-medium">สถานะ</th>
+                <th className="w-[150px] px-3 py-2 font-medium">รหัสผ่าน</th>
               </tr>
             </thead>
             <tbody>
               {shown.map((u) => (
                 <tr key={u.id} className="border-b border-line last:border-0">
-                  <td className="p-2">{u.full_name}</td>
-                  <td className="p-2 font-mono text-xs">{u.employee_code}</td>
-                  <td className="p-2">
+                  <td className="px-3 py-2 align-top">{u.full_name}</td>
+                  <td className="px-3 py-2 align-top font-mono text-xs">{u.employee_code}</td>
+                  <td className="px-3 py-2 align-top">
                     <select
                       className="input h-tap"
                       value={u.dept_code ?? 'ALL'}
@@ -234,7 +236,7 @@ export default function Users() {
                     </button>
                   </td>
                   {/* กะใช้คำนวณกำหนดคืนอุปกรณ์ แก้ตรงนี้ได้เลยไม่ต้องสร้างบัญชีใหม่ */}
-                  <td className="p-2">
+                  <td className="px-3 py-2 align-top">
                     <div className="flex items-center gap-1">
                       <input
                         type="time"
@@ -268,7 +270,7 @@ export default function Users() {
                       }}
                     />
                   </td>
-                  <td className="p-2">
+                  <td className="px-3 py-2 align-top">
                     <select
                       className="input h-tap"
                       value={u.role}
@@ -284,7 +286,7 @@ export default function Users() {
                       {u.role === 'admin' && <option value="admin">{ROLE_TH.admin}</option>}
                     </select>
                   </td>
-                  <td className="p-2">
+                  <td className="px-3 py-2 align-top">
                     <button
                       type="button"
                       className={u.is_active ? 'badge-ok' : 'badge-dang'}
@@ -294,7 +296,7 @@ export default function Users() {
                       {u.is_active ? 'ใช้งานอยู่' : 'ระงับ'}
                     </button>
                   </td>
-                  <td className="p-2">
+                  <td className="px-3 py-2 align-top">
                     <button
                       type="button"
                       className="btn-soft h-tap px-3 text-sm"
@@ -304,7 +306,7 @@ export default function Users() {
                         setModalError(null)
                       }}
                     >
-                      ตั้งรหัสใหม่
+                      ตั้งรหัส + QR
                     </button>
                   </td>
                 </tr>
@@ -320,9 +322,11 @@ export default function Users() {
           </table>
         </section>
 
-        <section className="panel p-4">
-          <h2 className="mb-3 font-display text-md">ตารางสิทธิ์ (RBAC)</h2>
-          <table className="w-full text-left text-sm">
+        <details className="panel p-4">
+          <summary className="min-h-tap cursor-pointer font-display text-md">
+            ตารางสิทธิ์ (RBAC) — ใครทำอะไรได้บ้าง
+          </summary>
+          <table className="mt-3 w-full max-w-[620px] text-left text-sm">
             <thead className="text-ink-500">
               <tr className="border-b border-line">
                 <th className="py-2 font-medium">สิ่งที่ทำได้</th>
@@ -349,7 +353,7 @@ export default function Users() {
           <p className="mt-3 text-xs text-ink-400">
             สิทธิ์เหล่านี้บังคับจริงที่ RLS ในฐานข้อมูล ไม่ใช่แค่ซ่อนปุ่มบนหน้าจอ
           </p>
-        </section>
+        </details>
       </div>
 
       {/* ---------------------------------------------------- เพิ่มพนักงาน */}
@@ -582,6 +586,9 @@ export default function Users() {
             </div>
             <p className="mt-2 rounded-btn bg-warn-bg px-3 py-2 text-sm text-warn-txt">
               รหัสเดิมจะใช้ไม่ได้ทันที ต้องแจ้งรหัสใหม่ให้เจ้าตัวก่อนกดยืนยัน
+            </p>
+            <p className="mt-2 rounded-btn bg-accent-50 px-3 py-2 text-sm text-ink-700">
+              กดยืนยันแล้วระบบจะสร้าง QR ให้ทันที ก๊อปรูปส่งในแชตได้เลย ไม่ต้องพิมพ์รหัสให้ใครอ่าน
             </p>
 
             {modalError && <div className="mt-3"><ErrorBox message={modalError} /></div>}

@@ -291,16 +291,16 @@ export default function Evidence() {
 
       {all.length > 0 && (
         <section className="panel overflow-x-auto p-2">
-          <table className="w-full min-w-[820px] text-left text-sm">
+          <table className="w-full min-w-[980px] text-left text-sm">
             <thead className="text-ink-500">
               <tr className="border-b border-line">
-                {withPhotos && <th className="w-[64px] p-2 font-medium">รูป</th>}
-                <th className="p-2 font-medium">เลขที่</th>
-                <th className="p-2 font-medium">วันเวลา</th>
-                <th className="p-2 font-medium">ประเภท</th>
-                <th className="p-2 font-medium">ผู้เบิก/ผู้คืน</th>
-                <th className="p-2 font-medium">รายการ</th>
-                <th className="p-2 font-medium">จัดการ</th>
+                {withPhotos && <th className="w-[72px] px-3 py-2 font-medium">รูป</th>}
+                <th className="w-[108px] px-3 py-2 font-medium">เลขที่</th>
+                <th className="w-[132px] px-3 py-2 font-medium">วันเวลา</th>
+                <th className="w-[104px] px-3 py-2 font-medium">ประเภท</th>
+                <th className="w-[230px] px-3 py-2 font-medium">ผู้เบิก/ผู้คืน</th>
+                <th className="px-3 py-2 font-medium">รายการ</th>
+                <th className="w-[170px] px-3 py-2 font-medium">จัดการ</th>
               </tr>
             </thead>
             <tbody>
@@ -310,16 +310,16 @@ export default function Evidence() {
                   className={`border-b border-line last:border-0 ${r.archived ? 'opacity-55' : ''}`}
                 >
                   {withPhotos && (
-                    <td className="p-2">
+                    <td className="px-3 py-2">
                       <ThumbStrip
                         fileIds={r.file_ids.filter(Boolean)}
                         onOpen={(index) => setBig({ row: r, index })}
                       />
                     </td>
                   )}
-                  <td className="p-2 font-mono text-xs">{r.ref_no}</td>
-                  <td className="p-2 text-ink-500">{fmtDateTime(r.created_at)}</td>
-                  <td className="p-2">
+                  <td className="px-3 py-2 font-mono text-xs">{r.ref_no}</td>
+                  <td className="px-3 py-2 text-ink-500">{fmtDateTime(r.created_at)}</td>
+                  <td className="px-3 py-2">
                     <span
                       className={
                         r.kind === 'return' || r.kind === 'asset_in' ? 'badge-ok' : 'badge-mute'
@@ -334,20 +334,24 @@ export default function Evidence() {
                             : 'เบิกของ'}
                     </span>
                   </td>
-                  <td className="p-2">
-                    {r.who}
-                    <span className="ml-1 font-mono text-xs text-ink-400">{r.employee_code}</span>
-                    {(r.dept_code || r.sub_dept) && (
-                      <p className="text-xs text-ink-400">
-                        {r.dept_code}
-                        {r.sub_dept ? ` · ${r.sub_dept}` : ''}
+                  <td className="px-3 py-2 align-top">
+                    <p className="truncate">{r.who}</p>
+                    <p className="text-xs text-ink-400">
+                      <span className="font-mono">{r.employee_code}</span>
+                      {r.dept_code ? ` · ${r.dept_code}` : ''}
+                      {r.sub_dept ? ` · ${r.sub_dept}` : ''}
+                    </p>
+                    {/* กะช่วยตอบว่าของออกไปรอบไหน ตอนไล่ของค้างข้ามกะจะได้ไม่ต้องเปิดอีกหน้า */}
+                    {r.shift_start && r.shift_end && (
+                      <p className="mt-[2px] text-xs text-ink-500">
+                        กะ {r.shift_start.slice(0, 5)}–{r.shift_end.slice(0, 5)}
                       </p>
                     )}
                   </td>
-                  <td className="max-w-[260px] p-2 text-ink-500">
+                  <td className="px-3 py-2 align-top text-ink-500">
                     <span className="line-clamp-2">{r.summary}</span>
                   </td>
-                  <td className="p-2">
+                  <td className="px-3 py-2 align-top">
                     <div className="flex gap-1">
                       <button
                         type="button"

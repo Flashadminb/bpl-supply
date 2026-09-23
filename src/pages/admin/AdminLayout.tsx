@@ -2,14 +2,20 @@ import { useState } from 'react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { usePendingApprovals } from '../../lib/usePendingApprovals'
+import { Icon, type IconName } from '../../components/icons'
 
 // adminOnly = เห็นเฉพาะ "ผู้ดูแลระบบ" (role admin) ส่วน "แอดมิน" (supervisor) เห็นที่เหลือทั้งหมด
 //
-// แบ่งเป็นหมวดเพราะของสิ้นเปลืองกับ Asset เป็นงานคนละก้อน
-// ลูกน้องที่ดูแลสิ้นเปลืองจะได้ไม่ต้องกวาดตาผ่านเมนูเครื่องทุกครั้ง
+// ลำดับเมนูเรียงตามความถี่ที่เปิดจริง ไม่ได้เรียงตามโครงสร้างระบบ
+//   หน้าแรกกับหลักฐาน เปิดแทบทุกวัน
+//   ยังไม่คืน เป็นงานตามของ แยกออกมาเพราะถามบ่อยสุดและถามพร้อมกันทั้งสองฝั่ง
+//   สิ้นเปลือง / Asset เป็นงานดูแลของประจำ
+//   รายงาน เปิดตอนสรุป ไม่ใช่ทุกวัน จึงลงไปอยู่ท้าย ๆ
+//   ทั่วไป เป็นงานตั้งค่า นาน ๆ ที
 interface Link {
   to: string
   label: string
+  icon: IconName
   end?: boolean
   adminOnly?: boolean
   badge?: boolean
@@ -18,33 +24,43 @@ interface Link {
 const GROUPS: { title: string | null; links: Link[] }[] = [
   {
     title: null,
-    links: [{ to: '/admin', label: 'ภาพรวม', end: true }],
+    links: [
+      { to: '/admin', label: 'หน้าแรก', icon: 'home', end: true },
+      { to: '/admin/evidence', label: 'หลักฐานการเบิก-คืน', icon: 'photo' },
+    ],
+  },
+  {
+    title: 'ยังไม่คืน',
+    links: [
+      { to: '/admin/outstanding', label: 'ของค้างคืน', icon: 'clock' },
+      { to: '/admin/assets-out', label: 'Asset ที่ยังไม่คืน', icon: 'device-clock' },
+    ],
   },
   {
     title: 'สิ้นเปลือง',
     links: [
-      { to: '/admin/report/supply', label: 'รายงานสิ้นเปลือง' },
-      { to: '/admin/stock', label: 'สต็อกวัสดุ' },
-      { to: '/admin/approvals', label: 'คำขอเบิก', badge: true },
-      { to: '/admin/outstanding', label: 'ของค้างคืน' },
-      { to: '/admin/evidence', label: 'หลักฐานการเบิก-คืน' },
-      { to: '/admin/by', label: 'บาร์โค้ดจาก BY' },
+      { to: '/admin/stock', label: 'สต็อกวัสดุ', icon: 'box' },
+      { to: '/admin/approvals', label: 'คำขอเบิก', icon: 'inbox', badge: true },
+      { to: '/admin/by', label: 'บาร์โค้ดจาก BY', icon: 'barcode' },
     ],
   },
   {
     title: 'Asset',
+    links: [{ to: '/admin/assets', label: 'ทะเบียนเครื่อง', icon: 'device' }],
+  },
+  {
+    title: 'รายงาน',
     links: [
-      { to: '/admin/report/asset', label: 'รายงาน Asset' },
-      { to: '/admin/assets', label: 'ทะเบียนเครื่อง' },
-      { to: '/admin/assets-out', label: 'Asset ที่ยังไม่คืน' },
+      { to: '/admin/report/supply', label: 'รายงานสิ้นเปลือง', icon: 'chart' },
+      { to: '/admin/report/asset', label: 'รายงาน Asset', icon: 'pie' },
     ],
   },
   {
     title: 'ทั่วไป',
     links: [
-      { to: '/admin/qr', label: 'พิมพ์ QR' },
-      { to: '/admin/export', label: 'ส่งออก Google Sheet' },
-      { to: '/admin/users', label: 'ผู้ใช้และสิทธิ์', adminOnly: true },
+      { to: '/admin/qr', label: 'พิมพ์ QR', icon: 'qr' },
+      { to: '/admin/export', label: 'ส่งออก Google Sheet', icon: 'sheet' },
+      { to: '/admin/users', label: 'ผู้ใช้และสิทธิ์', icon: 'users', adminOnly: true },
     ],
   },
 ]
@@ -74,16 +90,21 @@ export default function AdminLayout() {
                 end={l.end}
                 onClick={() => setMenu(false)}
                 className={({ isActive }) =>
-                  `flex min-h-tap items-center justify-between rounded-btn px-3 text-base ${
+                  `flex min-h-tap items-center gap-[10px] rounded-btn px-3 text-base ${
                     isActive ? 'bg-dark-3 text-white' : 'text-dark-text hover:bg-dark-2'
                   }`
                 }
               >
-                <span>{l.label}</span>
-                {l.badge && badge > 0 && (
-                  <span className="rounded-pill bg-brand-500 px-2 font-display text-xs text-ink">
-                    {badge}
-                  </span>
+                {({ isActive }) => (
+                  <>
+                    <Icon name={l.icon} className={isActive ? '' : 'text-dark-muted'} />
+                    <span className="flex-1 truncate">{l.label}</span>
+                    {l.badge && badge > 0 && (
+                      <span className="rounded-pill bg-brand-500 px-2 font-display text-xs text-ink">
+                        {badge}
+                      </span>
+                    )}
+                  </>
                 )}
               </NavLink>
             ))}

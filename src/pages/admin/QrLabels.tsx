@@ -90,7 +90,9 @@ export default function QrLabels() {
       return (assets.data ?? [])
         .filter((a) => {
           if (typeCode && a.type_code !== typeCode) return false
-          if (q && !`${a.code} ${a.dept_code ?? ''}`.toLowerCase().includes(q)) return false
+          // ค้นด้วยชื่อประเภทได้ด้วย เพราะคนจำว่า "วิทยุ" ไม่ได้จำว่า RD-014
+          const hay = `${a.code} ${a.asset_types?.name ?? ''} ${a.type_code} ${a.dept_code ?? ''}`
+          if (q && !hay.toLowerCase().includes(q)) return false
           return true
         })
         .map((a) => ({
@@ -230,7 +232,9 @@ export default function QrLabels() {
           <input
             className="input max-w-[280px]"
             type="search"
-            placeholder={mode === 'assets' ? 'ค้นหารหัสเครื่อง' : 'ค้นหาชื่อ SKU ชั้นวาง'}
+            placeholder={
+              mode === 'items' ? 'ค้นหาชื่อ SKU ชั้นวาง' : 'ค้นหาชื่อเครื่อง รหัส หรือแผนก'
+            }
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
