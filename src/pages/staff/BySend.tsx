@@ -37,15 +37,14 @@ export default function BySend() {
   const photos = shotsToPhotos(shots)
   const uploading = shots.some((s) => s.state === 'uploading' || s.state === 'ready')
   const failed = shots.some((s) => s.state === 'failed')
-  const ready = photos.length > 0 && reason.trim().length > 0 && !uploading && !failed
+  // รูปไม่บังคับ แนบกี่ใบก็ได้ · ติดแค่ตอนรูปที่แนบมายังส่งไม่เสร็จ
+  const ready = reason.trim().length > 0 && !uploading && !failed
 
   const blockedWhy = failed
     ? 'มีรูปส่งไม่สำเร็จ กดที่รูปนั้นเพื่อส่งใหม่'
     : uploading
       ? 'กำลังส่งรูปขึ้นระบบ รอสักครู่'
-      : photos.length === 0
-        ? 'แนบรูปบาร์โค้ดก่อน'
-        : 'ใส่เหตุผลก่อน'
+      : 'ใส่เหตุผลก่อน'
 
   async function submit() {
     setBusy(true)
@@ -86,7 +85,13 @@ export default function BySend() {
 
         <StaffPage className="-mt-3">
           <p className="rounded-card border border-line bg-surface p-4 text-center">
-            ส่งรูปบาร์โค้ด <b>{done.photos} ใบ</b> ให้แอดมินแล้ว
+            {done.photos > 0 ? (
+              <>
+                ส่งรูปบาร์โค้ด <b>{done.photos} ใบ</b> ให้แอดมินแล้ว
+              </>
+            ) : (
+              <>ส่งรายการให้แอดมินแล้ว</>
+            )}
             <br />
             <span className="text-sm text-ink-500">แอดมินจะไปตัดสต็อกในระบบ BY ให้</span>
           </p>
@@ -109,13 +114,14 @@ export default function BySend() {
       <TopBar title="ส่งบาร์โค้ดจาก BY" back="/" />
       <StaffPage nav={false} className="pb-[130px]">
         <p className="mb-3 rounded-card border border-line bg-surface p-3 text-sm text-ink-500">
-          ของที่ไม่ได้กดเบิกในระบบนี้ — ถ่ายบาร์โค้ดส่งมา แอดมินจะตัดสต็อกในระบบ BY ให้
+          ของที่ไม่ได้กดเบิกในระบบนี้ — ส่งบาร์โค้ดมา แอดมินจะตัดสต็อกในระบบ BY ให้
           <br />
-          แนบได้ไม่จำกัดจำนวนรูป
+          แนบรูปกี่ใบก็ได้ ไม่แนบก็ได้
         </p>
 
         <section className="mb-3 rounded-card border border-line bg-surface p-3">
-          <h2 className="mb-2 font-display">รูปบาร์โค้ด</h2>
+          <h2 className="font-display">รูปบาร์โค้ด</h2>
+          <p className="mb-2 text-sm text-ink-400">ไม่บังคับ แนบเท่าที่ต้องการ</p>
           <PhotoSteps
             steps={[]}
             maxFree={30}
@@ -211,7 +217,13 @@ export default function BySend() {
             onClick={() => void submit()}
           >
             {busy ? <Spinner /> : null}
-            {busy ? 'กำลังส่ง…' : ready ? `ส่งบาร์โค้ด ${photos.length} ใบ` : blockedWhy}
+            {busy
+              ? 'กำลังส่ง…'
+              : ready
+                ? photos.length > 0
+                  ? `ส่ง · แนบรูป ${photos.length} ใบ`
+                  : 'ส่งรายการนี้'
+                : blockedWhy}
           </button>
         </div>
       </div>
