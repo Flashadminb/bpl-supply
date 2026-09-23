@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useAuth } from '../../lib/auth'
 import { useAsync } from '../../lib/useAsync'
 import {
   adjustStock,
@@ -43,6 +44,8 @@ function emptyDraft(): ItemDraft {
 }
 
 export default function Stock() {
+  // จัดการแผนกเป็นของเจ้าของระบบคนเดียว เพราะกระทบทั้งคนและเครื่องพร้อมกัน
+  const { can } = useAuth()
   const items = useAsync(() => listAllItemsForAdmin(), [])
   const cats = useAsync(() => listCategories(), [])
   const depts = useAsync(() => listDepartments(), [])
@@ -139,9 +142,11 @@ export default function Stock() {
           >
             พิมพ์รายการ
           </button>
-          <button type="button" className="btn-ghost" onClick={() => setDeptsOpen(true)}>
-            จัดการแผนก
-          </button>
+          {can('admin') && (
+            <button type="button" className="btn-ghost" onClick={() => setDeptsOpen(true)}>
+              จัดการแผนก
+            </button>
+          )}
           <button type="button" className="btn-ghost" onClick={() => setCatsOpen(true)}>
             จัดการหมวด
           </button>
@@ -479,7 +484,7 @@ export default function Stock() {
       />
 
       <DepartmentManager
-        open={deptsOpen}
+        open={deptsOpen && can('admin')}
         onClose={() => setDeptsOpen(false)}
         departments={depts.data ?? []}
         onChanged={() => {
