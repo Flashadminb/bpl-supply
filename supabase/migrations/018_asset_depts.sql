@@ -48,8 +48,9 @@ language plpgsql security definer set search_path = public as $$
 declare
   v_bad text;
 begin
-  if my_role() not in ('supervisor', 'admin') then
-    raise exception 'ไม่มีสิทธิ์ย้ายแผนกของเครื่อง';
+  -- เฉพาะเจ้าของระบบ · แอดมินย้ายแผนกเครื่องไม่ได้
+  if my_role() <> 'admin' then
+    raise exception 'เฉพาะเจ้าของระบบเท่านั้นที่ย้ายแผนกของเครื่องได้';
   end if;
 
   if not exists (select 1 from assets where code = p_code) then

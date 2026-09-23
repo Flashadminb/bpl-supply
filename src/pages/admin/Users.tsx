@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { StaffImport } from '../../components/StaffImport'
 import { useAsync } from '../../lib/useAsync'
 import {
@@ -59,6 +59,20 @@ export default function Users() {
   const [modalError, setModalError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
+  const [search, setSearch] = useState('')
+  const [onlyInactive, setOnlyInactive] = useState(false)
+
+  // 49 คนขึ้นไปแล้ว ไล่หาด้วยตาไม่ไหว — ค้นได้ทั้งชื่อ รหัส แผนก และแผนกย่อย
+  const shown = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return (users.data ?? []).filter((u) => {
+      if (onlyInactive && u.is_active) return false
+      if (!q) return true
+      return `${u.full_name} ${u.employee_code} ${u.dept_code ?? ''} ${u.sub_dept ?? ''}`
+        .toLowerCase()
+        .includes(q)
+    })
+  }, [users.data, search, onlyInactive])
 
   async function patch(id: string, p: Parameters<typeof updateProfile>[1]) {
     setSavingId(id)
@@ -152,6 +166,26 @@ export default function Users() {
       )}
       {error && <div className="mb-3"><ErrorBox message={error} /></div>}
 
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          className="input max-w-[280px]"
+          type="search"
+          placeholder="ค้นหาชื่อ รหัสพนักงาน หรือแผนก"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <button
+          type="button"
+          className={`chip ${onlyInactive ? 'chip-on' : ''}`}
+          onClick={() => setOnlyInactive((v) => !v)}
+        >
+          เฉพาะที่ปิดใช้งาน
+        </button>
+        <span className="text-sm text-ink-500">
+          แสดง {shown.length} จาก {(users.data ?? []).length} คน
+        </span>
+      </div>
+
       <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
         <section className="panel overflow-x-auto p-2">
           {users.loading && <Loading />}
@@ -168,7 +202,7 @@ export default function Users() {
               </tr>
             </thead>
             <tbody>
-              {(users.data ?? []).map((u) => (
+              {shown.map((u) => (
                 <tr key={u.id} className="border-b border-line last:border-0">
                   <td className="p-2">{u.full_name}</td>
                   <td className="p-2 font-mono text-xs">{u.employee_code}</td>
@@ -235,10 +269,10 @@ export default function Users() {
                   </td>
                 </tr>
               ))}
-              {!users.loading && (users.data ?? []).length === 0 && (
+              {!users.loading && shown.length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-6 text-center text-ink-400">
-                    ยังไม่มีผู้ใช้ในระบบ
+                    {(users.data ?? []).length === 0 ? 'ยังไม่มีผู้ใช้ในระบบ' : 'ไม่พบผู้ใช้ตามคำค้น'}
                   </td>
                 </tr>
               )}

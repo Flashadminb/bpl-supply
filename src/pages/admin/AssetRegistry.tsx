@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useAuth } from '../../lib/auth'
 import { useAsync } from '../../lib/useAsync'
 import {
   listAssetHoldings,
@@ -27,6 +28,7 @@ const FILTERS: { key: Filter; label: string }[] = [
 ]
 
 export default function AssetRegistry() {
+  const { can } = useAuth()
   const types = useAsync(() => listAssetTypes(), [])
   const depts = useAsync(() => listDepartments(), [])
   const assets = useAsync(() => listAssets(), [])
@@ -254,6 +256,7 @@ export default function AssetRegistry() {
         <AssetSheet
           asset={open}
           departments={depts.data ?? []}
+          canMove={can('admin')}
           holder={holdBy.get(open.code) ?? null}
           onClose={() => setOpen(null)}
           onChanged={reloadAll}
@@ -268,12 +271,15 @@ export default function AssetRegistry() {
 function AssetSheet({
   asset,
   departments,
+  canMove,
   holder,
   onClose,
   onChanged,
 }: {
   asset: Asset
   departments: Department[]
+  /** ย้ายแผนกเครื่องได้เฉพาะเจ้าของระบบ แอดมินดูได้อย่างเดียว */
+  canMove: boolean
   holder: { holder_name: string; holder_code: string; taken_at: string; ref_no: string } | null
   onClose: () => void
   onChanged: () => void
@@ -326,7 +332,9 @@ function AssetSheet({
         <div className="rounded-card border border-line p-3">
           <p className="font-display">แผนกที่มีสิทธิ์ใช้</p>
           <p className="mt-1 text-sm text-ink-500">
-            ย้ายเครื่องได้ทุกเมื่อ · มีผลทันที · ประวัติเดิมไม่กระทบ
+            {canMove
+              ? 'ย้ายเครื่องได้ทุกเมื่อ · มีผลทันที · ประวัติเดิมไม่กระทบ'
+              : 'เปลี่ยนได้เฉพาะเจ้าของระบบ'}
           </p>
 
           <label className="label mt-3" htmlFor="asset-home">
@@ -336,6 +344,7 @@ function AssetSheet({
             id="asset-home"
             className="input"
             value={home}
+            disabled={!canMove}
             onChange={(e) => setHome(e.target.value)}
           >
             {departments.map((d) => (
@@ -358,6 +367,7 @@ function AssetSheet({
                         key={d.code}
                         type="button"
                         className={`chip ${on ? 'chip-on' : ''}`}
+                        disabled={!canMove}
                         onClick={() =>
                           setShares((v) => (on ? v.filter((c) => c !== d.code) : [...v, d.code]))
                         }
@@ -371,7 +381,7 @@ function AssetSheet({
             </>
           )}
 
-          {deptsDirty && (
+          {canMove && deptsDirty && (
             <div className="mt-3 flex justify-end gap-2">
               <button
                 type="button"
