@@ -90,7 +90,14 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
   const photos = shotsToPhotos(shots)
   const needPhotos =
     steps.data && steps.data.length > 0 ? steps.data.length : (type?.photo_min ?? 1)
-  const photosReady = photos.length >= needPhotos && !shots.some((s) => s.state !== 'done')
+  const uploading = shots.some((s) => s.state === 'uploading' || s.state === 'ready')
+  const failed = shots.some((s) => s.state === 'failed')
+  const photosReady = photos.length >= needPhotos && !uploading && !failed
+  const blockedWhy = failed
+    ? 'มีรูปส่งไม่สำเร็จ กดที่รูปนั้นเพื่อส่งใหม่'
+    : uploading
+      ? 'กำลังส่งรูปขึ้นระบบ รอสักครู่'
+      : 'ถ่ายรูปก่อนจึงยืนยันได้'
 
   function toggle(code: string, tCode: string) {
     // สลับประเภทแล้วต้องเริ่มใหม่ เพราะจำนวนรูปที่บังคับไม่เท่ากัน
@@ -250,7 +257,7 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
               ? 'กำลังบันทึก…'
               : photosReady
                 ? `ยืนยันคืน ${picked.length} เครื่อง`
-                : 'ถ่ายรูปก่อนจึงยืนยันได้'}
+                : blockedWhy}
           </button>
 
           {picked.length < rows.filter((h) => h.type_code === typeCode).length && (

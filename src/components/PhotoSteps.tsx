@@ -62,6 +62,8 @@ export function PhotoSteps({
   const galleryRef = useRef<HTMLInputElement>(null)
   const shotsRef = useRef<Shot[]>(shots)
   const uploadedRef = useRef<Set<string>>(new Set())
+  // ยังอยู่บนหน้าจอไหม · ใช้ตัวนี้ตัดสิน ไม่ใช่รอบของ effect
+  const mountedRef = useRef(true)
   const [compressing, setCompressing] = useState(false)
   // ขั้นที่กำลังถ่ายอยู่ ใช้เฉพาะตอนมีขั้นตอนบังคับ
   const [target, setTarget] = useState<number | null>(null)
@@ -69,7 +71,13 @@ export function PhotoSteps({
   useEffect(() => {
     shotsRef.current = shots
   }, [shots])
-  useEffect(() => () => shotsRef.current.forEach((s) => releaseImage(s.img)), [])
+  useEffect(
+    () => () => {
+      mountedRef.current = false
+      shotsRef.current.forEach((s) => releaseImage(s.img))
+    },
+    [],
+  )
 
   const guided = steps.length > 0
   const cap = guided ? steps.length : Math.min(maxFree, MAX_PHOTOS)
@@ -142,7 +150,6 @@ export function PhotoSteps({
 
     let running = 0
     let index = 0
-    let cancelled = false
 
     const pump = () => {
       while (running < CONCURRENCY && index < queue.length) {
@@ -154,7 +161,7 @@ export function PhotoSteps({
 
         void uploadEvidence(shot.img.blob, `asset-${shot.seq}-${shot.key}.webp`)
           .then((res) => {
-            if (cancelled) return
+            if (!mountedRef.current) return
             onShots((prev) =>
               prev.map((s) =>
                 s.key === shot.key
@@ -170,7 +177,7 @@ export function PhotoSteps({
             )
           })
           .catch((e) => {
-            if (cancelled) return
+            if (!mountedRef.current) return
             uploadedRef.current.delete(shot.key)
             onShots((prev) =>
               prev.map((s) =>
@@ -180,14 +187,12 @@ export function PhotoSteps({
           })
           .finally(() => {
             running--
-            if (!cancelled) pump()
+            if (mountedRef.current) pump()
           })
       }
     }
     pump()
-    return () => {
-      cancelled = true
-    }
+    // ไม่มี cleanup ยกเลิก — ปล่อยให้อัปโหลดที่ค้างอยู่วิ่งจนจบเสมอ
   }, [shots, onShots])
 
   function retry(key: string) {
