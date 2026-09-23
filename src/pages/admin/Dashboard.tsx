@@ -347,6 +347,36 @@ export default function Dashboard() {
             ))}
           </div>
         )}
+
+        {issues.length > 0 && (
+          <div className="mt-2 rounded-card border border-warn/30 bg-warn-bg p-3">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <p className="font-display text-warn-txt">
+                อาการชำรุดที่ยังค้าง {issueAssets.size} เครื่อง
+              </p>
+              <Link to="/admin/assets" className="text-sm text-warn-txt underline">
+                ไปเคลียร์
+              </Link>
+            </div>
+            <ul className="space-y-[2px] text-sm text-warn-txt">
+              {issues.slice(0, 6).map((i) => (
+                <li key={i.id} className="flex flex-wrap items-baseline gap-x-2">
+                  <b className="font-display">{i.asset_code}</b>
+                  <span>{i.symptom}</span>
+                  <span className="text-xs opacity-80">
+                    แจ้ง {fmtDateTime(i.reported_at)}
+                    {i.reported_name ? ` โดย ${i.reported_name}` : ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {issues.length > 6 && (
+              <p className="mt-1 text-sm text-warn-txt opacity-80">
+                และอีก {issues.length - 6} ใบ
+              </p>
+            )}
+          </div>
+        )}
       </section>
 
       {reqs.loading && <Loading />}
@@ -356,9 +386,14 @@ export default function Dashboard() {
       <section className="mb-6">
         <div className="mb-2 flex items-center justify-between gap-2">
           <h2 className="font-display text-md">วัสดุสิ้นเปลือง</h2>
-          <Link to="/admin/stock" className="text-sm underline">
-            ไปหน้าสต็อก
-          </Link>
+          <span className="flex gap-3">
+            <Link to="/admin/report/supply" className="text-sm underline">
+              รายงานละเอียด
+            </Link>
+            <Link to="/admin/stock" className="text-sm underline">
+              ไปหน้าสต็อก
+            </Link>
+          </span>
         </div>
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
@@ -430,9 +465,14 @@ export default function Dashboard() {
       <section className="mb-6">
         <div className="mb-2 flex items-center justify-between gap-2">
           <h2 className="font-display text-md">อุปกรณ์ Asset</h2>
-          <Link to="/admin/assets" className="text-sm underline">
-            ไปทะเบียนเครื่อง
-          </Link>
+          <span className="flex gap-3">
+            <Link to="/admin/report/asset" className="text-sm underline">
+              รายงานละเอียด
+            </Link>
+            <Link to="/admin/assets" className="text-sm underline">
+              ไปทะเบียนเครื่อง
+            </Link>
+          </span>
         </div>
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
@@ -506,31 +546,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {issues.length > 0 && (
-          <div className="panel mt-3 p-4">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <h3 className="font-display">อาการชำรุดที่ยังค้าง</h3>
-              <Link to="/admin/assets" className="text-sm underline">
-                ไปเคลียร์
-              </Link>
-            </div>
-            <ul className="space-y-1 text-sm">
-              {issues.slice(0, 8).map((i) => (
-                <li key={i.id} className="flex flex-wrap items-baseline gap-x-2 border-b border-line py-1 last:border-0">
-                  <b className="font-display">{i.asset_code}</b>
-                  <span className="text-warn-txt">{i.symptom}</span>
-                  <span className="text-xs text-ink-400">
-                    แจ้ง {fmtDateTime(i.reported_at)}
-                    {i.reported_name ? ` โดย ${i.reported_name}` : ''}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            {issues.length > 8 && (
-              <p className="mt-2 text-sm text-ink-400">และอีก {issues.length - 8} รายการ</p>
-            )}
-          </div>
-        )}
       </section>
 
       {/* ------------------------------------------------- ของเสียหาย + ล่าสุด */}

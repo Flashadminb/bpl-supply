@@ -883,3 +883,16 @@ export async function listOpenAssetIssues(limit = 50): Promise<AssetIssue[]> {
       .limit(limit),
   ) as unknown as AssetIssue[]
 }
+
+/** ใบแจ้งชำรุดในช่วงวันที่ — ใช้ทำรายงานสถิติการพัง */
+export async function listAssetIssuesBetween(fromISO: string, toISO: string): Promise<AssetIssue[]> {
+  return unwrap(
+    await supabase
+      .from('asset_issues')
+      .select('*')
+      .gte('reported_at', fromISO)
+      .lte('reported_at', toISO)
+      .order('reported_at', { ascending: false })
+      .limit(2000),
+  ) as unknown as AssetIssue[]
+}

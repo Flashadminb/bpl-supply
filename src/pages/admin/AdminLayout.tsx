@@ -23,6 +23,7 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
   {
     title: 'สิ้นเปลือง',
     links: [
+      { to: '/admin/report/supply', label: 'รายงานสิ้นเปลือง' },
       { to: '/admin/stock', label: 'สต็อกวัสดุ' },
       { to: '/admin/approvals', label: 'คำขอเบิก', badge: true },
       { to: '/admin/outstanding', label: 'ของค้างคืน' },
@@ -33,6 +34,7 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
   {
     title: 'Asset',
     links: [
+      { to: '/admin/report/asset', label: 'รายงาน Asset' },
       { to: '/admin/assets', label: 'ทะเบียนเครื่อง' },
       { to: '/admin/assets-out', label: 'Asset ที่ยังไม่คืน' },
     ],
