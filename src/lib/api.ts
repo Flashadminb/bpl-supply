@@ -1082,3 +1082,82 @@ export async function meetingStats(fromDay: string, toDay: string): Promise<Meet
   if (error) throw new Error(readableError(error))
   return (data ?? []) as MeetingStat[]
 }
+
+/* ------------------------------------------------- คิวรีแบบประหยัด egress */
+
+/**
+ * คอลัมน์เท่าที่หน้าจอใช้จริง
+ *
+ * REQ_COLS ตัวเต็มพ่วง items ครบทุกช่อง โปรไฟล์ และ sync_log มาด้วย
+ * วัดจากของจริงได้ใบละ ~1.8 KB — พอคนเพิ่มเป็นสามเท่า เดือนละ ~650 ใบ
+ * แค่เปิดหน้าแรกครั้งเดียวก็ 1.2 MB ทั้งที่หน้านั้นใช้แค่ชื่อกับจำนวนรายการ
+ */
+const REQ_SLIM =
+  'id,ref_no,status,created_at,requester_id,' +
+  'profiles!requisitions_requester_id_fkey(id,full_name,employee_code,dept_code),' +
+  'requisition_items(id)'
+
+/** ใบเบิกล่าสุดไม่กี่ใบ สำหรับตารางบนหน้าแรก */
+export async function listRecentRequisitions(limit = 12): Promise<Requisition[]> {
+  return unwrap(
+    await supabase
+      .from('requisitions')
+      .select(REQ_SLIM)
+      .order('created_at', { ascending: false })
+      .limit(limit),
+  ) as unknown as Requisition[]
+}
+
+/** ใบที่ยังรออนุมัติ — มีไม่เยอะโดยธรรมชาติ เพราะกดอนุมัติแล้วหลุดออกจากชุดนี้ */
+export async function listPendingSlim(): Promise<Requisition[]> {
+  return unwrap(
+    await supabase
+      .from('requisitions')
+      .select(REQ_SLIM)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true }),
+  ) as unknown as Requisition[]
+}
+
+/**
+ * ตัวเลขสำหรับกระดิ่ง — นับอย่างเดียว ไม่ดึงข้อมูลจริง
+ *
+ * กระดิ่งถามซ้ำทุก 45 วินาทีตลอดเวลาที่เปิดแอพค้างไว้
+ * ถ้าดึงแถวจริงมาทุกรอบ วันหนึ่งกินหลายสิบเมกะไบต์ต่อคน
+ * แถวจริงค่อยดึงตอนกดเปิดกระดิ่ง ซึ่งนาน ๆ ครั้ง
+ */
+export async function bellCounts(): Promise<{ by: number; faults: number; late: number }> {
+  const nowISO = new Date().toISOString()
+  const [by, faults, late] = await Promise.all([
+    supabase.from('by_barcodes').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+    supabase.from('asset_open_issues').select('asset_code', { count: 'exact', head: true }),
+    supabase.from('asset_holdings').select('out_item_id', { count: 'exact', head: true }).lt('due_at', nowISO),
+  ])
+  return { by: by.count ?? 0, faults: faults.count ?? 0, late: late.count ?? 0 }
+}
+
+/**
+ * ประวัติการเบิกสำหรับหน้าตรวจสอบ — เอาเฉพาะช่องที่หน้านั้นโชว์จริง
+ *
+ * ตัด sync_log กับช่องสต็อกของ items ออก ซึ่งหน้านี้ไม่ได้ใช้เลย
+ * เหลือราวหนึ่งในสามของขนาดเดิมต่อหนึ่งใบ
+ */
+export async function listRequisitionHistory(
+  fromISO: string,
+  toISO: string,
+  limit = 400,
+): Promise<Requisition[]> {
+  return unwrap(
+    await supabase
+      .from('requisitions')
+      .select(
+        'id,ref_no,status,created_at,requester_id,' +
+          'profiles!requisitions_requester_id_fkey(id,full_name,employee_code,dept_code),' +
+          'requisition_items(id,item_id,qty_requested,qty_approved,status,items(name,unit))',
+      )
+      .gte('created_at', fromISO)
+      .lte('created_at', toISO)
+      .order('created_at', { ascending: false })
+      .limit(limit),
+  ) as unknown as Requisition[]
+}

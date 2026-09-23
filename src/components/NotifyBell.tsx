@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAsync } from '../lib/useAsync'
-import { listAssetHoldings, listByRows, listOpenAssetIssues } from '../lib/api'
+import { bellCounts, listAssetHoldings, listOpenAssetIssues } from '../lib/api'
 import { usePendingApprovals } from '../lib/usePendingApprovals'
 import { Sheet } from './ui'
 import { relativeAge } from '../lib/format'
@@ -22,30 +22,31 @@ const POLL_MS = 45_000
 export function NotifyBell() {
   const [open, setOpen] = useState(false)
   const approvals = usePendingApprovals()
-  const byPending = useAsync(() => listByRows({ status: 'pending', limit: 200 }), [])
-  const issues = useAsync(() => listOpenAssetIssues(50), [])
-  const held = useAsync(() => listAssetHoldings(false), [])
+  // ตัวเลขถามซ้ำเรื่อย ๆ · รายละเอียดดึงตอนกดเปิดเท่านั้น
+  const counts = useAsync(() => bellCounts(), [])
+  const byCount = counts.data?.by ?? 0
+  const faultAssets = counts.data?.faults ?? 0
+  const lateCount = counts.data?.late ?? 0
 
-  const byCount = (byPending.data ?? []).length
+  const issues = useAsync(() => (open ? listOpenAssetIssues(50) : Promise.resolve([])), [open])
+  const held = useAsync(() => (open ? listAssetHoldings(false) : Promise.resolve([])), [open])
+
   const faults = issues.data ?? []
-  const faultAssets = new Set(faults.map((i) => i.asset_code)).size
   const late = (held.data ?? []).filter((h) => h.due_at && Date.now() > Date.parse(h.due_at))
 
-  const total = approvals.count + byCount + faultAssets + late.length
+  const total = approvals.count + byCount + faultAssets + lateCount
 
   /* ------------------------------------------------- ถามซ้ำและส่งเสียงเตือน */
 
   // คำขออนุมัติมีตัวนับของตัวเองที่ถามทุก 30 วินาทีอยู่แล้ว
   // อีกสามอย่างโหลดครั้งเดียวตอนเปิดหน้า จึงต้องสั่งให้ถามใหม่เอง
-  const reloadRef = useRef({ by: byPending.reload, issue: issues.reload, held: held.reload })
-  reloadRef.current = { by: byPending.reload, issue: issues.reload, held: held.reload }
+  const reloadRef = useRef(counts.reload)
+  reloadRef.current = counts.reload
 
   useEffect(() => {
     const check = () => {
       if (document.visibilityState !== 'visible') return
-      reloadRef.current.by()
-      reloadRef.current.issue()
-      reloadRef.current.held()
+      reloadRef.current()
     }
     const timer = window.setInterval(check, POLL_MS)
     document.addEventListener('visibilitychange', check)
@@ -61,12 +62,12 @@ export function NotifyBell() {
 
   useEffect(() => {
     // รอให้โหลดครบทุกชุดก่อน ไม่งั้นเลขที่ยังเป็นศูนย์จะกลายเป็นฐานเทียบที่ผิด
-    if (byPending.loading || issues.loading || held.loading) return
+    if (counts.loading || !counts.data) return
 
     const now = {
       approve: approvals.count + byCount,
       fault: faultAssets,
-      overdue: late.length,
+      overdue: lateCount,
     }
     const before = seen.current
     seen.current = now
@@ -77,15 +78,7 @@ export function NotifyBell() {
     if (now.overdue > before.overdue) playAlert('overdue')
     else if (now.fault > before.fault) playAlert('fault')
     else if (now.approve > before.approve) playAlert('approve')
-  }, [
-    approvals.count,
-    byCount,
-    faultAssets,
-    late.length,
-    byPending.loading,
-    issues.loading,
-    held.loading,
-  ])
+  }, [approvals.count, byCount, faultAssets, lateCount, counts.loading, counts.data])
 
   const [muted, setMuted] = useState(!soundOn())
   function toggleSound() {
@@ -110,12 +103,13 @@ export function NotifyBell() {
       title: `บาร์โค้ด BY รอตัดสต็อก ${byCount} รายการ`,
       detail: 'หน้างานส่งรูปมาแล้ว',
     },
-    late.length > 0 && {
+    lateCount > 0 && {
       key: 'late',
       to: '/admin/assets-out',
       tone: 'danger' as const,
-      title: `Asset เลยเวลาคืน ${late.length} เครื่อง`,
-      detail: `${new Set(late.map((h) => h.holder_code)).size} คนที่ต้องตาม`,
+      title: `Asset เลยเวลาคืน ${lateCount} เครื่อง`,
+      // จำนวนคนนับจากแถวจริง ซึ่งโหลดตอนกดเปิดกระดิ่งเท่านั้น
+      detail: late.length > 0 ? `${new Set(late.map((h) => h.holder_code)).size} คนที่ต้องตาม` : '',
     },
     faultAssets > 0 && {
       key: 'fault',

@@ -12,7 +12,8 @@ import {
   listDepartments,
   listOpenAssetIssues,
   listOpenBorrowings,
-  listRequisitionsBetween,
+  listPendingSlim,
+  listRecentRequisitions,
 } from '../../lib/api'
 import { ErrorBox, Loading } from '../../components/ui'
 import { StockLevels } from '../../components/StockLevels'
@@ -51,7 +52,11 @@ export default function Dashboard() {
   const toISO = useMemo(() => new Date().toISOString(), [days])
 
   /* ---------------------------------------------------------- ดึงข้อมูล */
-  const reqs = useAsync(() => listRequisitionsBetween(fromISO, toISO), [fromISO])
+  // ไม่ดึงใบเบิกทั้งเดือนมาแล้วค่อยกรองในเครื่อง
+  // วัดจากของจริงได้ใบละ ~1.8 KB พอคนเพิ่มเป็นสามเท่าจะกลายเป็นเมกะไบต์ต่อการเปิดหนึ่งครั้ง
+  // หน้านี้ใช้แค่ใบล่าสุดสิบกว่าใบ กับใบที่ยังรออนุมัติ ซึ่งมีไม่เยอะโดยธรรมชาติ
+  const reqs = useAsync(() => listRecentRequisitions(12), [])
+  const pendingReqs = useAsync(() => listPendingSlim(), [])
   const items = useAsync(() => listAllItemsForAdmin(), [])
   const depts = useAsync(() => listDepartments(), [])
   const borrow = useAsync(() => listOpenBorrowings(false), [])
@@ -70,8 +75,11 @@ export default function Dashboard() {
   }, [reqs.data, dept])
 
   /* ------------------------------------------------------ ฝั่งสิ้นเปลือง */
-  const pending = rows.filter((r) => r.status === 'pending')
-  const oldestPending = pending[pending.length - 1]
+  const pending = useMemo(() => {
+    const all = pendingReqs.data ?? []
+    return dept ? all.filter((r) => r.profiles?.dept_code === dept) : all
+  }, [pendingReqs.data, dept])
+  const oldestPending = pending[0]
 
   const low = (items.data ?? []).filter((i) => i.is_active && i.qty_on_hand <= i.min_qty)
   const outOfStock = low.filter((i) => i.qty_on_hand === 0)

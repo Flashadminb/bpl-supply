@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
-import { listRequisitionsBetween } from '../../lib/api'
+import { listRequisitionHistory } from '../../lib/api'
 import { EmptyState, ErrorBox, Loading } from '../../components/ui'
 import { STATUS_TH, fmtDateTime, statusClass } from '../../lib/format'
 
@@ -25,7 +25,7 @@ export default function SupplyHistory() {
   }, [days])
 
   const reqs = useAsync(
-    () => listRequisitionsBetween(range.fromISO, range.toISO),
+    () => listRequisitionHistory(range.fromISO, range.toISO, 400),
     [range.fromISO],
   )
 
