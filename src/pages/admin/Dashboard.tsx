@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import {
   countSheetExportRows,
+  listByRows,
   listAllItemsForAdmin,
   listCategories,
   listDepartments,
@@ -40,6 +41,7 @@ export default function Dashboard() {
   const depts = useAsync(() => listDepartments(), [])
   const borrow = useAsync(() => listOpenBorrowings(false), [])
   const unsent = useAsync(() => countSheetExportRows({ fromISO, toISO }), [fromISO])
+  const byPending = useAsync(() => listByRows({ status: 'pending', limit: 200 }), [])
 
   // แผนกอยู่ที่ตัวคน ไม่ได้อยู่ที่ใบเบิก จึงกรองหลังดึงมาแล้ว
   const rows = useMemo(() => {
@@ -86,6 +88,7 @@ export default function Dashboard() {
   // ค้างเกิน 2 กะ ถือว่าผิดปกติ ตรงกับเกณฑ์ในหน้าของค้างคืน
   const lateBorrow = openBorrow.filter((b) => Date.now() - Date.parse(b.created_at) >= 18 * 3600_000)
   const pendingSheet = unsent.data?.pending ?? 0
+  const byCount = (byPending.data ?? []).length
 
   /** จำนวนคำขอรายวัน เติมวันที่ไม่มีการเบิกให้เป็นศูนย์ ไม่งั้นกราฟหลอกตา */
   const daily: Datum[] = useMemo(() => {
@@ -198,7 +201,11 @@ export default function Dashboard() {
       </div>
 
       {/* ---- แถบเตือนเรื่องที่ต้องรีบจัดการ ---- */}
-      {(low.length > 0 || stats.pending.length > 0 || lateBorrow.length > 0 || pendingSheet > 0) && (
+      {(low.length > 0 ||
+        stats.pending.length > 0 ||
+        lateBorrow.length > 0 ||
+        byCount > 0 ||
+        pendingSheet > 0) && (
         <div className="mb-4 grid gap-2 sm:grid-cols-2">
           {low.length > 0 && (
             <Link
@@ -224,6 +231,14 @@ export default function Dashboard() {
               className="rounded-card border border-danger/25 bg-danger-bg px-4 py-3 text-sm text-danger-txt"
             >
               <b>ค้างคืนเกิน 18 ชม. {lateBorrow.length} รายการ</b> — ประมาณ 2 กะ · กดเพื่อดูว่าอยู่กับใคร
+            </Link>
+          )}
+          {byCount > 0 && (
+            <Link
+              to="/admin/by"
+              className="rounded-card border border-warn/30 bg-warn-bg px-4 py-3 text-sm text-warn-txt"
+            >
+              <b>บาร์โค้ด BY รอตัดสต็อก {byCount} รายการ</b> — หน้างานส่งมาแล้ว · กดเพื่อดูรูป
             </Link>
           )}
           {pendingSheet > 0 && (

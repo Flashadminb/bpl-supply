@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1140 640" width="1140" height="640" font-family="Leelawadee UI, Tahoma, Segoe UI, sans-serif">
+  <title>ตัวอย่างการแจ้งเตือนของ BPL SUPPLY บนมือถือ</title>
+  <desc>สามกรณี: ทดสอบแจ้งเตือน, เตือนก่อนเลิกกะ 10 นาที, และแจ้งชำรุดพร้อมสรุปของค้างส่งถึงแอดมิน</desc>
+
+  <rect width="1140" height="640" fill="#FAF8F3"/>
+
+  <text x="40" y="52" font-size="26" font-weight="600" fill="#1A1712">BPL SUPPLY — หน้าตาการแจ้งเตือนบนมือถือ</text>
+  <text x="40" y="80" font-size="15" fill="#6B6558">เด้งบนหน้าล็อกได้ ปิดแอพอยู่ก็มา · กดที่การแจ้งเตือนจะเปิดแอพไปหน้าที่เกี่ยวข้องให้เลย</text>
+
+  <!-- ─────────── การ์ด 1 ─────────── -->
+  <g transform="translate(40,110)">
+    <text x="0" y="0" font-size="14" font-weight="600" fill="#8A5A00">① ทดสอบแจ้งเตือน</text>
+    <text x="0" y="22" font-size="13" fill="#6B6558">กดปุ่ม “ส่งทดสอบ” ในหน้าบัญชีของฉัน</text>
+
+    <rect x="0" y="38" width="330" height="440" rx="26" fill="#1A1712"/>
+    <text x="165" y="110" font-size="46" fill="#F1EFE8" text-anchor="middle">12:08</text>
+    <text x="165" y="136" font-size="14" fill="#B4B2A9" text-anchor="middle">วันอังคาร 23 กันยายน</text>
+
+    <g transform="translate(18,170)">
+      <rect width="294" height="104" rx="16" fill="#FFFFFF"/>
+      <rect x="16" y="18" width="16" height="16" rx="4" fill="#F5B301"/>
+      <text x="40" y="31" font-size="12" fill="#8E8778">BPL SUPPLY · ตอนนี้</text>
+      <text x="16" y="60" font-size="16" font-weight="600" fill="#1A1712">ทดสอบแจ้งเตือน</text>
+      <text x="16" y="84" font-size="14" fill="#4E4738">ถ้าเห็นข้อความนี้ แปลว่าใช้ได้แล้ว</text>
+    </g>
+  </g>
+
+  <!-- ─────────── การ์ด 2 ─────────── -->
+  <g transform="translate(405,110)">
+    <text x="0" y="0" font-size="14" font-weight="600" fill="#8A5A00">② ก่อนเลิกกะ 10 นาที</text>
+    <text x="0" y="22" font-size="13" fill="#6B6558">เด้งหาคนที่ยังถือเครื่องอยู่</text>
+
+    <rect x="0" y="38" width="330" height="440" rx="26" fill="#1A1712"/>
+    <text x="165" y="110" font-size="46" fill="#F1EFE8" text-anchor="middle">20:50</text>
+    <text x="165" y="136" font-size="14" fill="#B4B2A9" text-anchor="middle">วันอังคาร 23 กันยายน</text>
+
+    <g transform="translate(18,170)">
+      <rect width="294" height="126" rx="16" fill="#FFFFFF"/>
+      <rect x="16" y="18" width="16" height="16" rx="4" fill="#F5B301"/>
+      <text x="40" y="31" font-size="12" fill="#8E8778">BPL SUPPLY · ตอนนี้</text>
+      <text x="16" y="60" font-size="16" font-weight="600" fill="#1A1712">ใกล้เลิกกะแล้ว</text>
+      <text x="16" y="84" font-size="14" fill="#4E4738">คุณยังถือ 3 เครื่อง</text>
+      <text x="16" y="106" font-size="14" fill="#4E4738">PP-18, PP-19, PP-20</text>
+    </g>
+
+    <g transform="translate(18,314)">
+      <rect width="294" height="126" rx="16" fill="#FFFFFF"/>
+      <rect x="16" y="18" width="16" height="16" rx="4" fill="#F5B301"/>
+      <text x="40" y="31" font-size="12" fill="#8E8778">BPL SUPPLY · 21:10</text>
+      <text x="16" y="60" font-size="16" font-weight="600" fill="#8C2F26">เลยเวลาคืนแล้ว</text>
+      <text x="16" y="84" font-size="14" fill="#4E4738">ยังไม่ได้คืน 2 เครื่อง</text>
+      <text x="16" y="106" font-size="14" fill="#4E4738">PP-19, PP-20</text>
+    </g>
+  </g>
+
+  <!-- ─────────── การ์ด 3 ─────────── -->
+  <g transform="translate(770,110)">
+    <text x="0" y="0" font-size="14" font-weight="600" fill="#8A5A00">③ เข้าเครื่องแอดมินและเจ้าของระบบ</text>
+    <text x="0" y="22" font-size="13" fill="#6B6558">แจ้งชำรุด และสรุปของค้างเกินกะ</text>
+
+    <rect x="0" y="38" width="330" height="440" rx="26" fill="#1A1712"/>
+    <text x="165" y="110" font-size="46" fill="#F1EFE8" text-anchor="middle">21:14</text>
+    <text x="165" y="136" font-size="14" fill="#B4B2A9" text-anchor="middle">วันอังคาร 23 กันยายน</text>
+
+    <g transform="translate(18,170)">
+      <rect width="294" height="126" rx="16" fill="#FFFFFF"/>
+      <rect x="16" y="18" width="16" height="16" rx="4" fill="#F5B301"/>
+      <text x="40" y="31" font-size="12" fill="#8E8778">BPL SUPPLY · ตอนนี้</text>
+      <text x="16" y="60" font-size="16" font-weight="600" fill="#8C2F26">แจ้งชำรุด PP-20</text>
+      <text x="16" y="84" font-size="14" fill="#4E4738">ยกไม่ขึ้น</text>
+      <text x="16" y="106" font-size="14" fill="#4E4738">แจ้งโดย วรรณวิสา สิงห์คำ</text>
+    </g>
+
+    <g transform="translate(18,314)">
+      <rect width="294" height="126" rx="16" fill="#FFFFFF"/>
+      <rect x="16" y="18" width="16" height="16" rx="4" fill="#F5B301"/>
+      <text x="40" y="31" font-size="12" fill="#8E8778">BPL SUPPLY · 21:10</text>
+      <text x="16" y="60" font-size="16" font-weight="600" fill="#1A1712">มีเครื่องค้างเกินกะ</text>
+      <text x="16" y="84" font-size="14" fill="#4E4738">สมชาย ใจดี ยังไม่คืน 2 เครื่อง</text>
+      <text x="16" y="106" font-size="14" fill="#4E4738">PP-14, PP-15</text>
+    </g>
+  </g>
+
+  <text x="40" y="520" font-size="13" fill="#8E8778">เตือนเฉพาะอุปกรณ์ Asset เท่านั้น · ของสิ้นเปลืองไม่เตือน · เรื่องเดียวกันเตือนครั้งเดียว ไม่ย้ำซ้ำทุก 5 นาที</text>
+
+  <g transform="translate(40,548)">
+    <rect width="1060" height="62" rx="14" fill="#FFF4D1"/>
+    <text x="20" y="26" font-size="13" font-weight="600" fill="#8A5A00">iPhone ต้องกด “เพิ่มไปยังหน้าจอโฮม” ก่อน แล้วเปิดแอพจากไอคอนนั้น ถึงจะเด้งได้ (Apple บังคับตั้งแต่ iOS 16.4)</text>
+    <text x="20" y="48" font-size="13" fill="#8A5A00">Android ไม่มีเงื่อนไข เปิดเว็บแล้วกดอนุญาตครั้งเดียวจบ · แต่ละเครื่องต้องกดเปิดเอง 1 ครั้ง</text>
+  </g>
+</svg>

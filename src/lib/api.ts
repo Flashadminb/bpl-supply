@@ -20,6 +20,9 @@ import type {
   AssetPhotoInput,
   AssetPhotoStep,
   AssetType,
+  ByRow,
+  ByStatRow,
+  ByStatus,
 } from './types'
 
 const ITEM_COLS =
@@ -763,4 +766,51 @@ export async function pushTest() {
     JSON.stringify({ action: 'test' }),
     { 'Content-Type': 'application/json' },
   )
+}
+
+/* ------------------------------------------------------- บาร์โค้ดจาก BY */
+
+export async function listByRows(opts: {
+  status?: ByStatus | 'all'
+  mineOnly?: boolean
+  userId?: string
+  fromISO?: string
+  toISO?: string
+  limit?: number
+}): Promise<ByRow[]> {
+  let q = supabase.from('by_feed').select('*').order('created_at', { ascending: false })
+  if (opts.status && opts.status !== 'all') q = q.eq('status', opts.status)
+  if (opts.mineOnly && opts.userId) q = q.eq('user_id', opts.userId)
+  if (opts.fromISO) q = q.gte('created_at', opts.fromISO)
+  if (opts.toISO) q = q.lte('created_at', opts.toISO)
+  return unwrap(await q.limit(opts.limit ?? 300)) as unknown as ByRow[]
+}
+
+export async function createByBarcode(args: {
+  reason: string
+  note?: string
+  photos: { file_id: string; web_link: string | null; bytes: number | null }[]
+}) {
+  const { data, error } = await supabase.rpc('create_by_barcode', {
+    p_reason: args.reason,
+    p_note: args.note ?? null,
+    p_photos: args.photos,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { id: string; ref_no: string; photos: number }
+}
+
+export async function setByStatus(id: string, status: ByStatus, note?: string) {
+  const { error } = await supabase.rpc('set_by_status', {
+    p_id: id,
+    p_status: status,
+    p_note: note ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+}
+
+export async function listByStats(): Promise<ByStatRow[]> {
+  return unwrap(
+    await supabase.from('by_stats_monthly').select('*').order('ym', { ascending: false }),
+  ) as unknown as ByStatRow[]
 }

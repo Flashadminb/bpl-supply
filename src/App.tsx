@@ -26,6 +26,7 @@ const AssetTypes = lazy(() =>
   import('./pages/staff/AssetPick').then((m) => ({ default: m.AssetTypes })),
 )
 const AssetDone = lazy(() => import('./pages/staff/AssetDone'))
+const BySend = lazy(() => import('./pages/staff/BySend'))
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'))
 const Dashboard = lazy(() => import('./pages/admin/Dashboard'))
 const Stock = lazy(() => import('./pages/admin/Stock'))
@@ -37,6 +38,7 @@ const QrLabels = lazy(() => import('./pages/admin/QrLabels'))
 const Outstanding = lazy(() => import('./pages/admin/Outstanding'))
 const AssetRegistry = lazy(() => import('./pages/admin/AssetRegistry'))
 const AssetOutstanding = lazy(() => import('./pages/admin/AssetOutstanding'))
+const ByInbox = lazy(() => import('./pages/admin/ByInbox'))
 
 function Guard({ children, roles }: { children: ReactNode; roles?: UserRole[] }) {
   const { session, profile, loading } = useAuth()
@@ -99,6 +101,7 @@ export default function App() {
       <Route path="/evidence" element={<Guard><Evidence /></Guard>} />
       <Route path="/success/:refNo" element={<Guard><Success /></Guard>} />
       <Route path="/returns" element={<Guard><Returns /></Guard>} />
+      <Route path="/by" element={<Guard><BySend /></Guard>} />
       <Route path="/assets" element={<Guard><AssetTypes /></Guard>} />
       <Route path="/assets/done/:refNo" element={<Guard><AssetDone /></Guard>} />
       <Route path="/assets/:typeCode" element={<Guard><AssetPick /></Guard>} />
@@ -120,6 +123,7 @@ export default function App() {
         <Route path="outstanding" element={<Outstanding />} />
         <Route path="assets" element={<AssetRegistry />} />
         <Route path="assets-out" element={<AssetOutstanding />} />
+        <Route path="by" element={<ByInbox />} />
         <Route path="export" element={<ExportSheet />} />
         <Route path="evidence" element={<AdminEvidence />} />
         <Route path="qr" element={<QrLabels />} />

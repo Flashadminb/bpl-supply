@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { MAX_PHOTOS, uploadEvidence } from '../lib/api'
+import { uploadEvidence } from '../lib/api'
 import { compressImage, prettyBytes, releaseImage, type CompressedImage } from '../lib/image'
 import { Spinner } from './ui'
 import type { AssetPhotoInput, AssetPhotoStep } from '../lib/types'
@@ -80,7 +80,7 @@ export function PhotoSteps({
   )
 
   const guided = steps.length > 0
-  const cap = guided ? steps.length : Math.min(maxFree, MAX_PHOTOS)
+  const cap = guided ? steps.length : maxFree
   const bySeq = new Map(shots.map((s) => [s.seq, s]))
   const nextStep = guided ? steps.find((st) => !bySeq.has(st.seq)) : undefined
   const doneCount = shots.filter((s) => s.state === 'done').length

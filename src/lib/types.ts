@@ -267,3 +267,38 @@ export interface AssetIssueInput {
   file_id?: string | null
   web_link?: string | null
 }
+
+/* ------------------------------------------------------- บาร์โค้ดจาก BY */
+
+export type ByStatus = 'pending' | 'done' | 'rejected'
+
+export interface ByRow {
+  id: string
+  ref_no: string
+  created_at: string
+  reason: string
+  note: string | null
+  status: ByStatus
+  handled_at: string | null
+  handled_note: string | null
+  handled_by_name: string | null
+  user_id: string
+  who: string
+  employee_code: string
+  dept_code: string | null
+  sub_dept: string | null
+  shift_start: string | null
+  shift_end: string | null
+  photo_count: number
+  file_ids: string[]
+}
+
+export interface ByStatRow {
+  ym: string
+  dept_code: string | null
+  reason: string
+  total: number
+  pending: number
+  done: number
+  rejected: number
+}

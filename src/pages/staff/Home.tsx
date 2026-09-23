@@ -101,6 +101,21 @@ export default function Home() {
           </Link>
         )}
 
+        <Link to="/by" className="card mt-3 flex items-center gap-3 p-4">
+          <span aria-hidden className="text-md">
+            ▤
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-display text-md">ส่งบาร์โค้ดจาก BY</span>
+            <span className="block text-sm text-ink-400">
+              ของที่ไม่ได้กดเบิกในระบบนี้ · ถ่ายบาร์โค้ดส่งให้แอดมินตัดสต็อก
+            </span>
+          </span>
+          <span aria-hidden className="text-ink-400">
+            ›
+          </span>
+        </Link>
+
         <div className="mt-3 grid grid-cols-2 gap-3">
           <Link to="/items" className="card flex min-h-[92px] flex-col justify-between p-3">
             <span className="text-md" aria-hidden>

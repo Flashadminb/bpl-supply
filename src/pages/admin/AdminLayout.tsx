@@ -27,6 +27,7 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
       { to: '/admin/approvals', label: 'คำขอเบิก', badge: true },
       { to: '/admin/outstanding', label: 'ของค้างคืน' },
       { to: '/admin/evidence', label: 'หลักฐานการเบิก-คืน' },
+      { to: '/admin/by', label: 'บาร์โค้ดจาก BY' },
     ],
   },
   {

@@ -1,10 +1,11 @@
 // =====================================================================
 // export-sheet — เขียนข้อมูลลง Google Sheet
 //
-// สามชุดแยกแท็บกัน แต่ละชุดแยกรายเดือนอีกที
+// สี่ชุดแยกแท็บกัน แต่ละชุดแยกรายเดือนอีกที
 //   เบิก-คืน 2569-09   วัสดุสิ้นเปลือง 1 แถวต่อ 1 รายการ
 //   Asset 2569-09      อุปกรณ์ 1 แถวต่อ 1 เครื่องต่อครั้งที่เบิกหรือคืน
 //   ชำรุด 2569-09      ใบแจ้งชำรุด 1 แถวต่อ 1 ใบ
+//   บาร์โค้ด BY 2569-09  ของที่หน้างานส่งบาร์โค้ดมาให้ตัดสต็อกในระบบ BY
 //
 // กันแถวซ้ำโดยจำตำแหน่งไว้ในฐานข้อมูล (แท็บ + เลขแถว)
 // จึงไม่ต้องอ่านทั้งชีตมาเทียบทุกครั้ง — เร็วคงที่ไม่ว่าชีตจะใหญ่แค่ไหน
@@ -13,7 +14,7 @@
 // secrets: GOOGLE_SA_EMAIL, GOOGLE_SA_PRIVATE_KEY, GSHEET_ID
 // =====================================================================
 
-const VERSION = 'assets-v4'
+const VERSION = 'by-v5'
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
 
 const HEADER = ['เลขที่คำขอ', 'วันเวลา', 'ผู้เบิก (ฮับ)', 'วัสดุ', 'จำนวน', 'หลักฐาน', 'Drive File ID']
@@ -44,6 +45,22 @@ const ISSUE_HEADER = [
   'สถานะ',
   'วันที่เคลียร์',
   'เลขที่รายการ',
+]
+
+const BY_HEADER = [
+  'เลขที่',
+  'วันเวลา',
+  'ผู้ส่ง',
+  'รหัสพนักงาน',
+  'แผนก',
+  'กะ',
+  'เหตุผล',
+  'หมายเหตุ',
+  'จำนวนรูป',
+  'สถานะ',
+  'เวลาที่ตัดสต็อก',
+  'หลักฐาน',
+  'Drive File ID',
 ]
 
 const cors = {
@@ -219,6 +236,22 @@ interface DbAssetItem {
   } | null
 }
 
+interface DbBy {
+  id: string
+  ref_no: string
+  created_at: string
+  reason: string
+  note: string | null
+  status: string
+  dept_code: string | null
+  sub_dept: string | null
+  shift_start: string | null
+  shift_end: string | null
+  handled_at: string | null
+  profiles: { full_name: string; employee_code: string } | null
+  by_barcode_photos: { file_id: string }[] | null
+}
+
 interface DbIssue {
   id: number
   asset_code: string
@@ -297,8 +330,11 @@ async function ensureTab(
   return used
 }
 
+/** ตัวชี้แถว — เลขสำหรับของสิ้นเปลืองกับ Asset, uuid สำหรับบาร์โค้ด BY */
+type RowKey = number | string
+
 interface OutRow {
-  key: number
+  key: RowKey
   tab: string
   values: (string | number)[]
 }
@@ -311,7 +347,7 @@ async function pushRows(
   sheetId: string,
   token: string,
   rows: OutRow[],
-  placed: Map<number, { tab: string; row_no: number }>,
+  placed: Map<RowKey, { tab: string; row_no: number }>,
   header: string[],
 ): Promise<{ updated: number; appended: number; fresh: OutRow[]; rowNos: number[]; tabs: string[] }> {
   const end = colLetter(header.length)
@@ -446,7 +482,9 @@ Deno.serve(async (req) => {
         const known = await db<{ requisition_item_id: number; tab: string; row_no: number }[]>(
           `sheet_exports?requisition_item_id=in.(${rows.map((r) => r.key).join(',')})&select=requisition_item_id,tab,row_no`,
         )
-        const placed = new Map(known.map((k) => [k.requisition_item_id, k]))
+        const placed = new Map<RowKey, { tab: string; row_no: number }>(
+          known.map((k) => [k.requisition_item_id, k]),
+        )
         const out = await pushRows(sheetId, token, rows, placed, HEADER)
         updated += out.updated
         appended += out.appended
@@ -514,7 +552,9 @@ Deno.serve(async (req) => {
         const known = await db<{ asset_txn_item_id: number; tab: string; row_no: number }[]>(
           `asset_sheet_exports?asset_txn_item_id=in.(${rows.map((r) => r.key).join(',')})&select=asset_txn_item_id,tab,row_no`,
         )
-        const placed = new Map(known.map((k) => [k.asset_txn_item_id, k]))
+        const placed = new Map<RowKey, { tab: string; row_no: number }>(
+          known.map((k) => [k.asset_txn_item_id, k]),
+        )
         const out = await pushRows(sheetId, token, rows, placed, ASSET_HEADER)
         updated += out.updated
         appended += out.appended
@@ -569,7 +609,9 @@ Deno.serve(async (req) => {
         const known = await db<{ issue_id: number; tab: string; row_no: number }[]>(
           `asset_issue_exports?issue_id=in.(${irows.map((r) => r.key).join(',')})&select=issue_id,tab,row_no`,
         )
-        const placed = new Map(known.map((k) => [k.issue_id, k]))
+        const placed = new Map<RowKey, { tab: string; row_no: number }>(
+          known.map((k) => [k.issue_id, k]),
+        )
         const out = await pushRows(sheetId, token, irows, placed, ISSUE_HEADER)
         updated += out.updated
         appended += out.appended
@@ -581,6 +623,68 @@ Deno.serve(async (req) => {
             headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
             body: JSON.stringify(
               out.fresh.map((r, i) => ({ issue_id: r.key, tab: r.tab, row_no: out.rowNos[i] })),
+            ),
+          })
+        }
+      }
+    }
+
+    /* ---------------------------------------------------- บาร์โค้ด BY */
+    if (scope === 'all' || scope === 'by') {
+      const bqs = new URLSearchParams({
+        select:
+          'id,ref_no,created_at,reason,note,status,dept_code,sub_dept,shift_start,shift_end,handled_at,' +
+          'profiles!by_barcodes_user_id_fkey(full_name,employee_code),by_barcode_photos(file_id)',
+        order: 'created_at.asc',
+      })
+      if (payload.from) bqs.append('created_at', `gte.${payload.from}`)
+      if (payload.to) bqs.append('created_at', `lte.${payload.to}`)
+
+      const list = await db<DbBy[]>(`by_barcodes?${bqs}`)
+      const brows: OutRow[] = list.map((b) => {
+        const photos = (b.by_barcode_photos ?? []).map((p) => p.file_id)
+        const mainId = photos[0] ?? null
+        const linkText = photos.length > 1 ? `ดูรูป (${photos.length} ใบ)` : 'ดูรูป'
+        return {
+          key: b.id,
+          tab: `บาร์โค้ด BY ${monthOf(b.created_at)}`,
+          values: [
+            b.ref_no,
+            thaiDateTime(b.created_at),
+            b.profiles?.full_name ?? '—',
+            b.profiles?.employee_code ?? '',
+            [b.dept_code ?? '', b.sub_dept ?? ''].filter(Boolean).join(' · '),
+            shiftText(b.shift_start, b.shift_end),
+            b.reason,
+            b.note ?? '',
+            photos.length,
+            b.status === 'done' ? 'ตัดสต็อกแล้ว' : b.status === 'rejected' ? 'ไม่รับ' : 'รอตัดสต็อก',
+            b.handled_at ? thaiDateTime(b.handled_at) : '',
+            mainId ? driveLink(mainId, linkText) : '',
+            photos.join(' '),
+          ],
+        }
+      })
+
+      if (brows.length > 0) {
+        const ids = brows.map((r) => `"${r.key}"`).join(',')
+        const known = await db<{ by_id: string; tab: string; row_no: number }[]>(
+          `by_sheet_exports?by_id=in.(${ids})&select=by_id,tab,row_no`,
+        )
+        const placed = new Map<RowKey, { tab: string; row_no: number }>(
+          known.map((k) => [k.by_id, k]),
+        )
+        const out = await pushRows(sheetId, token, brows, placed, BY_HEADER)
+        updated += out.updated
+        appended += out.appended
+        out.tabs.forEach((t) => tabs.add(t))
+
+        if (out.fresh.length > 0) {
+          await db('by_sheet_exports?on_conflict=by_id', {
+            method: 'POST',
+            headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+            body: JSON.stringify(
+              out.fresh.map((r, i) => ({ by_id: r.key, tab: r.tab, row_no: out.rowNos[i] })),
             ),
           })
         }
