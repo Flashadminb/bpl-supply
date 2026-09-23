@@ -12,7 +12,7 @@
 //       { action: 'reset',  user_id, password }
 // =====================================================================
 
-const VERSION = 'subdept-v4'
+const VERSION = 'assets-v5'
 const MIN_PASSWORD = 8
 
 const cors = {
@@ -202,6 +202,8 @@ Deno.serve(async (req) => {
             is_active: true,
             // เวลาเข้า-เลิกกะ ใช้คำนวณกำหนดคืนอุปกรณ์และการแจ้งเตือน
             sub_dept: sub_dept?.trim() || null,
+            // ปิดไว้ = เห็นแต่ของสิ้นเปลือง ไม่เห็นเครื่อง Asset เลย
+            can_assets: (body as { can_assets?: boolean }).can_assets !== false,
             shift_start: shift_start || null,
             shift_end: shift_end || null,
             extra_depts: extraDepts,

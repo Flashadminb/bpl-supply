@@ -39,6 +39,7 @@ interface Draft {
   full_name: string
   dept_code: string
   sub_dept: string
+  can_assets: boolean
   role: UserRole
   password: string
   shift_start: string
@@ -93,6 +94,7 @@ export default function Users() {
       full_name: '',
       dept_code: 'ALL',
       sub_dept: '',
+      can_assets: true,
       role: 'staff',
       password: suggestPassword(),
       shift_start: '',
@@ -111,6 +113,7 @@ export default function Users() {
         fullName: draft.full_name,
         deptCode: draft.dept_code,
         subDept: draft.sub_dept || null,
+        canAssets: draft.can_assets,
         role: draft.role,
         password: draft.password,
         shiftStart: draft.shift_start || null,
@@ -407,6 +410,24 @@ export default function Users() {
                 <br />
                 แอดมินกับเจ้าของระบบเว้นว่างไว้ได้
               </p>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="flex items-start gap-2 rounded-card border border-line p-3">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-5 w-5 shrink-0"
+                  checked={draft.can_assets}
+                  onChange={(e) => setDraft({ ...draft, can_assets: e.target.checked })}
+                />
+                <span>
+                  <span className="font-display">เบิกอุปกรณ์ Asset ได้</span>
+                  <span className="block text-sm text-ink-400">
+                    ไอดาต้า · Power Pallet · วิทยุ · เลเซอร์ลบ
+                    <br />
+                    ถ้าเอาเครื่องหมายออก คนนี้จะเบิกได้แต่ของสิ้นเปลือง และมองไม่เห็นเครื่องเลย
+                  </span>
+                </span>
+              </label>
             </div>
             <div className="sm:col-span-2">
               <label className="label">รหัสผ่านตั้งต้น (อย่างน้อย {MIN_PASSWORD} ตัว)</label>

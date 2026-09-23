@@ -21,6 +21,7 @@ export interface Profile {
   must_change_password: boolean
   dept_code: string | null
   sub_dept: string | null
+  can_assets: boolean
   extra_depts: string[]
   shift_start: string | null
   shift_end: string | null

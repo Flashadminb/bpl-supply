@@ -1,6 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
-import { listEvidence, listShiftsInUse, setEvidenceArchived, type EvidenceRow } from '../../lib/api'
+import {
+  listEvidence,
+  listEvidenceItems,
+  listShiftsInUse,
+  setEvidenceArchived,
+  type EvidenceRow,
+} from '../../lib/api'
 import { readableError } from '../../lib/supabase'
 import { EmptyState, ErrorBox, Loading, Modal, Spinner } from '../../components/ui'
 import { EvidenceImg, ThumbStrip } from '../../components/EvidenceThumbs'
@@ -25,6 +31,7 @@ export default function Evidence() {
   const [kind, setKind] = useState<'all' | 'requisition' | 'return'>('all')
   // เก็บเป็น "HH:MM|HH:MM" เพื่อให้ค่าใน <select> เป็นข้อความเดียว
   const [shiftKey, setShiftKey] = useState('')
+  const [itemId, setItemId] = useState('')
   const [from, setFrom] = useState(isoDay(new Date(Date.now() - 30 * 864e5)))
   const [to, setTo] = useState(isoDay(new Date()))
   const [page, setPage] = useState(0)
@@ -48,6 +55,7 @@ export default function Evidence() {
   )
 
   const shifts = useAsync(() => listShiftsInUse(), [])
+  const evItems = useAsync(() => listEvidenceItems(), [])
 
   const feed = useAsync(
     () =>
@@ -55,13 +63,14 @@ export default function Evidence() {
         returnableOnly: scope === 'borrow',
         includeArchived: showArchived,
         kind,
+        itemId: itemId ? Number(itemId) : null,
         shift: shiftKey
           ? { start: shiftKey.split('|')[0], end: shiftKey.split('|')[1] }
           : null,
         fromISO: range.fromISO,
         toISO: range.toISO,
       }),
-    [scope, showArchived, kind, shiftKey, range.fromISO, range.toISO],
+    [scope, showArchived, kind, shiftKey, itemId, range.fromISO, range.toISO],
   )
 
   const all = useMemo(
@@ -167,6 +176,28 @@ export default function Evidence() {
             <option value="all">เบิกและคืน</option>
             <option value="requisition">เฉพาะเบิก</option>
             <option value="return">เฉพาะคืน</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="label mb-1" htmlFor="ev-item">
+            อุปกรณ์ / วัสดุ
+          </label>
+          <select
+            id="ev-item"
+            className="input h-tap w-[210px]"
+            value={itemId}
+            onChange={(e) => {
+              setItemId(e.target.value)
+              setPage(0)
+            }}
+          >
+            <option value="">ทุกรายการ</option>
+            {(evItems.data ?? []).map((it) => (
+              <option key={it.item_id} value={it.item_id}>
+                {it.name} ({it.photo_rows})
+              </option>
+            ))}
           </select>
         </div>
 

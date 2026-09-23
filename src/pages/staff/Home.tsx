@@ -7,6 +7,8 @@ import { StaffPage } from '../../components/Shell'
 import { EmptyState, ErrorBox, Loading } from '../../components/ui'
 import { STATUS_TH, fmtDateTime, statusClass } from '../../lib/format'
 import { MANAGER_ROLES, ROLE_TH } from '../../lib/roles'
+import { usePendingApprovals } from '../../lib/usePendingApprovals'
+import { relativeAge } from '../../lib/format'
 
 
 
@@ -18,6 +20,7 @@ export default function Home() {
   const recent = useAsync(() => listMyRequisitions(3), [])
   const borrow = useAsync(() => listOpenBorrowings(true, profile?.id), [profile?.id])
   const openCount = (borrow.data ?? []).reduce((n, b) => n + b.qty_open, 0)
+  const approvals = usePendingApprovals()
 
   return (
     <div className="min-h-dvh bg-canvas">
@@ -44,6 +47,29 @@ export default function Home() {
       </header>
 
       <StaffPage className="-mt-3">
+        {/* คำขอรออนุมัติ — ขึ้นเฉพาะแอดมินกับเจ้าของระบบ อนุมัติจากมือถือได้เลย */}
+        {approvals.count > 0 && (
+          <Link
+            to="/admin/approvals"
+            className="mb-3 flex items-center gap-3 rounded-card border border-warn/30 bg-warn-bg p-3"
+          >
+            <span aria-hidden className="text-lg">
+              🔔
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-display text-base text-warn-txt">
+                รออนุมัติ {approvals.count} คำขอ
+              </p>
+              <p className="text-sm text-warn-txt">
+                {approvals.oldestAt
+                  ? `เก่าสุดรอมาแล้ว ${relativeAge(approvals.oldestAt)}`
+                  : 'กดเพื่อตรวจและอนุมัติ'}
+              </p>
+            </div>
+            <span className="btn-dark shrink-0 px-3">ตรวจเลย</span>
+          </Link>
+        )}
+
         <button
           type="button"
           className="btn-dark w-full py-5 text-md"

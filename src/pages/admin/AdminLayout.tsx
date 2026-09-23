@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
-import { useAsync } from '../../lib/useAsync'
-import { listPendingRequisitions } from '../../lib/api'
+import { usePendingApprovals } from '../../lib/usePendingApprovals'
 
 // adminOnly = เห็นเฉพาะ "ผู้ดูแลระบบ" (role admin) ส่วน "แอดมิน" (supervisor) เห็นที่เหลือทั้งหมด
 const LINKS = [
@@ -20,8 +19,8 @@ const LINKS = [
 export default function AdminLayout() {
   const { profile, signOut, can } = useAuth()
   const [menu, setMenu] = useState(false)
-  const pending = useAsync(() => listPendingRequisitions(), [])
-  const badge = (pending.data ?? []).length
+  const pending = usePendingApprovals()
+  const badge = pending.count
 
   const nav = (
     <nav className="flex flex-col gap-1">

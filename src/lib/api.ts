@@ -260,6 +260,7 @@ export async function updateProfile(
       | 'hub_code'
       | 'dept_code'
       | 'sub_dept'
+      | 'can_assets'
       | 'extra_depts'
       | 'shift_start'
       | 'shift_end'
@@ -287,6 +288,7 @@ export async function createEmployee(args: {
   role: UserRole
   password: string
   subDept?: string | null
+  canAssets?: boolean
   shiftStart?: string | null
   shiftEnd?: string | null
   extraDepts?: string[]
@@ -302,6 +304,7 @@ export async function createEmployee(args: {
       role: args.role,
       password: args.password,
       sub_dept: args.subDept ?? null,
+      can_assets: args.canAssets ?? true,
       shift_start: args.shiftStart ?? null,
       shift_end: args.shiftEnd ?? null,
       extra_depts: args.extraDepts ?? [],
@@ -424,6 +427,7 @@ export interface EvidenceRow {
   shift_end: string | null
   has_returnable: boolean
   summary: string
+  item_ids: number[]
   /** รูปทุกใบของคำขอนี้ ใบแรกคือรูปหลัก */
   file_ids: string[]
 }
@@ -453,6 +457,8 @@ export async function listEvidence(opts: {
   toISO?: string
   /** กรองรายกะ — ส่งเวลาเข้ากะกับเลิกกะเป็นคู่ */
   shift?: { start: string; end: string } | null
+  /** ดูเฉพาะหลักฐานที่มีวัสดุชิ้นนี้อยู่ */
+  itemId?: number | null
   limit?: number
 }): Promise<EvidenceRow[]> {
   let q = supabase.from('evidence_feed').select('*').order('created_at', { ascending: false })
@@ -462,6 +468,7 @@ export async function listEvidence(opts: {
   if (opts.fromISO) q = q.gte('created_at', opts.fromISO)
   if (opts.toISO) q = q.lte('created_at', opts.toISO)
   if (opts.shift) q = q.eq('shift_start', opts.shift.start).eq('shift_end', opts.shift.end)
+  if (opts.itemId) q = q.contains('item_ids', [opts.itemId])
   return unwrap(await q.limit(opts.limit ?? 500)) as unknown as EvidenceRow[]
 }
 
@@ -694,4 +701,16 @@ export async function setAssetDepts(code: string, dept: string | null, shares: s
     p_shares: shares,
   })
   if (error) throw new Error(readableError(error))
+}
+
+/** วัสดุที่มีหลักฐานอยู่จริง ใช้ทำดรอปดาวน์เลือกดูเฉพาะของชิ้นนั้น */
+export interface EvidenceItemOption {
+  item_id: number
+  sku: string
+  name: string
+  photo_rows: number
+}
+
+export async function listEvidenceItems(): Promise<EvidenceItemOption[]> {
+  return unwrap(await supabase.from('evidence_items').select('*')) as unknown as EvidenceItemOption[]
 }

@@ -7,7 +7,7 @@ import type { Department, UserRole } from '../lib/types'
  * นำเข้าพนักงานทีละหลายคนจากข้อความที่วางมา
  *
  * รูปแบบ 1 คนต่อ 1 บรรทัด คั่นด้วยจุลภาคหรือแท็บ (วางจาก Google Sheet ได้ตรง ๆ)
- *   รหัสพนักงาน, ชื่อ-สกุล, แผนก, เวลาเข้ากะ, เวลาเลิกกะ, บทบาท, แผนกย่อย
+ *   รหัสพนักงาน, ชื่อ-สกุล, แผนก, เวลาเข้ากะ, เวลาเลิกกะ, บทบาท, แผนกย่อย, Asset
  *
  * รหัสผ่านตั้งต้นคือรหัสพนักงาน ระบบบังคับให้เจ้าตัวเปลี่ยนเองตอนล็อกอินครั้งแรกอยู่แล้ว
  */
@@ -49,6 +49,7 @@ interface Row {
   end: string | null
   role: UserRole
   subDept: string
+  canAssets: boolean
   problem: string | null
 }
 
@@ -74,6 +75,8 @@ function parse(text: string, depts: Department[]): Row[] {
       end,
       role: normalizeRole(c[5] ?? ''),
       subDept: (c[6] ?? '').trim(),
+      // คอลัมน์ที่ 8 เว้นว่าง = เบิก Asset ได้ · ใส่ "ไม่" หรือ no = เห็นแต่ของสิ้นเปลือง
+      canAssets: !/^(ไม่|no|false|0|ปิด)$/i.test((c[7] ?? '').trim()),
       problem: !c[1]
         ? 'ไม่มีชื่อ'
         : !dept
@@ -130,6 +133,7 @@ export function StaffImport({
           role: r.role,
           password: initialPassword(r.code),
           subDept: r.subDept || null,
+          canAssets: r.canAssets,
           shiftStart: r.start,
           shiftEnd: r.end,
         })
@@ -150,7 +154,7 @@ export function StaffImport({
         วางข้อมูลจาก Google Sheet ได้ตรง ๆ — 1 คนต่อ 1 บรรทัด เรียงตามนี้
       </p>
       <p className="mt-1 rounded-btn bg-surface-2 px-3 py-2 font-mono text-xs text-ink-700">
-        รหัสพนักงาน, ชื่อ-สกุล, แผนก, เวลาเข้ากะ, เวลาเลิกกะ, บทบาท, แผนกย่อย
+        รหัสพนักงาน, ชื่อ-สกุล, แผนก, เวลาเข้ากะ, เวลาเลิกกะ, บทบาท, แผนกย่อย, Asset
       </p>
 
       <textarea
@@ -197,7 +201,10 @@ export function StaffImport({
                       <td className="p-2 font-mono">
                         {r.start && r.end ? `${r.start}–${r.end}` : <span className="text-ink-300">—</span>}
                       </td>
-                      <td className="p-2">{r.role === 'supervisor' ? 'แอดมิน' : 'หน้างาน'}</td>
+                      <td className="p-2">
+                        {r.role === 'supervisor' ? 'แอดมิน' : 'หน้างาน'}
+                        {!r.canAssets && <span className="block text-ink-400">สิ้นเปลืองเท่านั้น</span>}
+                      </td>
                       <td className="p-2">
                         {r.problem ? (
                           <span className="text-danger-txt">{r.problem}</span>
