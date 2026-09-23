@@ -14,7 +14,7 @@
 // secrets: GOOGLE_SA_EMAIL, GOOGLE_SA_PRIVATE_KEY, GSHEET_ID
 // =====================================================================
 
-const VERSION = 'by-v5'
+const VERSION = 'by-v6'
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
 
 const HEADER = ['เลขที่คำขอ', 'วันเวลา', 'ผู้เบิก (ฮับ)', 'วัสดุ', 'จำนวน', 'หลักฐาน', 'Drive File ID']
@@ -510,7 +510,10 @@ Deno.serve(async (req) => {
     if (scope === 'all' || scope === 'asset') {
       const select =
         'id,asset_code,out_item_id,' +
-        'assets(type_code,asset_types(name)),' +
+        // ต้องระบุชื่อ FK ให้ชัด เพราะ assets กับ asset_txn_items ผูกกันสองทาง
+        // (asset_txn_items.asset_code -> assets.code และ assets.held_item_id -> asset_txn_items.id)
+        // เขียนแค่ assets(...) PostgREST จะไม่รู้ว่าหมายถึงทางไหน แล้วตอบ PGRST201
+        'assets!asset_txn_items_asset_code_fkey(type_code,asset_types(name)),' +
         'asset_txns!inner(ref_no,kind,created_at,dept_code,shift_start,shift_end,due_at,' +
         'profiles(full_name,employee_code,sub_dept),asset_txn_photos(file_id))'
 

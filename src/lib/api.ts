@@ -345,7 +345,18 @@ export type ItemDraft = {
 }
 
 export async function upsertItem(draft: ItemDraft) {
-  const { error } = await supabase.from('items').upsert(draft, { onConflict: 'sku' })
+  // แก้ของเดิมต้อง update ตาม id ตรง ๆ
+  // เดิมใช้ upsert โดยชน sku ซึ่งพังทันทีที่แก้ sku ของรายการเดิม —
+  // sku ใหม่ไม่ชนกับใคร มันเลยพยายาม insert แถวใหม่ทั้งที่มี id เดิมติดไปด้วย
+  if (draft.id) {
+    const { id, ...patch } = draft
+    const { error } = await supabase.from('items').update(patch).eq('id', id)
+    if (error) throw new Error(readableError(error))
+    return
+  }
+
+  const { id: _drop, ...fresh } = draft
+  const { error } = await supabase.from('items').insert(fresh)
   if (error) throw new Error(readableError(error))
 }
 
