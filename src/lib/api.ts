@@ -582,7 +582,9 @@ export async function listAssetPhotoSteps(typeCode?: string): Promise<AssetPhoto
 export async function listAssets(typeCode?: string): Promise<Asset[]> {
   let q = supabase
     .from('assets')
-    .select('code,type_code,dept_code,is_enabled,note,held_item_id,created_at,asset_types(code,name)')
+    .select(
+      'code,type_code,dept_code,share_depts,is_enabled,note,held_item_id,created_at,asset_types(code,name)',
+    )
     .order('code')
   if (typeCode) q = q.eq('type_code', typeCode)
   return unwrap(await q) as unknown as Asset[]
@@ -682,4 +684,14 @@ export interface ShiftOption {
 
 export async function listShiftsInUse(): Promise<ShiftOption[]> {
   return unwrap(await supabase.from('shifts_in_use').select('*')) as unknown as ShiftOption[]
+}
+
+/** ย้ายเครื่องไปแผนกอื่น และตั้งว่าแผนกไหนใช้ร่วมได้บ้าง */
+export async function setAssetDepts(code: string, dept: string | null, shares: string[]) {
+  const { error } = await supabase.rpc('set_asset_depts', {
+    p_code: code,
+    p_dept: dept,
+    p_shares: shares,
+  })
+  if (error) throw new Error(readableError(error))
 }

@@ -9,11 +9,12 @@ import {
   listDepartments,
   resolveAssetIssue,
   resolveAssetIssuesFor,
+  setAssetDepts,
   setAssetEnabled,
 } from '../../lib/api'
 import { EmptyState, ErrorBox, Loading, Sheet, Spinner } from '../../components/ui'
 import { fmtDateTime, relativeAge } from '../../lib/format'
-import type { Asset } from '../../lib/types'
+import type { Asset, Department } from '../../lib/types'
 
 type Filter = 'all' | 'free' | 'out' | 'issue' | 'off'
 
@@ -55,7 +56,7 @@ export default function AssetRegistry() {
     const s = search.trim().toLowerCase()
     return (assets.data ?? []).filter((a) => {
       if (type && a.type_code !== type) return false
-      if (dept && (a.dept_code ?? 'ALL') !== dept) return false
+      if (dept && (a.dept_code ?? 'ALL') !== dept && !a.share_depts?.includes(dept)) return false
       if (filter === 'free' && (holdBy.has(a.code) || !a.is_enabled)) return false
       if (filter === 'out' && !holdBy.has(a.code)) return false
       if (filter === 'issue' && !issueBy.has(a.code)) return false
@@ -196,6 +197,11 @@ export default function AssetRegistry() {
                     <td className="p-2 text-ink-500">{a.asset_types?.name ?? a.type_code}</td>
                     <td className="p-2 text-ink-500">
                       {deptName.get(a.dept_code ?? 'ALL') ?? a.dept_code ?? 'ส่วนกลาง'}
+                      {a.share_depts?.length > 0 && (
+                        <p className="text-xs text-ink-400">
+                          + {a.share_depts.map((c) => deptName.get(c) ?? c).join(', ')}
+                        </p>
+                      )}
                     </td>
                     <td className="p-2">
                       {!a.is_enabled ? (
@@ -247,6 +253,7 @@ export default function AssetRegistry() {
       {open && (
         <AssetSheet
           asset={open}
+          departments={depts.data ?? []}
           holder={holdBy.get(open.code) ?? null}
           onClose={() => setOpen(null)}
           onChanged={reloadAll}
@@ -260,11 +267,13 @@ export default function AssetRegistry() {
 
 function AssetSheet({
   asset,
+  departments,
   holder,
   onClose,
   onChanged,
 }: {
   asset: Asset
+  departments: Department[]
   holder: { holder_name: string; holder_code: string; taken_at: string; ref_no: string } | null
   onClose: () => void
   onChanged: () => void
@@ -273,6 +282,11 @@ function AssetSheet({
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [enabled, setEnabled] = useState(asset.is_enabled)
+  const [home, setHome] = useState(asset.dept_code ?? 'ALL')
+  const [shares, setShares] = useState<string[]>(asset.share_depts ?? [])
+  const deptsDirty =
+    home !== (asset.dept_code ?? 'ALL') ||
+    shares.slice().sort().join(',') !== (asset.share_depts ?? []).slice().sort().join(',')
 
   const rows = log.data ?? []
   const openRows = rows.filter((r) => !r.resolved_at)
@@ -300,16 +314,90 @@ function AssetSheet({
           <p>
             <span className="text-ink-500">ประเภท</span> {asset.asset_types?.name ?? asset.type_code}
           </p>
-          <p className="mt-1">
-            <span className="text-ink-500">แผนกประจำ</span>{' '}
-            {asset.dept_code && asset.dept_code !== 'ALL' ? asset.dept_code : 'ส่วนกลาง — ทุกแผนกเห็น'}
-          </p>
           {holder && (
             <p className="mt-1 text-warn-txt">
               อยู่กับ <b>{holder.holder_name}</b>{' '}
               <span className="font-mono text-xs">{holder.holder_code}</span> ตั้งแต่{' '}
               {fmtDateTime(holder.taken_at)} ({relativeAge(holder.taken_at)})
             </p>
+          )}
+        </div>
+
+        <div className="rounded-card border border-line p-3">
+          <p className="font-display">แผนกที่มีสิทธิ์ใช้</p>
+          <p className="mt-1 text-sm text-ink-500">
+            ย้ายเครื่องได้ทุกเมื่อ · มีผลทันที · ประวัติเดิมไม่กระทบ
+          </p>
+
+          <label className="label mt-3" htmlFor="asset-home">
+            แผนกเจ้าของเครื่อง
+          </label>
+          <select
+            id="asset-home"
+            className="input"
+            value={home}
+            onChange={(e) => setHome(e.target.value)}
+          >
+            {departments.map((d) => (
+              <option key={d.code} value={d.code}>
+                {d.code === 'ALL' ? 'ทุกแผนก — ส่วนกลาง ทุกคนเห็น' : d.name}
+              </option>
+            ))}
+          </select>
+
+          {home !== 'ALL' && (
+            <>
+              <p className="label mt-3">แผนกอื่นที่ใช้ร่วมได้</p>
+              <div className="flex flex-wrap gap-1">
+                {departments
+                  .filter((d) => d.code !== 'ALL' && d.code !== home)
+                  .map((d) => {
+                    const on = shares.includes(d.code)
+                    return (
+                      <button
+                        key={d.code}
+                        type="button"
+                        className={`chip ${on ? 'chip-on' : ''}`}
+                        onClick={() =>
+                          setShares((v) => (on ? v.filter((c) => c !== d.code) : [...v, d.code]))
+                        }
+                      >
+                        {d.name}
+                      </button>
+                    )
+                  })}
+              </div>
+              <p className="mt-1 text-xs text-ink-400">ไม่ติ๊กเลยก็ได้ — มีแค่แผนกเจ้าของที่ใช้ได้</p>
+            </>
+          )}
+
+          {deptsDirty && (
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                className="btn-ghost h-tap px-3 text-sm"
+                disabled={busy}
+                onClick={() => {
+                  setHome(asset.dept_code ?? 'ALL')
+                  setShares(asset.share_depts ?? [])
+                }}
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                className="btn-primary h-tap px-4"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await setAssetDepts(asset.code, home, home === 'ALL' ? [] : shares)
+                    if (home === 'ALL') setShares([])
+                  })
+                }
+              >
+                {busy ? <Spinner /> : null} บันทึกแผนก
+              </button>
+            </div>
           )}
         </div>
 

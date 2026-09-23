@@ -197,6 +197,7 @@ export interface Asset {
   code: string
   type_code: string
   dept_code: string | null
+  share_depts: string[]
   is_enabled: boolean
   note: string | null
   held_item_id: number | null
@@ -211,12 +212,14 @@ export interface AssetHolding {
   type_code: string
   type_name: string
   asset_dept: string | null
+  asset_share_depts: string[]
   txn_id: string
   ref_no: string
   user_id: string
   holder_name: string
   holder_code: string
   holder_dept: string | null
+  holder_sub_dept: string | null
   shift_start: string | null
   shift_end: string | null
   due_at: string | null
