@@ -74,7 +74,8 @@ export default function QrLabels() {
   const assets = useAsync(() => listAssets(), [])
   const types = useAsync(() => listAssetTypes(), [])
 
-  const [mode, setMode] = useState<'items' | 'assets'>('items')
+  const [mode, setMode] = useState<'items' | 'assets' | 'set'>('items')
+  const [setName, setSetName] = useState('')
   const [size, setSize] = useState<Size>('md')
   const [cat, setCat] = useState<number | null>(null)
   const [typeCode, setTypeCode] = useState('')
@@ -84,7 +85,7 @@ export default function QrLabels() {
   const pool = useMemo<Label[]>(() => {
     const q = search.trim().toLowerCase()
 
-    if (mode === 'assets') {
+    if (mode === 'assets' || mode === 'set') {
       // QR ของเครื่องเก็บรหัสเครื่องตรง ๆ ตรงกับที่หน้าเบิกใช้ค้นหา
       return (assets.data ?? [])
         .filter((a) => {
@@ -120,6 +121,24 @@ export default function QrLabels() {
   }, [mode, items.data, assets.data, cat, typeCode, search])
 
   const chosen = useMemo(() => pool.filter((l) => picked.has(l.key)), [pool, picked])
+
+  /**
+   * ป้ายชุดรวม — หนึ่งดวงเก็บรหัสเครื่องทั้งชุด
+   * สแกนทีเดียวติ๊กให้ครบ ไม่ต้องไล่สแกนทีละเครื่อง
+   * รูปแบบ BPLSET:ชื่อชุด|รหัส1|รหัส2|… หน้าเบิกอ่านรูปแบบนี้เป็น
+   */
+  const setLabel = useMemo<Label | null>(() => {
+    if (mode !== 'set' || chosen.length === 0) return null
+    const name = setName.trim() || `ชุด ${chosen.length} เครื่อง`
+    return {
+      key: 'set',
+      payload: [`BPLSET:${name}`, ...chosen.map((l) => l.code)].join('|'),
+      title: name,
+      code: `${chosen.length} เครื่อง`,
+      tag: chosen[0]?.title ?? null,
+      note: 'ชุดรวม',
+    }
+  }, [mode, chosen, setName])
 
   function toggle(key: string) {
     setPicked((s) => {
@@ -160,10 +179,10 @@ export default function QrLabels() {
             <button
               type="button"
               className="btn-primary"
-              disabled={chosen.length === 0}
+              disabled={mode === 'set' ? !setLabel : chosen.length === 0}
               onClick={() => window.print()}
             >
-              พิมพ์ {chosen.length} ดวง
+              พิมพ์ {mode === 'set' ? (setLabel ? 1 : 0) : chosen.length} ดวง
             </button>
           </div>
         </div>
@@ -196,6 +215,16 @@ export default function QrLabels() {
             }}
           >
             เครื่อง Asset
+          </button>
+          <button
+            type="button"
+            className={`chip ${mode === 'set' ? 'chip-on' : ''}`}
+            onClick={() => {
+              setMode('set')
+              setPicked(new Set())
+            }}
+          >
+            QR ชุดรวม
           </button>
           <span className="mx-1 h-6 w-px bg-line-2" />
           <input
@@ -247,6 +276,28 @@ export default function QrLabels() {
           ))}
         </div>
 
+        {mode === 'set' && (
+          <div className="mb-3 rounded-card border border-brand-300 bg-brand-50 p-3">
+            <p className="font-display">QR ชุดรวม</p>
+            <p className="mt-1 text-sm text-warn-txt">
+              ติ๊กเครื่องที่หยิบไปด้วยกันประจำ แล้วพิมพ์ป้ายเดียว หน้างานสแกนทีเดียวติ๊กครบทั้งชุด
+              ไม่ต้องไล่ทีละเครื่อง
+              <br />
+              ถ้าเครื่องในชุดไม่ว่าง ระบบจะติ๊กเฉพาะตัวที่ว่าง แล้วบอกว่าตัวไหนติดอยู่กับใคร
+            </p>
+            <label className="label mt-3" htmlFor="set-name">
+              ชื่อชุด
+            </label>
+            <input
+              id="set-name"
+              className="input max-w-[320px]"
+              placeholder="เช่น ชุดประจำ BULKY กะเช้า"
+              value={setName}
+              onChange={(e) => setSetName(e.target.value)}
+            />
+          </div>
+        )}
+
         {(items.loading || assets.loading) && <Loading />}
         {items.error && <ErrorBox message={items.error} onRetry={items.reload} />}
         {assets.error && <ErrorBox message={assets.error} onRetry={assets.reload} />}
@@ -291,9 +342,9 @@ export default function QrLabels() {
       </div>
 
       <div className={`print-sheet grid gap-2 ${SIZES[size].cols}`}>
-        {chosen.map((l) => (
-          <QrCell key={l.key} label={l} size={size} />
-        ))}
+        {mode === 'set'
+          ? setLabel && <QrCell key="set" label={setLabel} size={size} />
+          : chosen.map((l) => <QrCell key={l.key} label={l} size={size} />)}
       </div>
     </div>
   )

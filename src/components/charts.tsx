@@ -282,3 +282,125 @@ export function DataTable({
     </div>
   )
 }
+
+/**
+ * โดนัท — ใช้ตอนอยากเห็นสัดส่วนของทั้งก้อน ไม่ใช่การจัดอันดับ
+ * ติดป้ายชื่อกับตัวเลขไว้ข้าง ๆ เสมอ ไม่ให้ต้องเดาจากสี
+ */
+const DONUT = ['#2a78d6', '#eb6834', '#1baf7a', '#8B5CF6', '#B4820A', '#0EA5E9', '#B42318', '#6B6558']
+
+export function Donut({
+  data,
+  unit = '',
+  size = 168,
+}: {
+  data: Datum[]
+  unit?: string
+  size?: number
+}) {
+  const rows = data.filter((d) => d.value > 0)
+  const total = rows.reduce((n, d) => n + d.value, 0)
+  if (total === 0) {
+    return <p className="py-6 text-center text-sm text-ink-400">ยังไม่มีข้อมูล</p>
+  }
+
+  const r = size / 2 - 12
+  const c = 2 * Math.PI * r
+  let acc = 0
+
+  return (
+    <div className="flex flex-wrap items-center gap-4">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img">
+        <g transform={`translate(${size / 2},${size / 2}) rotate(-90)`}>
+          {rows.map((d, i) => {
+            const frac = d.value / total
+            const dash = `${c * frac} ${c * (1 - frac)}`
+            const el = (
+              <circle
+                key={d.label}
+                r={r}
+                fill="none"
+                stroke={d.color ?? DONUT[i % DONUT.length]}
+                strokeWidth={size / 7}
+                strokeDasharray={dash}
+                strokeDashoffset={-c * acc}
+              />
+            )
+            acc += frac
+            return el
+          })}
+        </g>
+        <text
+          x={size / 2}
+          y={size / 2 - 2}
+          textAnchor="middle"
+          fontSize="20"
+          fontWeight="600"
+          fill={TEXT}
+        >
+          {total.toLocaleString('th-TH')}
+        </text>
+        <text x={size / 2} y={size / 2 + 16} textAnchor="middle" fontSize="11" fill={TEXT_MUTED}>
+          {unit || 'รวม'}
+        </text>
+      </svg>
+
+      <ul className="min-w-[150px] flex-1 space-y-1 text-sm">
+        {rows.map((d, i) => (
+          <li key={d.label} className="flex items-center gap-2">
+            <span
+              aria-hidden
+              className="h-3 w-3 shrink-0 rounded-[3px]"
+              style={{ background: d.color ?? DONUT[i % DONUT.length] }}
+            />
+            <span className="min-w-0 flex-1 truncate">{d.label}</span>
+            <b className="font-display">{d.value.toLocaleString('th-TH')}</b>
+            <span className="w-10 text-right text-xs text-ink-400">
+              {Math.round((d.value / total) * 100)}%
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/** การ์ดตัวเลขใหญ่แบบมีไอคอนนำ ใช้กับตัวชี้วัดหลักบนสุดของหน้ารายงาน */
+export function Kpi({
+  icon,
+  label,
+  value,
+  sub,
+  tone = 'plain',
+}: {
+  icon: string
+  label: string
+  value: string | number
+  sub?: ReactNode
+  tone?: 'plain' | 'ok' | 'warn' | 'danger'
+}) {
+  const chip =
+    tone === 'warn'
+      ? 'bg-warn-bg text-warn-txt'
+      : tone === 'danger'
+        ? 'bg-danger-bg text-danger-txt'
+        : tone === 'ok'
+          ? 'bg-success-bg text-success-txt'
+          : 'bg-brand-50 text-warn-txt'
+
+  return (
+    <div className="flex items-center gap-3 rounded-card border border-line bg-surface p-4">
+      <span
+        aria-hidden
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-card text-lg ${chip}`}
+      >
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm text-ink-500">{label}</span>
+        <span className="block font-display text-xl leading-tight">{value}</span>
+        {sub && <span className="block truncate text-xs text-ink-400">{sub}</span>}
+      </span>
+    </div>
+  )
+}

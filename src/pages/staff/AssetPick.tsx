@@ -188,6 +188,42 @@ export default function AssetPick() {
   /** สแกนแล้วติ๊กให้เลย แต่ยังไม่ส่ง — ต้องเห็นกับตาก่อนว่าติ๊กถูกตัว */
   function onScan(raw: string): { ok: boolean; message: string } {
     const code = raw.trim()
+
+    // ป้ายชุดรวม — หนึ่งโค้ดเก็บหลายเครื่อง สแกนทีเดียวติ๊กให้ครบ
+    // รูปแบบ BPLSET:ชื่อชุด|รหัส1|รหัส2|…
+    if (code.toUpperCase().startsWith('BPLSET:')) {
+      const parts = code.split('|')
+      const setName = parts[0].slice(7).trim()
+      const wanted = parts.slice(1).map((c) => c.trim()).filter(Boolean)
+      if (wanted.length === 0) return { ok: false, message: 'ป้ายชุดนี้ไม่มีรหัสเครื่อง' }
+
+      const added: string[] = []
+      const busy: string[] = []
+      const missing: string[] = []
+
+      for (const want of wanted) {
+        const a = (assets.data ?? []).find((x) => x.code.toLowerCase() === want.toLowerCase())
+        if (!a || !a.is_enabled) {
+          missing.push(want)
+          continue
+        }
+        if (holdBy.has(a.code)) {
+          busy.push(a.code)
+          continue
+        }
+        added.push(a.code)
+      }
+
+      if (added.length > 0) {
+        setPicked((v) => [...new Set([...v, ...added])])
+      }
+
+      const bits = [`${setName || 'ชุดรวม'}: ติ๊ก ${added.length} เครื่อง`]
+      if (busy.length > 0) bits.push(`ไม่ว่าง ${busy.join(', ')}`)
+      if (missing.length > 0) bits.push(`ไม่พบ/ปิดซ่อม ${missing.length} ตัว`)
+      return { ok: added.length > 0, message: bits.join(' · ') }
+    }
+
     const hit = (assets.data ?? []).find((a) => a.code.toLowerCase() === code.toLowerCase())
     if (!hit) return { ok: false, message: `ไม่พบ ${code} ในกลุ่มนี้` }
     if (!hit.is_enabled) return { ok: false, message: `${hit.code} ถูกปิดไม่ให้เบิก` }
