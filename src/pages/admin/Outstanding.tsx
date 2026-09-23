@@ -181,7 +181,7 @@ export default function Outstanding() {
       )}
 
       <p className="mt-4 rounded-card bg-brand-50 px-3 py-2 text-sm text-warn-txt">
-        รายการจะหายจากหน้านี้เองเมื่อพนักงานกดคืนครบจำนวน
+        หน้านี้เห็นของค้างของทุกคนในฮับ · รายการจะหายเองเมื่อคืนครบจำนวน
         <br />
         แถวสีแดงคือค้างเกิน {LATE_HOURS} ชั่วโมง (ประมาณ 2 กะ) — ควรตามถามเจ้าตัว
       </p>

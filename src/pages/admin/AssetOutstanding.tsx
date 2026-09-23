@@ -1,7 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
-import { listAssetHoldings, listAssetTypes } from '../../lib/api'
-import { EmptyState, ErrorBox, Loading } from '../../components/ui'
+import { assetReturn, listAssetHoldings, listAssetPhotoSteps, listAssetTypes } from '../../lib/api'
+import { readableError } from '../../lib/supabase'
+import { PhotoSteps, shotsToPhotos, type Shot } from '../../components/PhotoSteps'
+import { stampLines } from '../../lib/image'
+import { useAuth } from '../../lib/auth'
+import { EmptyState, ErrorBox, Loading, Sheet, Spinner } from '../../components/ui'
 import { fmtDateTime, relativeAge } from '../../lib/format'
 import type { AssetHolding } from '../../lib/types'
 
@@ -23,6 +27,7 @@ const shift = (h: AssetHolding) =>
     : '—'
 
 export default function AssetOutstanding() {
+  const { profile } = useAuth()
   const feed = useAsync(() => listAssetHoldings(false), [])
   const types = useAsync(() => listAssetTypes(), [])
 
@@ -33,6 +38,59 @@ export default function AssetOutstanding() {
 
   const all = feed.data ?? []
   const late = all.filter((h) => hoursLate(h) > 0)
+
+  // คืนแทนเจ้าตัว — เปิดจากปุ่มท้ายแถว แล้วติ๊กเครื่องของคนนั้นที่จะคืน
+  const [giveBack, setGiveBack] = useState<AssetHolding | null>(null)
+  const [picked, setPicked] = useState<string[]>([])
+  const [shots, setShots] = useState<Shot[]>([])
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [okMsg, setOkMsg] = useState<string | null>(null)
+
+  const steps = useAsync(
+    () => (giveBack ? listAssetPhotoSteps(giveBack.type_code) : Promise.resolve([])),
+    [giveBack?.type_code],
+  )
+
+  /** เครื่องของคนคนนั้น ประเภทเดียวกัน — คืนรอบเดียวได้หลายตัว */
+  const sameHolder = useMemo(
+    () =>
+      giveBack
+        ? all.filter((h) => h.user_id === giveBack.user_id && h.type_code === giveBack.type_code)
+        : [],
+    [all, giveBack],
+  )
+
+  const photos = shotsToPhotos(shots)
+  const typeInfo = (types.data ?? []).find((t) => t.code === giveBack?.type_code)
+  const needPhotos =
+    steps.data && steps.data.length > 0 ? steps.data.length : (typeInfo?.photo_min ?? 1)
+  const photosReady =
+    photos.length >= needPhotos && !shots.some((s) => s.state !== 'done')
+
+  function openReturn(h: AssetHolding) {
+    setGiveBack(h)
+    setPicked([h.asset_code])
+    setShots([])
+    setErr(null)
+  }
+
+  async function submitReturn() {
+    if (!giveBack) return
+    setBusy(true)
+    setErr(null)
+    try {
+      const res = await assetReturn({ codes: picked, photos, note: 'คืนแทนโดยแอดมิน' })
+      setOkMsg(`คืนแทนแล้ว ${res.count} เครื่อง · ${res.ref_no}`)
+      setGiveBack(null)
+      setShots([])
+      feed.reload()
+    } catch (e) {
+      setErr(readableError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const rows = useMemo(() => {
     const s = search.trim().toLowerCase()
@@ -147,6 +205,15 @@ export default function AssetOutstanding() {
         </button>
       </div>
 
+      {okMsg && (
+        <p className="mb-3 rounded-card bg-success-bg px-3 py-2 text-sm text-success-txt">
+          {okMsg}
+          <button type="button" className="ml-2 underline" onClick={() => setOkMsg(null)}>
+            ปิด
+          </button>
+        </p>
+      )}
+
       {feed.loading && <Loading />}
       {feed.error && <ErrorBox message={feed.error} onRetry={feed.reload} />}
 
@@ -160,7 +227,7 @@ export default function AssetOutstanding() {
       {rows.length > 0 && (
         <>
           <section className="panel overflow-x-auto p-2">
-            <table className="w-full min-w-[900px] text-left text-sm">
+            <table className="w-full min-w-[1000px] text-left text-sm">
               <thead className="text-ink-500">
                 <tr className="border-b border-line">
                   <th className="p-2 font-medium">เครื่อง</th>
@@ -170,6 +237,7 @@ export default function AssetOutstanding() {
                   <th className="p-2 font-medium">ถือมาแล้ว</th>
                   <th className="p-2 font-medium">กำหนดคืน</th>
                   <th className="p-2 font-medium">เลขที่</th>
+                  <th className="p-2 font-medium" />
                 </tr>
               </thead>
               <tbody>
@@ -217,6 +285,15 @@ export default function AssetOutstanding() {
                         )}
                       </td>
                       <td className="p-2 font-mono text-xs">{h.ref_no}</td>
+                      <td className="p-2 text-right">
+                        <button
+                          type="button"
+                          className="btn-soft h-tap px-3 text-sm"
+                          onClick={() => openReturn(h)}
+                        >
+                          คืนแทน
+                        </button>
+                      </td>
                     </tr>
                   )
                 })}
@@ -229,6 +306,107 @@ export default function AssetOutstanding() {
           </p>
         </>
       )}
+
+      <Sheet
+        open={Boolean(giveBack)}
+        title={giveBack ? `คืนแทน ${giveBack.holder_name}` : ''}
+        onClose={() => setGiveBack(null)}
+      >
+        {giveBack && (
+          <>
+            <p className="rounded-card bg-surface-2 px-3 py-2 text-sm text-ink-500">
+              บันทึกว่าเป็นการคืนแทนโดยแอดมิน · ประวัติจะยังขึ้นชื่อ{' '}
+              <b>{giveBack.holder_name}</b> เป็นผู้เบิกเหมือนเดิม
+            </p>
+
+            <p className="label mt-3">เลือกเครื่องที่จะคืน</p>
+            <ul className="space-y-1">
+              {sameHolder.map((h) => {
+                const on = picked.includes(h.asset_code)
+                return (
+                  <li key={h.out_item_id}>
+                    <button
+                      type="button"
+                      className={`flex w-full items-center gap-3 rounded-card border p-3 text-left ${
+                        on ? 'border-ink bg-brand-50' : 'border-line bg-surface'
+                      }`}
+                      onClick={() =>
+                        setPicked((v) =>
+                          v.includes(h.asset_code)
+                            ? v.filter((c) => c !== h.asset_code)
+                            : [...v, h.asset_code],
+                        )
+                      }
+                    >
+                      <span
+                        aria-hidden
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-btn border text-sm ${
+                          on ? 'border-ink bg-ink text-white' : 'border-line-2 text-transparent'
+                        }`}
+                      >
+                        ✓
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="font-display">{h.asset_code}</span>
+                        <span className="block text-sm text-ink-500">
+                          เบิก {fmtDateTime(h.taken_at)} · {relativeAge(h.taken_at)}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+
+            {picked.length > 0 && (
+              <div className="mt-3 rounded-card border border-line p-3">
+                <p className="font-display">รูปสภาพตอนคืน</p>
+                <p className="mb-2 text-sm text-ink-400">
+                  คืน {picked.length} เครื่อง · บังคับ {needPhotos} ใบ เหมือนตอนหน้างานคืนเอง
+                </p>
+                {steps.loading ? (
+                  <Loading />
+                ) : (
+                  <PhotoSteps
+                    steps={steps.data ?? []}
+                    maxFree={typeInfo?.photo_max ?? 5}
+                    stamp={stampLines(
+                      profile?.full_name ?? '',
+                      profile?.employee_code ?? '',
+                      profile?.dept_code ?? 'BPL',
+                      `คืนแทน ${giveBack.holder_name}`,
+                    )}
+                    shots={shots}
+                    onShots={setShots}
+                  />
+                )}
+              </div>
+            )}
+
+            {err && (
+              <div className="mt-3">
+                <ErrorBox message={err} />
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="btn-primary mt-3 w-full py-4 text-md"
+              disabled={picked.length === 0 || !photosReady || busy}
+              onClick={() => void submitReturn()}
+            >
+              {busy ? <Spinner /> : null}
+              {busy
+                ? 'กำลังบันทึก…'
+                : picked.length === 0
+                  ? 'เลือกเครื่องก่อน'
+                  : photosReady
+                    ? `ยืนยันคืนแทน ${picked.length} เครื่อง`
+                    : `ต้องถ่ายรูปให้ครบ ${needPhotos} ใบก่อน`}
+            </button>
+          </>
+        )}
+      </Sheet>
 
       <p className="mt-4 rounded-card bg-brand-50 px-3 py-2 text-sm text-warn-txt">
         แถวสีแดงคือเลยเวลาเลิกกะของเจ้าตัวแล้ว — กำหนดคืนคำนวณจากกะที่ตั้งไว้ในบัญชีของแต่ละคน
