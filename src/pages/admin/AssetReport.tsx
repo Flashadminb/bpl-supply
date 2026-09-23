@@ -10,7 +10,8 @@ import {
   listDepartments,
   listProfiles,
 } from '../../lib/api'
-import { ErrorBox, Loading } from '../../components/ui'
+import { ErrorBox, Loading, Modal } from '../../components/ui'
+import { EvidenceImg, ThumbStrip } from '../../components/EvidenceThumbs'
 import { DateRangePicker } from '../../components/DateRangePicker'
 import { SearchSelect, type Option } from '../../components/SearchSelect'
 import {
@@ -51,6 +52,8 @@ export default function AssetReport() {
   const [person, setPerson] = useState('')
   const [asset, setAsset] = useState('')
   const [issueView, setIssueView] = useState<'all' | 'open' | 'fixed'>('all')
+  // รูปที่กดเปิดดูเต็มจอ — เก็บชุดรูปกับตำแหน่งที่กำลังดู
+  const [big, setBig] = useState<{ title: string; ids: string[]; index: number } | null>(null)
 
   const range = useMemo(
     () => ({
@@ -467,7 +470,9 @@ export default function AssetReport() {
                 <th className="py-2 font-medium">เครื่อง</th>
                 <th className="py-2 font-medium">ผู้เบิก</th>
                 <th className="py-2 font-medium">เบิกเมื่อ</th>
+                <th className="py-2 font-medium">รูปตอนเบิก</th>
                 <th className="py-2 font-medium">คืนเมื่อ</th>
+                <th className="py-2 font-medium">รูปตอนคืน</th>
                 <th className="py-2 font-medium">ถือนาน</th>
                 <th className="py-2 font-medium">เลขที่</th>
               </tr>
@@ -489,6 +494,18 @@ export default function AssetReport() {
                   </td>
                   <td className="py-2 text-ink-500">{fmtDateTime(h.taken_at)}</td>
                   <td className="py-2">
+                    {h.out_file_ids?.length > 0 ? (
+                      <ThumbStrip
+                        fileIds={h.out_file_ids}
+                        onOpen={(index) =>
+                          setBig({ title: `${h.asset_code} · ตอนเบิก`, ids: h.out_file_ids, index })
+                        }
+                      />
+                    ) : (
+                      <span className="text-ink-300">—</span>
+                    )}
+                  </td>
+                  <td className="py-2">
                     {h.returned_at ? (
                       <>
                         <span className="text-ink-500">{fmtDateTime(h.returned_at)}</span>
@@ -498,6 +515,18 @@ export default function AssetReport() {
                       </>
                     ) : (
                       <span className="badge-warn">ยังไม่คืน</span>
+                    )}
+                  </td>
+                  <td className="py-2">
+                    {h.in_file_ids?.length > 0 ? (
+                      <ThumbStrip
+                        fileIds={h.in_file_ids}
+                        onOpen={(index) =>
+                          setBig({ title: `${h.asset_code} · ตอนคืน`, ids: h.in_file_ids, index })
+                        }
+                      />
+                    ) : (
+                      <span className="text-ink-300">—</span>
                     )}
                   </td>
                   <td className="py-2">
@@ -514,7 +543,7 @@ export default function AssetReport() {
               ))}
               {!loading && histRows.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-6 text-center text-ink-400">
+                  <td colSpan={8} className="py-6 text-center text-ink-400">
                     ไม่มีประวัติตามตัวกรอง
                   </td>
                 </tr>
@@ -528,6 +557,35 @@ export default function AssetReport() {
           </p>
         )}
       </section>
+
+      <Modal open={Boolean(big)} onClose={() => setBig(null)} title={big?.title ?? ''}>
+        {big && (
+          <>
+            <EvidenceImg fileId={big.ids[big.index]} enabled className="w-full rounded-card" />
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                className="btn-soft"
+                disabled={big.index === 0}
+                onClick={() => setBig({ ...big, index: big.index - 1 })}
+              >
+                ‹ ก่อนหน้า
+              </button>
+              <span className="text-sm text-ink-500">
+                {big.index + 1} / {big.ids.length}
+              </span>
+              <button
+                type="button"
+                className="btn-soft"
+                disabled={big.index >= big.ids.length - 1}
+                onClick={() => setBig({ ...big, index: big.index + 1 })}
+              >
+                ถัดไป ›
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
 
       {/* ------------------------------------------------------ ตารางท้าย */}
       <div className="grid gap-3 xl:grid-cols-[1.3fr_1fr]">

@@ -334,4 +334,7 @@ export interface AssetHistoryRow {
   returned_by: string | null
   still_out: boolean
   held_hours: number | null
+  /** รูปตอนเบิก และตอนคืน — หน้างานเปิดดูไม่ได้ เฉพาะแอดมิน */
+  out_file_ids: string[]
+  in_file_ids: string[]
 }

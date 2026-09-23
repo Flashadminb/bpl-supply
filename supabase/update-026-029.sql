@@ -5,7 +5,7 @@
 --  026  โครงสร้างบาร์โค้ด BY + แจ้งเตือนทันทีเมื่อหน้างานส่งมา
 --  027  บังคับรูปอย่างน้อย 1 ใบ
 --  028  ตอนปิดรายการ BY เลือกวัสดุและจำนวนได้ + ตัดสต็อกให้ได้
---  029  ประวัติเบิก-คืนเครื่อง + รูป Asset โผล่ในหน้าหลักฐาน
+--  029  ประวัติเบิก-คืนเครื่องพร้อมรูปทั้งสองฝั่ง + รูป Asset ในหน้าหลักฐาน
 -- =====================================================================
 
 -- =====================================================================
@@ -583,6 +583,15 @@ select
   back.ref_no                             as return_ref,
   backp.full_name                         as returned_by,
   (back.id is null)                       as still_out,
+  -- รูปทั้งสองฝั่งติดมาในแถวเดียว จะได้เทียบสภาพก่อน-หลังได้ทันที
+  coalesce((
+    select array_agg(ph.file_id order by ph.seq)
+    from asset_txn_photos ph where ph.txn_id = t.id
+  ), '{}')                                 as out_file_ids,
+  coalesce((
+    select array_agg(ph.file_id order by ph.seq)
+    from asset_txn_photos ph where ph.txn_id = back.id
+  ), '{}')                                 as in_file_ids,
   case
     when back.created_at is not null
       then extract(epoch from (back.created_at - t.created_at)) / 3600
