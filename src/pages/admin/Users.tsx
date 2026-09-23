@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { StaffImport } from '../../components/StaffImport'
 import { useAsync } from '../../lib/useAsync'
 import {
   createEmployee,
@@ -39,6 +40,8 @@ interface Draft {
   dept_code: string
   role: UserRole
   password: string
+  shift_start: string
+  shift_end: string
 }
 
 export default function Users() {
@@ -54,6 +57,7 @@ export default function Users() {
   const [busy, setBusy] = useState(false)
   const [modalError, setModalError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
 
   async function patch(id: string, p: Parameters<typeof updateProfile>[1]) {
     setSavingId(id)
@@ -75,6 +79,8 @@ export default function Users() {
       dept_code: 'ALL',
       role: 'staff',
       password: suggestPassword(),
+      shift_start: '',
+      shift_end: '',
     })
     setModalError(null)
   }
@@ -90,6 +96,8 @@ export default function Users() {
         deptCode: draft.dept_code,
         role: draft.role,
         password: draft.password,
+        shiftStart: draft.shift_start || null,
+        shiftEnd: draft.shift_end || null,
       })
       setDone(
         `สร้างบัญชี ${draft.employee_code} แล้ว — แจ้งรหัสผ่าน "${draft.password}" ให้เจ้าตัว แล้วบอกให้เปลี่ยนรหัสเองที่หน้า "บัญชีของฉัน"`,
@@ -123,6 +131,9 @@ export default function Users() {
     <div className="mx-auto max-w-[1180px]">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-lg">ผู้ใช้และสิทธิ์</h1>
+        <button type="button" className="btn-soft h-tap px-3 text-sm" onClick={() => setImporting(true)}>
+          นำเข้าหลายคน
+        </button>
         <button type="button" className="btn-primary" onClick={openCreate}>
           เพิ่มพนักงาน
         </button>
@@ -322,6 +333,31 @@ export default function Users() {
                 {ASSIGNABLE_ROLES.find((r) => r.key === draft.role)?.hint}
               </p>
             </div>
+            <div>
+              <label className="label" htmlFor="shift-start">เวลาเข้ากะ</label>
+              <input
+                id="shift-start"
+                type="time"
+                className="input"
+                value={draft.shift_start}
+                onChange={(e) => setDraft({ ...draft, shift_start: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="shift-end">เวลาเลิกกะ</label>
+              <input
+                id="shift-end"
+                type="time"
+                className="input"
+                value={draft.shift_end}
+                onChange={(e) => setDraft({ ...draft, shift_end: e.target.value })}
+              />
+              <p className="mt-1 text-xs text-ink-400">
+                ใช้คำนวณกำหนดคืนอุปกรณ์ · กะข้ามเที่ยงคืนใส่ได้ตามจริง เช่น 18:00 ถึง 03:00
+                <br />
+                แอดมินกับเจ้าของระบบเว้นว่างไว้ได้
+              </p>
+            </div>
             <div className="sm:col-span-2">
               <label className="label">รหัสผ่านตั้งต้น (อย่างน้อย {MIN_PASSWORD} ตัว)</label>
               <div className="flex gap-2">
@@ -458,6 +494,13 @@ export default function Users() {
           </>
         )}
       </Modal>
+      <StaffImport
+        open={importing}
+        onClose={() => setImporting(false)}
+        departments={depts.data ?? []}
+        onChanged={() => users.reload()}
+      />
+
     </div>
   )
 }

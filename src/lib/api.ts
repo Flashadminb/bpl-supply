@@ -252,7 +252,9 @@ export async function listProfiles(): Promise<Profile[]> {
 
 export async function updateProfile(
   id: string,
-  patch: Partial<Pick<Profile, 'role' | 'is_active' | 'hub_code' | 'dept_code' | 'extra_depts'>>,
+  patch: Partial<
+    Pick<Profile, 'role' | 'is_active' | 'hub_code' | 'dept_code' | 'extra_depts' | 'shift_start' | 'shift_end'>
+  >,
 ) {
   const { error } = await supabase.from('profiles').update(patch).eq('id', id)
   if (error) throw new Error(readableError(error))
@@ -274,6 +276,9 @@ export async function createEmployee(args: {
   deptCode: string
   role: UserRole
   password: string
+  shiftStart?: string | null
+  shiftEnd?: string | null
+  extraDepts?: string[]
 }) {
   return callFunction<{ ok: true; id: string; email: string }>(
     'admin-users',
@@ -285,6 +290,9 @@ export async function createEmployee(args: {
       dept_code: args.deptCode,
       role: args.role,
       password: args.password,
+      shift_start: args.shiftStart ?? null,
+      shift_end: args.shiftEnd ?? null,
+      extra_depts: args.extraDepts ?? [],
       email: emailFromEmployeeCode(args.employeeCode),
     }),
     { 'Content-Type': 'application/json' },
@@ -633,4 +641,14 @@ export async function resolveAssetIssuesFor(code: string, note?: string) {
   })
   if (error) throw new Error(readableError(error))
   return data as number
+}
+
+/**
+ * ลบวัสดุ — คืน 'deleted' ถ้าลบสนิท หรือ 'archived' ถ้าเคยถูกเบิกแล้ว
+ * จึงได้แค่ปิดการใช้งานเพื่อไม่ให้ประวัติการเบิกพัง
+ */
+export async function deleteItem(id: number): Promise<'deleted' | 'archived'> {
+  const { data, error } = await supabase.rpc('delete_item', { p_id: id })
+  if (error) throw new Error(readableError(error))
+  return data as 'deleted' | 'archived'
 }

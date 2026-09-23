@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
 import {
   adjustStock,
+  deleteItem,
   listAllItemsForAdmin,
   listCategories,
   listDepartments,
@@ -54,6 +55,8 @@ export default function Stock() {
   const [reason, setReason] = useState('receive')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [removing, setRemoving] = useState<Item | null>(null)
+  const [removed, setRemoved] = useState<string | null>(null)
   const [catsOpen, setCatsOpen] = useState(false)
   const [deptsOpen, setDeptsOpen] = useState(false)
 
@@ -79,6 +82,26 @@ export default function Stock() {
         qr_payload: draft.qr_payload || null,
       })
       setDraft(null)
+      items.reload()
+    } catch (e) {
+      setError(readableError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function removeItem() {
+    if (!removing) return
+    setBusy(true)
+    setError(null)
+    try {
+      const how = await deleteItem(removing.id)
+      setRemoved(
+        how === 'deleted'
+          ? `ลบ "${removing.name}" ออกจากระบบแล้ว`
+          : `"${removing.name}" เคยถูกเบิกไปแล้ว จึงปิดการใช้งานแทนการลบ ประวัติยังดูได้`,
+      )
+      setRemoving(null)
       items.reload()
     } catch (e) {
       setError(readableError(e))
@@ -218,6 +241,13 @@ export default function Stock() {
                       }
                     >
                       แก้ไข
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-soft h-tap px-3 text-sm text-danger-txt"
+                      onClick={() => setRemoving(i)}
+                    >
+                      ลบ
                     </button>
                   </div>
                 </td>
@@ -398,6 +428,44 @@ export default function Stock() {
             </div>
           </>
         )}
+      </Modal>
+
+      {/* ยืนยันก่อนลบ — บอกให้ชัดว่าจะลบสนิทหรือแค่ปิดการใช้งาน */}
+      <Modal open={Boolean(removing)} onClose={() => setRemoving(null)} title="ลบรายการวัสดุ">
+        {removing && (
+          <>
+            <p className="text-ink-700">
+              ลบ <b>{removing.name}</b> <span className="font-mono text-sm">{removing.sku}</span> ออกจากสต็อกใช่ไหม
+            </p>
+            <p className="mt-2 rounded-card bg-surface-2 px-3 py-2 text-sm text-ink-500">
+              ถ้ายังไม่เคยมีใครเบิกรายการนี้ จะลบออกจากระบบเลย
+              <br />
+              ถ้าเคยถูกเบิกไปแล้ว จะปิดการใช้งานแทน — หายจากหน้าเบิกและหน้าสต็อก แต่ประวัติเดิมยังอ่านได้
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="btn-ghost" onClick={() => setRemoving(null)}>
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                className="btn-danger"
+                disabled={busy}
+                onClick={() => void removeItem()}
+              >
+                {busy ? <Spinner /> : null} ลบรายการนี้
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      <Modal open={Boolean(removed)} onClose={() => setRemoved(null)} title="เรียบร้อย">
+        <p className="text-ink-700">{removed}</p>
+        <div className="mt-4 flex justify-end">
+          <button type="button" className="btn-primary" onClick={() => setRemoved(null)}>
+            ตกลง
+          </button>
+        </div>
       </Modal>
 
       <CategoryManager

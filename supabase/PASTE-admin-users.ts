@@ -12,7 +12,7 @@
 //       { action: 'reset',  user_id, password }
 // =====================================================================
 
-const VERSION = 'dept-v2'
+const VERSION = 'shift-v3'
 const MIN_PASSWORD = 8
 
 const cors = {
@@ -155,7 +155,11 @@ Deno.serve(async (req) => {
 
     // ------------------------------------------------------ สร้างบัญชีใหม่
     if (body.action === 'create') {
-      const { employee_code, full_name, hub_code, dept_code, role, password, email } = body as Record<string, string>
+      const { employee_code, full_name, hub_code, dept_code, role, password, email, shift_start, shift_end } =
+        body as Record<string, string>
+      const extraDepts = Array.isArray((body as { extra_depts?: unknown }).extra_depts)
+        ? ((body as { extra_depts: string[] }).extra_depts)
+        : []
 
       if (!employee_code || !employee_code.trim()) return json({ error: 'ต้องใส่รหัสพนักงาน' }, 400)
       if (!full_name || !full_name.trim()) return json({ error: 'ต้องใส่ชื่อ-นามสกุล' }, 400)
@@ -196,6 +200,10 @@ Deno.serve(async (req) => {
             dept_code: dept_code || 'ALL',
             role,
             is_active: true,
+            // เวลาเข้า-เลิกกะ ใช้คำนวณกำหนดคืนอุปกรณ์และการแจ้งเตือน
+            shift_start: shift_start || null,
+            shift_end: shift_end || null,
+            extra_depts: extraDepts,
             // รหัสที่เจ้าของระบบตั้งเป็นของชั่วคราว เจ้าตัวต้องตั้งเองตอนล็อกอินครั้งแรก
             must_change_password: true,
           }),

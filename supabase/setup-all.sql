@@ -1,5 +1,5 @@
 -- =====================================================================
--- BPL SUPPLY — รวมทุกอย่างไว้ไฟล์เดียว 001..015 + seed
+-- BPL SUPPLY — รวมทุกอย่างไว้ไฟล์เดียว 001..016 + seed
 -- ปลอดภัยที่จะรันซ้ำ รันทับของเดิมได้ ไม่ทำข้อมูลหาย
 -- =====================================================================
 
@@ -2485,6 +2485,65 @@ comment on view sheet_export_rows is
 
 
 -- =====================================================================
+-- BPL SUPPLY — ลบรายการวัสดุออกจากสต็อกได้
+-- รันต่อจาก 015 · ปลอดภัยที่จะรันซ้ำ
+--
+-- ของที่เคยมีคนเบิกไปแล้ว ลบทิ้งจริงไม่ได้ ไม่งั้นประวัติการเบิกจะพัง
+-- จึงแยกเป็นสองทาง: ยังไม่เคยถูกเบิก = ลบทิ้งจริง
+--                  เคยถูกเบิกแล้ว   = ปิดการใช้งาน หายจากทุกหน้า ประวัติยังอ่านได้
+-- =====================================================================
+
+create or replace function delete_item(p_id bigint)
+returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  v_used boolean;
+  v_name text;
+begin
+  if my_role() not in ('supervisor', 'admin') then
+    raise exception 'ไม่มีสิทธิ์ลบรายการวัสดุ';
+  end if;
+
+  select name into v_name from items where id = p_id;
+  if v_name is null then
+    raise exception 'ไม่พบรายการนี้';
+  end if;
+
+  select exists (select 1 from requisition_items where item_id = p_id) into v_used;
+
+  if v_used then
+    update items set is_active = false, updated_at = now() where id = p_id;
+    return 'archived';
+  end if;
+
+  -- ไม่เคยถูกเบิกเลย ลบทิ้งได้สนิท พร้อมประวัติปรับสต็อกที่ผูกอยู่
+  delete from stock_movements where item_id = p_id;
+  delete from items where id = p_id;
+  return 'deleted';
+end $$;
+
+grant execute on function delete_item(bigint) to authenticated;
+
+comment on function delete_item(bigint) is
+  'ลบวัสดุ — ลบสนิทถ้ายังไม่เคยถูกเบิก ไม่งั้นปิดการใช้งานเพื่อรักษาประวัติ';
+
+-- ── เอาของตัวอย่างสองชิ้นที่ใส่ไว้ตอนตั้งระบบออก ─────────────────────
+-- ของจริงย้ายไปอยู่ในทะเบียนเครื่อง (assets) หมดแล้ว
+do $$
+declare v_id bigint;
+begin
+  for v_id in select id from items where sku in ('SKU-RT-0401', 'SKU-RT-0402') loop
+    if exists (select 1 from requisition_items where item_id = v_id) then
+      update items set is_active = false, updated_at = now() where id = v_id;
+    else
+      delete from stock_movements where item_id = v_id;
+      delete from items where id = v_id;
+    end if;
+  end loop;
+end $$;
+
+
+-- =====================================================================
 -- BPL SUPPLY — ข้อมูลตัวอย่างสำหรับทดสอบ (รันหลัง 001 และ 002)
 -- ลบทิ้งได้ทั้งหมดก่อนขึ้นใช้งานจริง
 -- =====================================================================
@@ -2498,7 +2557,5 @@ values
   ('SKU-PP-0201', 'ถุงมือผ้าเคลือบยาง',          (select id from categories where name = 'PPE'),         'BPL', 'คู่',  'B-01', 60, 20, false, 'SKU-PP-0201'),
   ('SKU-PP-0202', 'หน้ากากอนามัย (กล่อง 50)',    (select id from categories where name = 'PPE'),         'BPL', 'กล่อง','B-02', 18, 5,  false, 'SKU-PP-0202'),
   ('SKU-OF-0301', 'กระดาษ A4 80 แกรม',          (select id from categories where name = 'สำนักงาน'),    'BPL', 'รีม',  'C-01', 30, 10, false, 'SKU-OF-0301'),
-  ('SKU-OF-0302', 'ปากกาลูกลื่นน้ำเงิน',          (select id from categories where name = 'สำนักงาน'),    'BPL', 'ด้าม', 'C-02', 100,25, false, 'SKU-OF-0302'),
-  ('SKU-RT-0401', 'เครื่องสแกนบาร์โค้ดมือถือ',     (select id from categories where name = 'อุปกรณ์ยืม-คืน'), 'BPL', 'เครื่อง','D-01', 8, 2, true,  'SKU-RT-0401'),
-  ('SKU-RT-0402', 'รถเข็นลากพาเลท',              (select id from categories where name = 'อุปกรณ์ยืม-คืน'), 'BPL', 'คัน',  'D-02', 4, 1, true,  'SKU-RT-0402')
+  ('SKU-OF-0302', 'ปากกาลูกลื่นน้ำเงิน',          (select id from categories where name = 'สำนักงาน'),    'BPL', 'ด้าม', 'C-02', 100,25, false, 'SKU-OF-0302')
 on conflict (sku) do nothing;

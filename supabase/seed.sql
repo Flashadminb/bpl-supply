@@ -12,7 +12,5 @@ values
   ('SKU-PP-0201', 'ถุงมือผ้าเคลือบยาง',          (select id from categories where name = 'PPE'),         'BPL', 'คู่',  'B-01', 60, 20, false, 'SKU-PP-0201'),
   ('SKU-PP-0202', 'หน้ากากอนามัย (กล่อง 50)',    (select id from categories where name = 'PPE'),         'BPL', 'กล่อง','B-02', 18, 5,  false, 'SKU-PP-0202'),
   ('SKU-OF-0301', 'กระดาษ A4 80 แกรม',          (select id from categories where name = 'สำนักงาน'),    'BPL', 'รีม',  'C-01', 30, 10, false, 'SKU-OF-0301'),
-  ('SKU-OF-0302', 'ปากกาลูกลื่นน้ำเงิน',          (select id from categories where name = 'สำนักงาน'),    'BPL', 'ด้าม', 'C-02', 100,25, false, 'SKU-OF-0302'),
-  ('SKU-RT-0401', 'เครื่องสแกนบาร์โค้ดมือถือ',     (select id from categories where name = 'อุปกรณ์ยืม-คืน'), 'BPL', 'เครื่อง','D-01', 8, 2, true,  'SKU-RT-0401'),
-  ('SKU-RT-0402', 'รถเข็นลากพาเลท',              (select id from categories where name = 'อุปกรณ์ยืม-คืน'), 'BPL', 'คัน',  'D-02', 4, 1, true,  'SKU-RT-0402')
+  ('SKU-OF-0302', 'ปากกาลูกลื่นน้ำเงิน',          (select id from categories where name = 'สำนักงาน'),    'BPL', 'ด้าม', 'C-02', 100,25, false, 'SKU-OF-0302')
 on conflict (sku) do nothing;
