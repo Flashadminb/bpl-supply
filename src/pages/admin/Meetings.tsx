@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
 import {
   listMeetingDays,
@@ -65,6 +65,48 @@ function monthOptions(): { key: string; label: string }[] {
   return out
 }
 
+/**
+ * รูปย่อที่โหลดเมื่อเลื่อนมาถึงเท่านั้น
+ *
+ * รูปหลักฐานวิ่งผ่าน Edge Function ไม่ได้ต่อตรงกับ Drive
+ * ถ้าโหลดทุกแถวพร้อมกัน เปิดดูทั้งเดือนทีเดียวกินหลายเมกะไบต์
+ * ซึ่งนับเข้าโควตา egress ของ Supabase ทั้งก้อน
+ * โหลดเฉพาะที่ตาเห็นจริงทำให้ค่านี้เหลือไม่ถึงสิบเปอร์เซ็นต์
+ */
+function LazyThumb({ fileId, alt, onOpen }: { fileId: string; alt: string; onOpen: () => void }) {
+  const boxRef = useRef<HTMLButtonElement>(null)
+  const [seen, setSeen] = useState(false)
+
+  useEffect(() => {
+    const el = boxRef.current
+    if (!el || seen) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setSeen(true)
+          io.disconnect()
+        }
+      },
+      { rootMargin: '200px' },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [seen])
+
+  return (
+    <button
+      ref={boxRef}
+      type="button"
+      className="block h-[54px] w-[54px] overflow-hidden rounded-card border border-line bg-surface-2"
+      onClick={onOpen}
+    >
+      {seen ? (
+        <EvidenceImg fileId={fileId} enabled alt={alt} className="h-full w-full object-cover" />
+      ) : null}
+    </button>
+  )
+}
+
 const dayLabelTH = (day: string) =>
   new Intl.DateTimeFormat('th-TH', {
     weekday: 'short',
@@ -77,7 +119,8 @@ const dayLabelTH = (day: string) =>
 export default function Meetings() {
   const [tab, setTab] = useState<'list' | 'stats'>('list')
   const [month, setMonth] = useState(todayTH().slice(0, 7))
-  const [day, setDay] = useState('')
+  // เริ่มที่วันนี้ ไม่ใช่ทั้งเดือน เพราะคำถามแรกคือ 'วันนี้ใครมา' และโหลดเบากว่ามาก
+  const [day, setDay] = useState(todayTH())
   const [status, setStatus] = useState<MeetingStatus | ''>('')
   const [search, setSearch] = useState('')
   const [picked, setPicked] = useState<Set<string>>(new Set())
@@ -357,18 +400,11 @@ export default function Meetings() {
                         />
                       </td>
                       <td className="px-3 py-2 align-top">
-                        <button
-                          type="button"
-                          className="block h-[54px] w-[54px] overflow-hidden rounded-card border border-line"
-                          onClick={() => setBig(m)}
-                        >
-                          <EvidenceImg
-                            fileId={m.file_id}
-                            enabled
-                            alt={`เซลฟี่ของ ${m.full_name}`}
-                            className="h-full w-full object-cover"
-                          />
-                        </button>
+                        <LazyThumb
+                          fileId={m.file_id}
+                          alt={`เซลฟี่ของ ${m.full_name}`}
+                          onOpen={() => setBig(m)}
+                        />
                       </td>
                       <td className="px-3 py-2 align-top text-ink-500">
                         {fmtDateTime(m.created_at)}
