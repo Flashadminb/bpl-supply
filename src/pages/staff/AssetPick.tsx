@@ -15,6 +15,7 @@ import { readableError } from '../../lib/supabase'
 import { StaffPage, TopBar } from '../../components/Shell'
 import { EmptyState, ErrorBox, Loading, Modal, Sheet, Spinner } from '../../components/ui'
 import { PhotoSteps, shotsToPhotos, type Shot } from '../../components/PhotoSteps'
+import { CodeScanner } from '../../components/CodeScanner'
 import { stampLines } from '../../lib/image'
 import { fmtDateTime } from '../../lib/format'
 import type { AssetIssueInput } from '../../lib/types'
@@ -105,6 +106,7 @@ export default function AssetPick() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [warnAsset, setWarn] = useState<string | null>(null)
+  const [scanning, setScanning] = useState(false)
 
   const type = (types.data ?? []).find((t) => t.code === typeCode)
   const holdBy = useMemo(
@@ -156,6 +158,23 @@ export default function AssetPick() {
     setPicked((v) => (v.includes(code) ? v.filter((c) => c !== code) : [...v, code]))
   }
 
+  /** สแกนแล้วติ๊กให้เลย แต่ยังไม่ส่ง — ต้องเห็นกับตาก่อนว่าติ๊กถูกตัว */
+  function onScan(raw: string): { ok: boolean; message: string } {
+    const code = raw.trim()
+    const hit = (assets.data ?? []).find(
+      (a) => a.code.toLowerCase() === code.toLowerCase(),
+    )
+    if (!hit) return { ok: false, message: `ไม่พบ ${code} ในประเภทนี้` }
+    if (!hit.is_enabled) return { ok: false, message: `${hit.code} ถูกปิดไม่ให้เบิก` }
+
+    const h = holdBy.get(hit.code)
+    if (h) return { ok: false, message: `${hit.code} อยู่กับ ${h.holder_name} ยังไม่ได้คืน` }
+
+    if (picked.includes(hit.code)) return { ok: true, message: `${hit.code} ติ๊กไว้แล้ว` }
+    setPicked((v) => [...v, hit.code])
+    return { ok: true, message: `เพิ่ม ${hit.code} แล้ว · รวม ${picked.length + 1} เครื่อง` }
+  }
+
   async function submit() {
     setBusy(true)
     setError(null)
@@ -199,6 +218,16 @@ export default function AssetPick() {
 
         {!loading && groups.length === 0 && (
           <EmptyState title="ไม่มีเครื่องให้เบิก" hint="แผนกของคุณยังไม่มีเครื่องประเภทนี้" />
+        )}
+
+        {groups.length > 0 && (
+          <button
+            type="button"
+            className="btn-dark mb-3 w-full py-4"
+            onClick={() => setScanning(true)}
+          >
+            สแกน QR ติ๊กเครื่อง
+          </button>
         )}
 
         {groups.map((g) => (
@@ -392,6 +421,15 @@ export default function AssetPick() {
           </>
         )}
       </Sheet>
+
+      {scanning && (
+        <CodeScanner
+          title={`สแกน ${type?.name ?? 'เครื่อง'}`}
+          hint={`ติ๊กแล้ว ${picked.length} เครื่อง · สแกนต่อได้เรื่อย ๆ`}
+          onCode={onScan}
+          onClose={() => setScanning(false)}
+        />
+      )}
 
       <Modal open={Boolean(warnAsset)} onClose={() => setWarn(null)} title="เครื่องนี้ยังไม่ได้คืน">
         <p className="text-ink-700">{warnAsset}</p>

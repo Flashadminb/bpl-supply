@@ -4,17 +4,46 @@ import { useAuth } from '../../lib/auth'
 import { usePendingApprovals } from '../../lib/usePendingApprovals'
 
 // adminOnly = เห็นเฉพาะ "ผู้ดูแลระบบ" (role admin) ส่วน "แอดมิน" (supervisor) เห็นที่เหลือทั้งหมด
-const LINKS = [
-  { to: '/admin', label: 'ภาพรวม', end: true, adminOnly: false },
-  { to: '/admin/stock', label: 'สต็อกวัสดุ', end: false, adminOnly: false },
-  { to: '/admin/approvals', label: 'คำขอเบิก', end: false, adminOnly: false, badge: true },
-  { to: '/admin/outstanding', label: 'ของค้างคืน', end: false, adminOnly: false },
-  { to: '/admin/evidence', label: 'หลักฐานการเบิก-คืน', end: false, adminOnly: false },
-  { to: '/admin/assets', label: 'ทะเบียนเครื่อง', end: false, adminOnly: false },
-  { to: '/admin/assets-out', label: 'Asset ที่ยังไม่คืน', end: false, adminOnly: false },
-  { to: '/admin/qr', label: 'พิมพ์ QR ติดชั้นวาง', end: false, adminOnly: false },
-  { to: '/admin/export', label: 'ส่งออก Google Sheet', end: false, adminOnly: false },
-  { to: '/admin/users', label: 'ผู้ใช้และสิทธิ์', end: false, adminOnly: true },
+//
+// แบ่งเป็นหมวดเพราะของสิ้นเปลืองกับ Asset เป็นงานคนละก้อน
+// ลูกน้องที่ดูแลสิ้นเปลืองจะได้ไม่ต้องกวาดตาผ่านเมนูเครื่องทุกครั้ง
+interface Link {
+  to: string
+  label: string
+  end?: boolean
+  adminOnly?: boolean
+  badge?: boolean
+}
+
+const GROUPS: { title: string | null; links: Link[] }[] = [
+  {
+    title: null,
+    links: [{ to: '/admin', label: 'ภาพรวม', end: true }],
+  },
+  {
+    title: 'สิ้นเปลือง',
+    links: [
+      { to: '/admin/stock', label: 'สต็อกวัสดุ' },
+      { to: '/admin/approvals', label: 'คำขอเบิก', badge: true },
+      { to: '/admin/outstanding', label: 'ของค้างคืน' },
+      { to: '/admin/evidence', label: 'หลักฐานการเบิก-คืน' },
+    ],
+  },
+  {
+    title: 'Asset',
+    links: [
+      { to: '/admin/assets', label: 'ทะเบียนเครื่อง' },
+      { to: '/admin/assets-out', label: 'Asset ที่ยังไม่คืน' },
+    ],
+  },
+  {
+    title: 'ทั่วไป',
+    links: [
+      { to: '/admin/qr', label: 'พิมพ์ QR' },
+      { to: '/admin/export', label: 'ส่งออก Google Sheet' },
+      { to: '/admin/users', label: 'ผู้ใช้และสิทธิ์', adminOnly: true },
+    ],
+  },
 ]
 
 export default function AdminLayout() {
@@ -25,24 +54,39 @@ export default function AdminLayout() {
 
   const nav = (
     <nav className="flex flex-col gap-1">
-      {LINKS.filter((l) => !l.adminOnly || can('admin')).map((l) => (
-        <NavLink
-          key={l.to}
-          to={l.to}
-          end={l.end}
-          onClick={() => setMenu(false)}
-          className={({ isActive }) =>
-            `flex min-h-tap items-center justify-between rounded-btn px-3 text-base ${
-              isActive ? 'bg-dark-3 text-white' : 'text-dark-text hover:bg-dark-2'
-            }`
-          }
-        >
-          <span>{l.label}</span>
-          {l.badge && badge > 0 && (
-            <span className="rounded-pill bg-brand-500 px-2 font-display text-xs text-ink">{badge}</span>
-          )}
-        </NavLink>
-      ))}
+      {GROUPS.map((g) => {
+        const links = g.links.filter((l) => !l.adminOnly || can('admin'))
+        if (links.length === 0) return null
+        return (
+          <div key={g.title ?? 'top'} className={g.title ? 'mt-3' : ''}>
+            {g.title && (
+              <p className="mb-1 px-3 font-mono text-xs uppercase tracking-widest text-dark-muted">
+                {g.title}
+              </p>
+            )}
+            {links.map((l) => (
+              <NavLink
+                key={l.to}
+                to={l.to}
+                end={l.end}
+                onClick={() => setMenu(false)}
+                className={({ isActive }) =>
+                  `flex min-h-tap items-center justify-between rounded-btn px-3 text-base ${
+                    isActive ? 'bg-dark-3 text-white' : 'text-dark-text hover:bg-dark-2'
+                  }`
+                }
+              >
+                <span>{l.label}</span>
+                {l.badge && badge > 0 && (
+                  <span className="rounded-pill bg-brand-500 px-2 font-display text-xs text-ink">
+                    {badge}
+                  </span>
+                )}
+              </NavLink>
+            ))}
+          </div>
+        )
+      })}
     </nav>
   )
 
