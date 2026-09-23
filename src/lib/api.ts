@@ -11,6 +11,7 @@ import type {
   SyncState,
   UserRole,
   Department,
+  SheetExportRow,
 } from './types'
 
 const ITEM_COLS =
@@ -19,7 +20,7 @@ const ITEM_COLS =
 const REQ_COLS =
   'id,ref_no,requester_id,hub_code,purpose,note,status,evidence_file_id,evidence_web_link,evidence_bytes,created_at,decided_by,decided_at,reject_reason,' +
   'requisition_items(id,requisition_id,item_id,qty_requested,qty_approved,status,qty_before,qty_after,items(id,sku,name,unit,shelf_code,qty_on_hand,min_qty,category_id,is_returnable)),' +
-  'profiles!requisitions_requester_id_fkey(id,full_name,employee_code),' +
+  'profiles!requisitions_requester_id_fkey(id,full_name,employee_code,dept_code),' +
   'sync_log(id,requisition_id,channel,state,detail,updated_at)'
 
 function unwrap<T>(res: { data: T | null; error: unknown }): T {
@@ -476,4 +477,51 @@ export async function exportToSheet(payload: {
     JSON.stringify(payload),
     { 'Content-Type': 'application/json' },
   )
+}
+
+/**
+ * บรรทัดที่ส่งเข้าชีตได้ในช่วงวันที่เลือก
+ * กรอง "ยังไม่ส่ง" ที่ฐานข้อมูล ไม่ใช่ดึงมาทั้งเดือนแล้วค่อยคัดในเบราว์เซอร์
+ */
+export async function listSheetExportRows(args: {
+  fromISO: string
+  toISO: string
+  dept?: string
+  onlyPending?: boolean
+  limit?: number
+}): Promise<SheetExportRow[]> {
+  let q = supabase
+    .from('sheet_export_rows')
+    .select('*')
+    .gte('created_at', args.fromISO)
+    .lte('created_at', args.toISO)
+    .order('created_at', { ascending: false })
+    .limit(args.limit ?? 500)
+  if (args.dept) q = q.eq('requester_dept', args.dept)
+  if (args.onlyPending) q = q.is('tab', null)
+  return unwrap(await q) as unknown as SheetExportRow[]
+}
+
+/** นับว่าส่งแล้วกี่บรรทัด ยังไม่ส่งกี่บรรทัด โดยไม่ต้องดึงข้อมูลจริงมา */
+export async function countSheetExportRows(args: {
+  fromISO: string
+  toISO: string
+  dept?: string
+}): Promise<{ pending: number; done: number }> {
+  const base = () => {
+    let q = supabase
+      .from('sheet_export_rows')
+      .select('line_id', { count: 'exact', head: true })
+      .gte('created_at', args.fromISO)
+      .lte('created_at', args.toISO)
+    if (args.dept) q = q.eq('requester_dept', args.dept)
+    return q
+  }
+  const [pending, done] = await Promise.all([
+    base().is('tab', null),
+    base().not('tab', 'is', null),
+  ])
+  if (pending.error) throw new Error(readableError(pending.error))
+  if (done.error) throw new Error(readableError(done.error))
+  return { pending: pending.count ?? 0, done: done.count ?? 0 }
 }

@@ -81,7 +81,7 @@ export interface Requisition {
   decided_at: string | null
   reject_reason: string | null
   requisition_items?: RequisitionItem[]
-  profiles?: Pick<Profile, 'id' | 'full_name' | 'employee_code'> | null
+  profiles?: Pick<Profile, 'id' | 'full_name' | 'employee_code' | 'dept_code'> | null
   sync_log?: SyncRow[]
 }
 
@@ -139,4 +139,26 @@ export interface Department {
   name: string
   sort_no: number
   is_active: boolean
+}
+
+/** หนึ่งบรรทัดที่ส่งเข้า Google Sheet ได้ พร้อมสถานะว่าส่งไปแล้วหรือยัง */
+export interface SheetExportRow {
+  line_id: number
+  requisition_id: string
+  ref_no: string
+  created_at: string
+  hub_code: string
+  evidence_file_id: string | null
+  evidence_web_link: string | null
+  requester_name: string
+  requester_code: string
+  requester_dept: string | null
+  sku: string
+  item_name: string
+  unit: string
+  qty: number
+  tab: string | null
+  row_no: number | null
+  exported_at: string | null
+  is_exported: boolean
 }

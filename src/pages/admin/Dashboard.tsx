@@ -2,10 +2,10 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import {
-  exportToSheet,
+  countSheetExportRows,
   listAllItemsForAdmin,
   listCategories,
-  listHubs,
+  listDepartments,
   listOpenBorrowings,
   listRequisitionsBetween,
 } from '../../lib/api'
@@ -29,20 +29,23 @@ const dayShort = (key: string) => {
 
 export default function Dashboard() {
   const [days, setDays] = useState(30)
-  const [hub, setHub] = useState('')
-  const [pushing, setPushing] = useState(false)
-  const [pushMsg, setPushMsg] = useState<string | null>(null)
+  const [dept, setDept] = useState('')
 
   const fromISO = useMemo(() => new Date(Date.now() - days * 864e5).toISOString(), [days])
   const toISO = useMemo(() => new Date().toISOString(), [days])
 
-  const reqs = useAsync(() => listRequisitionsBetween(fromISO, toISO, hub || undefined), [fromISO, hub])
+  const reqs = useAsync(() => listRequisitionsBetween(fromISO, toISO), [fromISO])
   const items = useAsync(() => listAllItemsForAdmin(), [])
   const cats = useAsync(() => listCategories(), [])
-  const hubs = useAsync(() => listHubs(), [])
+  const depts = useAsync(() => listDepartments(), [])
   const borrow = useAsync(() => listOpenBorrowings(false), [])
+  const unsent = useAsync(() => countSheetExportRows({ fromISO, toISO }), [fromISO])
 
-  const rows = reqs.data ?? []
+  // แผนกอยู่ที่ตัวคน ไม่ได้อยู่ที่ใบเบิก จึงกรองหลังดึงมาแล้ว
+  const rows = useMemo(() => {
+    const all = reqs.data ?? []
+    return dept ? all.filter((r) => r.profiles?.dept_code === dept) : all
+  }, [reqs.data, dept])
   const catName = useMemo(
     () => new Map((cats.data ?? []).map((c) => [c.id, c.name])),
     [cats.data],
@@ -78,7 +81,11 @@ export default function Dashboard() {
   }, [rows])
 
   const low = (items.data ?? []).filter((i) => i.is_active && i.qty_on_hand <= i.min_qty)
-  const openUnits = (borrow.data ?? []).reduce((n, b) => n + b.qty_open, 0)
+  const openBorrow = borrow.data ?? []
+  const openUnits = openBorrow.reduce((n, b) => n + b.qty_open, 0)
+  // ค้างเกิน 2 กะ ถือว่าผิดปกติ ตรงกับเกณฑ์ในหน้าของค้างคืน
+  const lateBorrow = openBorrow.filter((b) => Date.now() - Date.parse(b.created_at) >= 18 * 3600_000)
+  const pendingSheet = unsent.data?.pending ?? 0
 
   /** จำนวนคำขอรายวัน เติมวันที่ไม่มีการเบิกให้เป็นศูนย์ ไม่งั้นกราฟหลอกตา */
   const daily: Datum[] = useMemo(() => {
@@ -150,26 +157,13 @@ export default function Dashboard() {
       .filter((d) => d.value > 0)
   }, [rows])
 
-  async function push() {
-    setPushing(true)
-    setPushMsg(null)
-    try {
-      const res = await exportToSheet({ from: fromISO, to: toISO, hub: hub || undefined })
-      setPushMsg(`ส่งสำเร็จ · เพิ่มใหม่ ${res.appended} แถว · อัปเดต ${res.updated} แถว`)
-    } catch (e) {
-      setPushMsg(`ส่งไม่สำเร็จ: ${(e as Error).message}`)
-    } finally {
-      setPushing(false)
-    }
-  }
-
   return (
     <div className="mx-auto max-w-[1180px]">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-lg">ภาพรวม</h1>
-        <button type="button" className="btn-primary" disabled={pushing} onClick={() => void push()}>
-          {pushing ? 'กำลังส่ง…' : 'ส่งข้อมูลลง Google Sheet'}
-        </button>
+        <Link to="/admin/export" className="btn-soft h-tap px-3 text-sm">
+          ส่งออก Google Sheet
+        </Link>
       </div>
 
       {/* แถบตัวกรองอยู่แถวเดียวเหนือทุกกราฟ กรองพร้อมกันทั้งหน้า */}
@@ -185,11 +179,16 @@ export default function Dashboard() {
           </button>
         ))}
         <span className="mx-1 h-6 w-px bg-line-2" />
-        <select className="input h-tap max-w-[200px]" value={hub} onChange={(e) => setHub(e.target.value)}>
-          <option value="">ทุกฮับ</option>
-          {(hubs.data ?? []).map((h) => (
-            <option key={h.code} value={h.code}>
-              {h.code} — {h.name}
+        <select
+          className="input h-tap max-w-[200px]"
+          value={dept}
+          onChange={(e) => setDept(e.target.value)}
+          aria-label="แผนก"
+        >
+          <option value="">ทุกแผนก</option>
+          {(depts.data ?? []).map((d) => (
+            <option key={d.code} value={d.code}>
+              {d.name}
             </option>
           ))}
         </select>
@@ -198,17 +197,13 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {pushMsg && (
-        <p className="mb-4 rounded-card border border-line bg-surface p-3 text-sm text-ink-700">{pushMsg}</p>
-      )}
-
       {/* ---- แถบเตือนเรื่องที่ต้องรีบจัดการ ---- */}
-      {(low.length > 0 || stats.pending.length > 0) && (
-        <div className="mb-4 flex flex-wrap gap-2">
+      {(low.length > 0 || stats.pending.length > 0 || lateBorrow.length > 0 || pendingSheet > 0) && (
+        <div className="mb-4 grid gap-2 sm:grid-cols-2">
           {low.length > 0 && (
             <Link
               to="/admin/stock"
-              className="flex-1 rounded-card border border-danger/25 bg-danger-bg px-4 py-3 text-sm text-danger-txt"
+              className="rounded-card border border-danger/25 bg-danger-bg px-4 py-3 text-sm text-danger-txt"
             >
               <b>ของต่ำกว่าขั้นต่ำ {low.length} รายการ</b> — {low.filter((i) => i.qty_on_hand === 0).length}{' '}
               รายการหมดสต็อกแล้ว · กดเพื่อดูและสั่งซื้อเพิ่ม
@@ -217,10 +212,26 @@ export default function Dashboard() {
           {stats.pending.length > 0 && (
             <Link
               to="/admin/approvals"
-              className="flex-1 rounded-card border border-warn/30 bg-warn-bg px-4 py-3 text-sm text-warn-txt"
+              className="rounded-card border border-warn/30 bg-warn-bg px-4 py-3 text-sm text-warn-txt"
             >
               <b>รออนุมัติ {stats.pending.length} คำขอ</b>
               {stats.oldest ? ` — เก่าสุดรอมาแล้ว ${relativeAge(stats.oldest.created_at)}` : ''} · กดเพื่ออนุมัติ
+            </Link>
+          )}
+          {lateBorrow.length > 0 && (
+            <Link
+              to="/admin/outstanding"
+              className="rounded-card border border-danger/25 bg-danger-bg px-4 py-3 text-sm text-danger-txt"
+            >
+              <b>ค้างคืนเกิน 18 ชม. {lateBorrow.length} รายการ</b> — ประมาณ 2 กะ · กดเพื่อดูว่าอยู่กับใคร
+            </Link>
+          )}
+          {pendingSheet > 0 && (
+            <Link
+              to="/admin/export"
+              className="rounded-card border border-line bg-surface px-4 py-3 text-sm text-ink-700"
+            >
+              <b>ค้างส่งเข้า Google Sheet {pendingSheet} บรรทัด</b> — ใน {days} วันที่ผ่านมา · กดเพื่อส่ง
             </Link>
           )}
         </div>
@@ -245,7 +256,12 @@ export default function Dashboard() {
           hint="ต้องสั่งซื้อเพิ่ม"
           tone={low.length > 0 ? 'danger' : 'ok'}
         />
-        <Stat label="ค้างคืน" value={openUnits} hint="ชิ้นที่ยังไม่คืน" />
+        <Stat
+          label="ค้างคืน"
+          value={openUnits}
+          hint={lateBorrow.length > 0 ? `เกิน 18 ชม. ${lateBorrow.length} รายการ` : 'ชิ้นที่ยังไม่คืน'}
+          tone={lateBorrow.length > 0 ? 'danger' : undefined}
+        />
         <Stat
           label="เวลาอนุมัติเฉลี่ย"
           value={stats.avgMins === null ? '—' : stats.avgMins < 60 ? `${stats.avgMins} นาที` : `${(stats.avgMins / 60).toFixed(1)} ชม.`}

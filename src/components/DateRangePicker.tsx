@@ -58,6 +58,16 @@ const PRESETS: { label: string; calc: () => [string, string] }[] = [
   },
 ]
 
+/** ปีที่เลือกได้: ย้อนหลัง 6 ปีถึงปีหน้า แสดงเป็น พ.ศ. */
+function yearOptions(current: number): number[] {
+  const now = new Date().getFullYear()
+  const out: number[] = []
+  for (let y = now + 1; y >= now - 6; y--) out.push(y)
+  // เผื่อเลื่อนลูกศรออกไปไกลกว่าช่วงนั้น ปีที่กำลังดูอยู่ต้องมีให้เลือกเสมอ
+  if (!out.includes(current)) out.push(current)
+  return out.sort((a, b) => b - a)
+}
+
 export function DateRangePicker({
   from,
   to,
@@ -149,7 +159,7 @@ export function DateRangePicker({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-[min(320px,92vw)] rounded-panel border border-line bg-surface p-3 shadow-pop">
+        <div className="absolute left-0 top-full z-50 mt-1 w-[min(340px,94vw)] rounded-panel border border-line bg-surface p-3 shadow-pop">
           <div className="mb-2 flex flex-wrap gap-1">
             {PRESETS.map((p) => (
               <button
@@ -168,22 +178,46 @@ export function DateRangePicker({
             ))}
           </div>
 
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-2 flex items-center gap-1">
             <button
               type="button"
               aria-label="เดือนก่อนหน้า"
-              className="h-tap w-tap rounded-btn text-lg text-ink-700"
+              className="h-tap w-tap shrink-0 rounded-btn text-lg text-ink-700 hover:bg-surface-2"
               onClick={() => step(-1)}
             >
               ‹
             </button>
-            <span className="font-display text-base">
-              {MONTHS[view.m]} {view.y + 543}
-            </span>
+
+            <select
+              className="input h-tap min-w-0 flex-1 px-2 text-sm"
+              aria-label="เดือน"
+              value={view.m}
+              onChange={(e) => setView((v) => ({ ...v, m: Number(e.target.value) }))}
+            >
+              {MONTHS.map((name, i) => (
+                <option key={name} value={i}>
+                  {name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className="input h-tap w-[92px] shrink-0 px-2 text-sm"
+              aria-label="ปี พ.ศ."
+              value={view.y}
+              onChange={(e) => setView((v) => ({ ...v, y: Number(e.target.value) }))}
+            >
+              {yearOptions(view.y).map((y) => (
+                <option key={y} value={y}>
+                  {y + 543}
+                </option>
+              ))}
+            </select>
+
             <button
               type="button"
               aria-label="เดือนถัดไป"
-              className="h-tap w-tap rounded-btn text-lg text-ink-700"
+              className="h-tap w-tap shrink-0 rounded-btn text-lg text-ink-700 hover:bg-surface-2"
               onClick={() => step(1)}
             >
               ›
