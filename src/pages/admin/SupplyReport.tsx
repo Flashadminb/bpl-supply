@@ -13,7 +13,16 @@ import {
 import { ErrorBox, Loading } from '../../components/ui'
 import { DateRangePicker } from '../../components/DateRangePicker'
 import { SearchSelect, type Option } from '../../components/SearchSelect'
-import { BarsH, Columns, DataTable, Donut, Kpi, STATUS, type Datum } from '../../components/charts'
+import {
+  BarsH,
+  Columns,
+  DataTable,
+  Donut,
+  Kpi,
+  PanelHead,
+  STATUS,
+  type Datum,
+} from '../../components/charts'
 import { STATUS_TH, fmtDateTime } from '../../lib/format'
 
 /**
@@ -324,9 +333,9 @@ export default function SupplyReport() {
 
       {/* ------------------------------------------------------ ตัวเลขหลัก */}
       <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi icon="📦" label="จำนวนที่เบิก" value={units.toLocaleString('th-TH')} sub={`${perDay} ชิ้น/วัน`} />
-        <Kpi icon="🧾" label="ใบเบิก" value={reqCount} sub={`${lines.length} บรรทัดรายการ`} />
-        <Kpi icon="👥" label="คนที่เบิก" value={peopleCount} sub={`ใน ${days} วัน`} />
+        <Kpi hue={0} icon="📦" label="จำนวนที่เบิก" value={units.toLocaleString('th-TH')} sub={`${perDay} ชิ้น/วัน`} />
+        <Kpi hue={1} icon="🧾" label="ใบเบิก" value={reqCount} sub={`${lines.length} บรรทัดรายการ`} />
+        <Kpi hue={2} icon="👥" label="คนที่เบิก" value={peopleCount} sub={`ใน ${days} วัน`} />
         <Kpi
           icon="⚠"
           label="ต่ำกว่าขั้นต่ำ"
@@ -337,7 +346,7 @@ export default function SupplyReport() {
       </div>
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi icon="↩" label="ยืม-คืนค้าง" value={openBorrow.reduce((n, b) => n + b.qty_open, 0)} sub={`${openBorrow.length} รายการ`} />
+        <Kpi hue={0} icon="↩" label="ยืม-คืนค้าง" value={openBorrow.reduce((n, b) => n + b.qty_open, 0)} sub={`${openBorrow.length} รายการ`} />
         <Kpi
           icon="🔧"
           label="คืนมาชำรุด/หาย"
@@ -345,7 +354,7 @@ export default function SupplyReport() {
           sub={`ใน ${days} วัน`}
           tone={(bad.data ?? []).length > 0 ? 'warn' : 'ok'}
         />
-        <Kpi icon="▤" label="บาร์โค้ด BY" value={(byRows.data ?? []).length} sub={`รอตัด ${(byRows.data ?? []).filter((b) => b.status === 'pending').length}`} />
+        <Kpi hue={2} icon="▤" label="บาร์โค้ด BY" value={(byRows.data ?? []).length} sub={`รอตัด ${(byRows.data ?? []).filter((b) => b.status === 'pending').length}`} />
         <Kpi
           icon="📷"
           label="ใบที่ไม่มีรูป"
@@ -357,32 +366,29 @@ export default function SupplyReport() {
 
       {/* ---------------------------------------------------------- กราฟ */}
       <section className="panel mb-3 p-4">
-        <h2 className="mb-1 font-display text-md">จำนวนชิ้นที่เบิกต่อวัน</h2>
-        <p className="mb-3 text-sm text-ink-400">ชี้ที่แท่งเพื่อดูตัวเลขของวันนั้น</p>
+        <PanelHead title="จำนวนชิ้นที่เบิกต่อวัน" hint="ชี้ที่แท่งเพื่อดูตัวเลขของวันนั้น" />
         <Columns data={daily} unit="ชิ้น" />
       </section>
 
       <div className="mb-3 grid gap-3 xl:grid-cols-2">
         <section className="panel p-4">
-          <h2 className="mb-3 font-display text-md">สัดส่วนตามหมวด</h2>
+          <PanelHead title="สัดส่วนตามหมวด" hue={1} />
           <Donut data={byCat} unit="ชิ้น" />
         </section>
         <section className="panel p-4">
-          <h2 className="mb-3 font-display text-md">สัดส่วนตามแผนก</h2>
+          <PanelHead title="สัดส่วนตามแผนก" hue={2} />
           <Donut data={byDept} unit="ชิ้น" />
         </section>
       </div>
 
       <div className="mb-3 grid gap-3 xl:grid-cols-2">
         <section className="panel p-4">
-          <h2 className="mb-1 font-display text-md">วัสดุที่เบิกมากที่สุด</h2>
-          <p className="mb-3 text-sm text-ink-400">10 อันดับแรกตามจำนวนชิ้น</p>
+          <PanelHead title="วัสดุที่เบิกมากที่สุด" hint="10 อันดับแรกตามจำนวนชิ้น" />
           <BarsH data={topItems} unit="ชิ้น" />
           <DataTable rows={topItems} head={['วัสดุ', 'จำนวนชิ้น']} />
         </section>
         <section className="panel p-4">
-          <h2 className="mb-1 font-display text-md">คนที่เบิกมากที่สุด</h2>
-          <p className="mb-3 text-sm text-ink-400">10 อันดับแรกตามจำนวนชิ้น</p>
+          <PanelHead title="คนที่เบิกมากที่สุด" hint="10 อันดับแรกตามจำนวนชิ้น" hue={1} />
           <BarsH data={topPeople} unit="ชิ้น" />
           <DataTable rows={topPeople} head={['ผู้เบิก', 'จำนวนชิ้น']} />
         </section>
@@ -390,12 +396,11 @@ export default function SupplyReport() {
 
       <div className="mb-3 grid gap-3 xl:grid-cols-2">
         <section className="panel p-4">
-          <h2 className="mb-1 font-display text-md">ช่วงเวลาที่เบิกกันมากที่สุด</h2>
-          <p className="mb-3 text-sm text-ink-400">นับเป็นจำนวนบรรทัดรายการ แยกตามชั่วโมง</p>
+          <PanelHead title="ช่วงเวลาที่เบิกกันมากที่สุด" hint="นับเป็นจำนวนบรรทัดรายการ แยกตามชั่วโมง" hue={2} />
           <Columns data={byHour} unit="รายการ" />
         </section>
         <section className="panel p-4">
-          <h2 className="mb-3 font-display text-md">สถานะใบเบิก</h2>
+          <PanelHead title="สถานะใบเบิก" hue={3} />
           <Donut data={byStatus} unit="ใบ" />
         </section>
       </div>
@@ -403,7 +408,7 @@ export default function SupplyReport() {
       {/* ------------------------------------------------------ ตารางท้าย */}
       <div className="grid gap-3 xl:grid-cols-[1.4fr_1fr]">
         <section className="panel p-4">
-          <h2 className="mb-3 font-display text-md">รายการตามตัวกรอง</h2>
+          <PanelHead title="รายการตามตัวกรอง" />
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead className="text-ink-500">
@@ -445,7 +450,7 @@ export default function SupplyReport() {
         </section>
 
         <section className="panel p-4">
-          <h2 className="mb-3 font-display text-md">คืนมาชำรุด / สูญหาย</h2>
+          <PanelHead title="คืนมาชำรุด / สูญหาย" hue={3} />
           <ul className="space-y-2 text-sm">
             {(bad.data ?? []).slice(0, 12).map((b) => (
               <li key={b.id} className="border-b border-line pb-2 last:border-0">

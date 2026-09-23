@@ -12,7 +12,16 @@ import {
 import { ErrorBox, Loading } from '../../components/ui'
 import { DateRangePicker } from '../../components/DateRangePicker'
 import { SearchSelect, type Option } from '../../components/SearchSelect'
-import { BarsH, Columns, DataTable, Donut, Kpi, STATUS, type Datum } from '../../components/charts'
+import {
+  BarsH,
+  Columns,
+  DataTable,
+  Donut,
+  Kpi,
+  PanelHead,
+  STATUS,
+  type Datum,
+} from '../../components/charts'
 import { fmtDateTime, relativeAge } from '../../lib/format'
 
 /**
@@ -318,7 +327,7 @@ export default function AssetReport() {
 
       {/* ------------------------------------------------------ ตัวเลขหลัก */}
       <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi icon="🔧" label="ใบแจ้งชำรุด" value={faults.length} sub={`ใน ${days} วัน`} />
+        <Kpi hue={0} icon="🔧" label="ใบแจ้งชำรุด" value={faults.length} sub={`ใน ${days} วัน`} />
         <Kpi
           icon="⚠"
           label="ยังไม่เคลียร์"
@@ -327,6 +336,7 @@ export default function AssetReport() {
           tone={openFaults.length > 0 ? 'danger' : 'ok'}
         />
         <Kpi
+          hue={2}
           icon="⏱"
           label="เวลาซ่อมเฉลี่ย"
           value={
@@ -339,6 +349,7 @@ export default function AssetReport() {
           sub="ตั้งแต่แจ้งจนกดเคลียร์"
         />
         <Kpi
+          hue={3}
           icon="📉"
           label="อัตราพัง"
           value={pool.length > 0 ? `${((faults.length / pool.length) * 100).toFixed(1)}%` : '—'}
@@ -348,8 +359,8 @@ export default function AssetReport() {
       </div>
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi icon="📤" label="ครั้งที่เบิก" value={outs.length} sub={`คืนแล้ว ${ins.length}`} />
-        <Kpi icon="🔒" label="ถูกยืมอยู่" value={holdings.length} sub={`จาก ${pool.length} เครื่อง`} />
+        <Kpi hue={0} icon="📤" label="ครั้งที่เบิก" value={outs.length} sub={`คืนแล้ว ${ins.length}`} />
+        <Kpi hue={1} icon="🔒" label="ถูกยืมอยู่" value={holdings.length} sub={`จาก ${pool.length} เครื่อง`} />
         <Kpi
           icon="⏰"
           label="เลยเวลาคืน"
@@ -368,32 +379,29 @@ export default function AssetReport() {
 
       {/* ---------------------------------------------------------- กราฟ */}
       <section className="panel mb-3 p-4">
-        <h2 className="mb-1 font-display text-md">ใบแจ้งชำรุดต่อวัน</h2>
-        <p className="mb-3 text-sm text-ink-400">ดูว่ามีช่วงไหนพังรัวผิดปกติไหม</p>
+        <PanelHead title="ใบแจ้งชำรุดต่อวัน" hint="ดูว่ามีช่วงไหนพังรัวผิดปกติไหม" hue={3} />
         <Columns data={faultDaily} unit="ใบ" />
       </section>
 
       <div className="mb-3 grid gap-3 xl:grid-cols-2">
         <section className="panel p-4">
-          <h2 className="mb-3 font-display text-md">พังแยกตามประเภทเครื่อง</h2>
+          <PanelHead title="พังแยกตามประเภทเครื่อง" />
           <Donut data={faultByType} unit="ใบ" />
         </section>
         <section className="panel p-4">
-          <h2 className="mb-3 font-display text-md">พังแยกตามแผนก</h2>
+          <PanelHead title="พังแยกตามแผนก" hue={1} />
           <Donut data={faultByDept} unit="ใบ" />
         </section>
       </div>
 
       <div className="mb-3 grid gap-3 xl:grid-cols-2">
         <section className="panel p-4">
-          <h2 className="mb-1 font-display text-md">อาการที่เจอบ่อยที่สุด</h2>
-          <p className="mb-3 text-sm text-ink-400">จัดกลุ่มจากข้อความที่หน้างานแจ้ง</p>
+          <PanelHead title="อาการที่เจอบ่อยที่สุด" hint="จัดกลุ่มจากข้อความที่หน้างานแจ้ง" hue={3} />
           <BarsH data={faultBySymptom} unit="ใบ" />
           <DataTable rows={faultBySymptom} head={['อาการ', 'จำนวนใบ']} />
         </section>
         <section className="panel p-4">
-          <h2 className="mb-1 font-display text-md">เครื่องที่พังบ่อยที่สุด</h2>
-          <p className="mb-3 text-sm text-ink-400">ตัวที่ติดอันดับนี้ควรพิจารณาเปลี่ยน</p>
+          <PanelHead title="เครื่องที่พังบ่อยที่สุด" hint="ตัวที่ติดอันดับนี้ควรพิจารณาเปลี่ยน" hue={3} />
           <BarsH data={faultWorst} unit="ใบ" />
           <DataTable rows={faultWorst} head={['เครื่อง', 'จำนวนใบ']} />
         </section>
@@ -401,21 +409,21 @@ export default function AssetReport() {
 
       <div className="mb-3 grid gap-3 xl:grid-cols-2">
         <section className="panel p-4">
-          <h2 className="mb-1 font-display text-md">แจ้งตอนไหน</h2>
-          <p className="mb-3 text-sm text-ink-400">
-            แจ้งตอนเบิกคือเจอก่อนใช้ · แจ้งตอนคืนคือพังระหว่างใช้งาน
-          </p>
+          <PanelHead
+            title="แจ้งตอนไหน"
+            hint="แจ้งตอนเบิกคือเจอก่อนใช้ · แจ้งตอนคืนคือพังระหว่างใช้งาน"
+            hue={2}
+          />
           <Donut data={faultPhase} unit="ใบ" />
         </section>
         <section className="panel p-4">
-          <h2 className="mb-3 font-display text-md">สถานะเครื่องตอนนี้</h2>
+          <PanelHead title="สถานะเครื่องตอนนี้" hue={1} />
           <Donut data={statusMix} unit="เครื่อง" />
         </section>
       </div>
 
       <section className="panel mb-3 p-4">
-        <h2 className="mb-1 font-display text-md">เครื่องที่ถูกหยิบบ่อยที่สุด</h2>
-        <p className="mb-3 text-sm text-ink-400">นับจำนวนครั้งที่ถูกเบิกในช่วงที่เลือก</p>
+        <PanelHead title="เครื่องที่ถูกหยิบบ่อยที่สุด" hint="นับจำนวนครั้งที่ถูกเบิกในช่วงที่เลือก" />
         <BarsH data={busiest} unit="ครั้ง" />
         <DataTable rows={busiest} head={['เครื่อง', 'ครั้งที่เบิก']} />
       </section>
@@ -423,7 +431,7 @@ export default function AssetReport() {
       {/* ------------------------------------------------------ ตารางท้าย */}
       <div className="grid gap-3 xl:grid-cols-[1.3fr_1fr]">
         <section className="panel p-4">
-          <h2 className="mb-3 font-display text-md">ใบแจ้งชำรุดตามตัวกรอง</h2>
+          <PanelHead title="ใบแจ้งชำรุดตามตัวกรอง" hue={3} />
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead className="text-ink-500">
@@ -469,7 +477,7 @@ export default function AssetReport() {
         </section>
 
         <section className="panel p-4">
-          <h2 className="mb-3 font-display text-md">ถืออยู่ตอนนี้</h2>
+          <PanelHead title="ถืออยู่ตอนนี้" hue={1} />
           <ul className="space-y-2 text-sm">
             {holdings.slice(0, 15).map((h) => {
               const late = h.due_at && Date.now() > Date.parse(h.due_at)

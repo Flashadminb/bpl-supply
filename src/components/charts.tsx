@@ -365,19 +365,34 @@ export function Donut({
   )
 }
 
-/** การ์ดตัวเลขใหญ่แบบมีไอคอนนำ ใช้กับตัวชี้วัดหลักบนสุดของหน้ารายงาน */
+/**
+ * การ์ดตัวเลขใหญ่แบบมีไอคอนนำ ใช้กับตัวชี้วัดหลักบนสุดของหน้ารายงาน
+ *
+ * สีของไอคอนไล่ไปตามลำดับการ์ดเพื่อให้แถวหนึ่งแยกออกจากกันด้วยสายตา
+ * ส่วน tone ใช้เมื่อค่านั้นมีความหมายจริง ๆ (แดงคือต้องรีบ) และทับสีประจำลำดับ
+ */
+const KPI_HUE = [
+  'bg-accent-50 text-accent-700',
+  'bg-mint-50 text-mint-700',
+  'bg-grape-50 text-grape-700',
+  'bg-flame-50 text-flame-700',
+] as const
+
 export function Kpi({
   icon,
   label,
   value,
   sub,
   tone = 'plain',
+  hue = 0,
 }: {
   icon: string
   label: string
   value: string | number
   sub?: ReactNode
   tone?: 'plain' | 'ok' | 'warn' | 'danger'
+  /** ลำดับสีในแถว — ใส่ index ของการ์ดไปตรง ๆ ได้เลย */
+  hue?: number
 }) {
   const chip =
     tone === 'warn'
@@ -386,10 +401,10 @@ export function Kpi({
         ? 'bg-danger-bg text-danger-txt'
         : tone === 'ok'
           ? 'bg-success-bg text-success-txt'
-          : 'bg-brand-50 text-warn-txt'
+          : KPI_HUE[hue % KPI_HUE.length]
 
   return (
-    <div className="flex items-center gap-3 rounded-card border border-line bg-surface p-4">
+    <div className="flex items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-card">
       <span
         aria-hidden
         className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-card text-lg ${chip}`}
@@ -401,6 +416,31 @@ export function Kpi({
         <span className="block font-display text-xl leading-tight">{value}</span>
         {sub && <span className="block truncate text-xs text-ink-400">{sub}</span>}
       </span>
+    </div>
+  )
+}
+
+/** หัวข้อการ์ดรายงาน — ขีดสีสั้น ๆ ใต้ชื่อ ให้กวาดตาหาหัวข้อเจอเร็ว */
+export function PanelHead({
+  title,
+  hint,
+  right,
+  hue = 0,
+}: {
+  title: string
+  hint?: string
+  right?: ReactNode
+  hue?: number
+}) {
+  const bar = ['bg-accent-500', 'bg-mint-500', 'bg-grape-500', 'bg-flame-500'][hue % 4]
+  return (
+    <div className="mb-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-display text-md">{title}</h2>
+        {right}
+      </div>
+      <span aria-hidden className={`mt-1 block h-[3px] w-10 rounded-pill ${bar}`} />
+      {hint && <p className="mt-2 text-sm text-ink-400">{hint}</p>}
     </div>
   )
 }
