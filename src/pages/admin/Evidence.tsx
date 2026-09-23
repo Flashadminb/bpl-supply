@@ -65,7 +65,11 @@ export default function Evidence() {
   const [hidden, setHidden] = useState<Set<string>>(new Set())
 
   const withPhotos = scope === 'borrow'
-  const range = rangeOf(rangeKey, from, to)
+  /**
+   * ต้อง memo ไว้ ไม่งั้น rangeOf จะคืนค่า "ตอนนี้" ใหม่ทุกครั้งที่วาดจอ
+   * deps ของ useAsync เลยเปลี่ยนตลอด แล้ววนโหลดไม่หยุด
+   */
+  const range = useMemo(() => rangeOf(rangeKey, from, to), [rangeKey, from, to])
 
   const feed = useAsync(
     () =>
@@ -206,42 +210,41 @@ export default function Evidence() {
           </select>
         </div>
 
-        {rangeKey === 'custom' && (
-          <>
-            <div>
-              <label className="label mb-1" htmlFor="ev-from">
-                ตั้งแต่
-              </label>
-              <input
-                id="ev-from"
-                type="date"
-                className="input h-tap"
-                value={from}
-                max={to}
-                onChange={(e) => {
-                  setFrom(e.target.value)
-                  setPage(0)
-                }}
-              />
-            </div>
-            <div>
-              <label className="label mb-1" htmlFor="ev-to">
-                ถึง
-              </label>
-              <input
-                id="ev-to"
-                type="date"
-                className="input h-tap"
-                value={to}
-                min={from}
-                onChange={(e) => {
-                  setTo(e.target.value)
-                  setPage(0)
-                }}
-              />
-            </div>
-          </>
-        )}
+        {/* ปฏิทินโชว์ตลอด กดเลือกวันแล้วสลับเป็นโหมดเลือกเองให้เอง ไม่ต้องไปกดดรอปดาวน์ก่อน */}
+        <div>
+          <label className="label mb-1" htmlFor="ev-from">
+            ตั้งแต่วันที่
+          </label>
+          <input
+            id="ev-from"
+            type="date"
+            className={`input h-tap ${rangeKey === 'custom' ? '' : 'opacity-60'}`}
+            value={rangeKey === 'custom' ? from : isoDay(new Date(range.fromISO ?? Date.now()))}
+            max={to}
+            onChange={(e) => {
+              setFrom(e.target.value)
+              setRangeKey('custom')
+              setPage(0)
+            }}
+          />
+        </div>
+        <div>
+          <label className="label mb-1" htmlFor="ev-to">
+            ถึงวันที่
+          </label>
+          <input
+            id="ev-to"
+            type="date"
+            className={`input h-tap ${rangeKey === 'custom' ? '' : 'opacity-60'}`}
+            value={rangeKey === 'custom' ? to : isoDay(new Date(range.toISO ?? Date.now()))}
+            min={rangeKey === 'custom' ? from : undefined}
+            onChange={(e) => {
+              setTo(e.target.value)
+              setRangeKey('custom')
+              setPage(0)
+            }}
+          />
+        </div>
 
         <button
           type="button"
