@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { usePendingApprovals } from '../../lib/usePendingApprovals'
+import { usePendingExports } from '../../lib/usePendingExports'
 import { Icon, type IconName } from '../../components/icons'
 
 // adminOnly = เห็นเฉพาะ "ผู้ดูแลระบบ" (role admin) ส่วน "แอดมิน" (supervisor) เห็นที่เหลือทั้งหมด
@@ -18,7 +19,8 @@ interface Link {
   icon: IconName
   end?: boolean
   adminOnly?: boolean
-  badge?: boolean
+  /** เลขค้างท้ายเมนู ดึงจากตัวนับคนละตัวกัน */
+  badge?: 'approvals' | 'exports'
 }
 
 const GROUPS: { title: string | null; links: Link[] }[] = [
@@ -40,7 +42,7 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
     title: 'สิ้นเปลือง',
     links: [
       { to: '/admin/stock', label: 'สต็อกวัสดุ', icon: 'box' },
-      { to: '/admin/approvals', label: 'คำขอเบิก', icon: 'inbox', badge: true },
+      { to: '/admin/approvals', label: 'คำขอเบิก', icon: 'inbox', badge: 'approvals' },
       { to: '/admin/by', label: 'บาร์โค้ดจาก BY', icon: 'barcode' },
     ],
   },
@@ -59,7 +61,7 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
     title: 'ทั่วไป',
     links: [
       { to: '/admin/qr', label: 'พิมพ์ QR', icon: 'qr' },
-      { to: '/admin/export', label: 'ส่งออก Google Sheet', icon: 'sheet' },
+      { to: '/admin/export', label: 'ส่งออก Google Sheet', icon: 'sheet', badge: 'exports' },
       { to: '/admin/users', label: 'ผู้ใช้และสิทธิ์', icon: 'users', adminOnly: true },
     ],
   },
@@ -69,7 +71,8 @@ export default function AdminLayout() {
   const { profile, signOut, can } = useAuth()
   const [menu, setMenu] = useState(false)
   const pending = usePendingApprovals()
-  const badge = pending.count
+  const exports = usePendingExports()
+  const badgeOf = { approvals: pending.count, exports: exports.count }
 
   const nav = (
     <nav className="flex flex-col gap-1">
@@ -99,9 +102,9 @@ export default function AdminLayout() {
                   <>
                     <Icon name={l.icon} className={isActive ? '' : 'text-dark-muted'} />
                     <span className="flex-1 truncate">{l.label}</span>
-                    {l.badge && badge > 0 && (
+                    {l.badge && badgeOf[l.badge] > 0 && (
                       <span className="rounded-pill bg-brand-500 px-2 font-display text-xs text-ink">
-                        {badge}
+                        {badgeOf[l.badge] > 99 ? '99+' : badgeOf[l.badge]}
                       </span>
                     )}
                   </>
