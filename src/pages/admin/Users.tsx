@@ -199,6 +199,7 @@ export default function Users() {
                 <th className="p-2 font-medium">ชื่อ</th>
                 <th className="p-2 font-medium">รหัสพนักงาน</th>
                 <th className="p-2 font-medium">แผนก</th>
+                <th className="p-2 font-medium">กะ</th>
                 <th className="p-2 font-medium">บทบาท</th>
                 <th className="p-2 font-medium">สถานะ</th>
                 <th className="p-2 font-medium">รหัสผ่าน</th>
@@ -230,6 +231,41 @@ export default function Users() {
                     >
                       เห็นแผนกอื่น: {u.extra_depts?.length ? u.extra_depts.length + ' แผนก' : 'ไม่มี'}
                     </button>
+                  </td>
+                  {/* กะใช้คำนวณกำหนดคืนอุปกรณ์ แก้ตรงนี้ได้เลยไม่ต้องสร้างบัญชีใหม่ */}
+                  <td className="p-2">
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="time"
+                        aria-label={`เวลาเข้ากะของ ${u.full_name}`}
+                        className="input h-tap w-[104px] px-1 text-xs"
+                        value={u.shift_start?.slice(0, 5) ?? ''}
+                        disabled={savingId === u.id}
+                        onChange={(e) => void patch(u.id, { shift_start: e.target.value || null })}
+                      />
+                      <span className="text-ink-400">–</span>
+                      <input
+                        type="time"
+                        aria-label={`เวลาเลิกกะของ ${u.full_name}`}
+                        className="input h-tap w-[104px] px-1 text-xs"
+                        value={u.shift_end?.slice(0, 5) ?? ''}
+                        disabled={savingId === u.id}
+                        onChange={(e) => void patch(u.id, { shift_end: e.target.value || null })}
+                      />
+                    </div>
+                    {u.role === 'staff' && !(u.shift_start && u.shift_end) && (
+                      <p className="mt-1 text-xs text-warn-txt">ยังไม่ได้ตั้งกะ</p>
+                    )}
+                    <input
+                      className="input h-tap mt-1 w-full px-2 text-xs"
+                      placeholder="แผนกย่อย"
+                      defaultValue={u.sub_dept ?? ''}
+                      disabled={savingId === u.id}
+                      onBlur={(e) => {
+                        const v = e.target.value.trim()
+                        if (v !== (u.sub_dept ?? '')) void patch(u.id, { sub_dept: v || null })
+                      }}
+                    />
                   </td>
                   <td className="p-2">
                     <select
@@ -274,7 +310,7 @@ export default function Users() {
               ))}
               {!users.loading && shown.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-6 text-center text-ink-400">
+                  <td colSpan={7} className="py-6 text-center text-ink-400">
                     {(users.data ?? []).length === 0 ? 'ยังไม่มีผู้ใช้ในระบบ' : 'ไม่พบผู้ใช้ตามคำค้น'}
                   </td>
                 </tr>

@@ -26,6 +26,8 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // ตัวรับแจ้งเตือนอยู่ในไฟล์แยก เพราะ workbox เขียนทับ sw.js ทุกครั้งที่ build
+        importScripts: ['push-sw.js'],
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         navigateFallbackDenylist: [/^\/api/],
         runtimeCaching: [

@@ -735,3 +735,32 @@ export async function countAssetExportRows(args: {
   if (done.error) throw new Error(readableError(done.error))
   return { pending: pending.count ?? 0, done: done.count ?? 0 }
 }
+
+/* --------------------------------------------------------- แจ้งเตือนมือถือ */
+
+export async function pushSubscribe(subscription: {
+  endpoint: string
+  keys: { p256dh: string; auth: string }
+}) {
+  return callFunction<{ ok: true }>(
+    'push-send',
+    JSON.stringify({ action: 'subscribe', subscription }),
+    { 'Content-Type': 'application/json' },
+  )
+}
+
+export async function pushUnsubscribe(endpoint: string) {
+  return callFunction<{ ok: true }>(
+    'push-send',
+    JSON.stringify({ action: 'unsubscribe', subscription: { endpoint } }),
+    { 'Content-Type': 'application/json' },
+  )
+}
+
+export async function pushTest() {
+  return callFunction<{ ok: true; sent: number; errors: string[] }>(
+    'push-send',
+    JSON.stringify({ action: 'test' }),
+    { 'Content-Type': 'application/json' },
+  )
+}

@@ -3,6 +3,7 @@ import { useAuth } from '../../lib/auth'
 import { changeMyPassword } from '../../lib/api'
 import { readableError } from '../../lib/supabase'
 import { StaffPage, TopBar } from '../../components/Shell'
+import { PushSetup } from '../../components/PushSetup'
 import { Spinner } from '../../components/ui'
 import { ROLE_TH } from '../../lib/roles'
 
@@ -48,13 +49,32 @@ export default function Account() {
           <p className="font-mono text-sm text-ink-400">{profile?.employee_code}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             <span className="badge-mute">{hubName}</span>
+            {profile?.dept_code && (
+              <span className="badge-mute">
+                {profile.dept_code}
+                {profile.sub_dept ? ` · ${profile.sub_dept}` : ''}
+              </span>
+            )}
+            {profile?.shift_start && profile?.shift_end && (
+              <span className="badge-mute">
+                กะ {profile.shift_start.slice(0, 5)}–{profile.shift_end.slice(0, 5)}
+              </span>
+            )}
             <span className="badge-mute">{profile ? ROLE_TH[profile.role] : ''}</span>
             <span className={profile?.is_active ? 'badge-ok' : 'badge-dang'}>
               {profile?.is_active ? 'ใช้งานอยู่' : 'ถูกระงับ'}
             </span>
           </div>
           <p className="mt-3 text-xs text-ink-400">
-            ชื่อ รหัสพนักงาน ฮับ และบทบาท แก้ได้โดยแอดมินเท่านั้น ถ้าข้อมูลผิดให้แจ้งแอดมิน
+            ชื่อ รหัสพนักงาน แผนก กะ และบทบาท แก้ได้โดยแอดมินเท่านั้น ถ้าข้อมูลผิดให้แจ้งแอดมิน
+            {!profile?.shift_start && (
+              <>
+                <br />
+                <span className="text-warn-txt">
+                  ยังไม่ได้ตั้งกะ — ระบบจะคำนวณเวลาคืนอุปกรณ์ไม่ได้ แจ้งแอดมินให้ใส่ให้
+                </span>
+              </>
+            )}
           </p>
         </section>
 
@@ -114,6 +134,8 @@ export default function Account() {
         <button type="button" className="btn-ghost mt-3 w-full" onClick={() => void signOut()}>
           ออกจากระบบ
         </button>
+
+        <PushSetup />
 
         <p className="mt-4 text-center text-sm text-ink-400">
           ลืมรหัสผ่านจนเข้าระบบไม่ได้ ต้องให้แอดมินตั้งรหัสใหม่ให้

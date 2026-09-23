@@ -8,3 +8,6 @@ dist-ssr
 .vscode/*
 !.vscode/extensions.json
 supabase/.temp
+
+# ค่าลับของระบบแจ้งเตือน
+supabase/แจ้งเตือน-ตั้งค่า.txt
