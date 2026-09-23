@@ -20,6 +20,7 @@ export interface Profile {
   is_active: boolean
   must_change_password: boolean
   dept_code: string | null
+  sub_dept: string | null
   extra_depts: string[]
   shift_start: string | null
   shift_end: string | null
@@ -104,6 +105,9 @@ export interface OpenBorrowing {
   requester_name: string
   requester_code: string
   requester_dept: string | null
+  requester_sub_dept: string | null
+  shift_start: string | null
+  shift_end: string | null
   hub_code: string
   item_id: number
   sku: string
@@ -155,6 +159,9 @@ export interface SheetExportRow {
   requester_name: string
   requester_code: string
   requester_dept: string | null
+  requester_sub_dept: string | null
+  shift_start: string | null
+  shift_end: string | null
   sku: string
   item_name: string
   unit: string

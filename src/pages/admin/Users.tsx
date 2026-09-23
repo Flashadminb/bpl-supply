@@ -38,6 +38,7 @@ interface Draft {
   employee_code: string
   full_name: string
   dept_code: string
+  sub_dept: string
   role: UserRole
   password: string
   shift_start: string
@@ -77,6 +78,7 @@ export default function Users() {
       employee_code: '',
       full_name: '',
       dept_code: 'ALL',
+      sub_dept: '',
       role: 'staff',
       password: suggestPassword(),
       shift_start: '',
@@ -94,6 +96,7 @@ export default function Users() {
         employeeCode: draft.employee_code,
         fullName: draft.full_name,
         deptCode: draft.dept_code,
+        subDept: draft.sub_dept || null,
         role: draft.role,
         password: draft.password,
         shiftStart: draft.shift_start || null,
@@ -331,6 +334,19 @@ export default function Users() {
               </select>
               <p className="mt-1 text-xs text-ink-400">
                 {ASSIGNABLE_ROLES.find((r) => r.key === draft.role)?.hint}
+              </p>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="label" htmlFor="sub-dept">แผนกย่อย (ไม่บังคับ)</label>
+              <input
+                id="sub-dept"
+                className="input"
+                placeholder="เช่น DO1"
+                value={draft.sub_dept}
+                onChange={(e) => setDraft({ ...draft, sub_dept: e.target.value })}
+              />
+              <p className="mt-1 text-xs text-ink-400">
+                เป็นป้ายกำกับอย่างเดียว ไม่มีผลกับสิทธิ์การมองเห็น · จะขึ้นต่อท้ายแผนก เช่น OUT 4W · DO1
               </p>
             </div>
             <div>

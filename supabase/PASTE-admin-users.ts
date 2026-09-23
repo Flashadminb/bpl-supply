@@ -12,7 +12,7 @@
 //       { action: 'reset',  user_id, password }
 // =====================================================================
 
-const VERSION = 'shift-v3'
+const VERSION = 'subdept-v4'
 const MIN_PASSWORD = 8
 
 const cors = {
@@ -155,7 +155,7 @@ Deno.serve(async (req) => {
 
     // ------------------------------------------------------ สร้างบัญชีใหม่
     if (body.action === 'create') {
-      const { employee_code, full_name, hub_code, dept_code, role, password, email, shift_start, shift_end } =
+      const { employee_code, full_name, hub_code, dept_code, sub_dept, role, password, email, shift_start, shift_end } =
         body as Record<string, string>
       const extraDepts = Array.isArray((body as { extra_depts?: unknown }).extra_depts)
         ? ((body as { extra_depts: string[] }).extra_depts)
@@ -201,6 +201,7 @@ Deno.serve(async (req) => {
             role,
             is_active: true,
             // เวลาเข้า-เลิกกะ ใช้คำนวณกำหนดคืนอุปกรณ์และการแจ้งเตือน
+            sub_dept: sub_dept?.trim() || null,
             shift_start: shift_start || null,
             shift_end: shift_end || null,
             extra_depts: extraDepts,

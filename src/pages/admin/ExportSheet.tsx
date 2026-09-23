@@ -213,6 +213,12 @@ export default function ExportSheet() {
                     <td className="p-2">
                       {r.requester_name}
                       <span className="ml-1 font-mono text-xs text-ink-400">{r.requester_code}</span>
+                      {(r.requester_dept || r.requester_sub_dept) && (
+                        <p className="text-xs text-ink-400">
+                          {r.requester_dept}
+                          {r.requester_sub_dept ? ` · ${r.requester_sub_dept}` : ''}
+                        </p>
+                      )}
                     </td>
                     <td className="p-2">
                       {r.item_name}

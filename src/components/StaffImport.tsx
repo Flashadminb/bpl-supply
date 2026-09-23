@@ -7,7 +7,7 @@ import type { Department, UserRole } from '../lib/types'
  * นำเข้าพนักงานทีละหลายคนจากข้อความที่วางมา
  *
  * รูปแบบ 1 คนต่อ 1 บรรทัด คั่นด้วยจุลภาคหรือแท็บ (วางจาก Google Sheet ได้ตรง ๆ)
- *   รหัสพนักงาน, ชื่อ-สกุล, แผนก, เวลาเข้ากะ, เวลาเลิกกะ, บทบาท
+ *   รหัสพนักงาน, ชื่อ-สกุล, แผนก, เวลาเข้ากะ, เวลาเลิกกะ, บทบาท, แผนกย่อย
  *
  * รหัสผ่านตั้งต้นคือรหัสพนักงาน ระบบบังคับให้เจ้าตัวเปลี่ยนเองตอนล็อกอินครั้งแรกอยู่แล้ว
  */
@@ -48,6 +48,7 @@ interface Row {
   start: string | null
   end: string | null
   role: UserRole
+  subDept: string
   problem: string | null
 }
 
@@ -72,6 +73,7 @@ function parse(text: string, depts: Department[]): Row[] {
       start,
       end,
       role: normalizeRole(c[5] ?? ''),
+      subDept: (c[6] ?? '').trim(),
       problem: !c[1]
         ? 'ไม่มีชื่อ'
         : !dept
@@ -127,6 +129,7 @@ export function StaffImport({
           deptCode: r.dept as string,
           role: r.role,
           password: initialPassword(r.code),
+          subDept: r.subDept || null,
           shiftStart: r.start,
           shiftEnd: r.end,
         })
@@ -147,7 +150,7 @@ export function StaffImport({
         วางข้อมูลจาก Google Sheet ได้ตรง ๆ — 1 คนต่อ 1 บรรทัด เรียงตามนี้
       </p>
       <p className="mt-1 rounded-btn bg-surface-2 px-3 py-2 font-mono text-xs text-ink-700">
-        รหัสพนักงาน, ชื่อ-สกุล, แผนก, เวลาเข้ากะ, เวลาเลิกกะ, บทบาท
+        รหัสพนักงาน, ชื่อ-สกุล, แผนก, เวลาเข้ากะ, เวลาเลิกกะ, บทบาท, แผนกย่อย
       </p>
 
       <textarea
@@ -187,7 +190,10 @@ export function StaffImport({
                     <tr key={r.code} className="border-t border-line">
                       <td className="p-2 font-mono">{r.code}</td>
                       <td className="p-2">{r.name}</td>
-                      <td className="p-2">{r.dept ?? <span className="text-danger-txt">{r.deptRaw}</span>}</td>
+                      <td className="p-2">
+                        {r.dept ?? <span className="text-danger-txt">{r.deptRaw}</span>}
+                        {r.subDept ? <span className="text-ink-400"> · {r.subDept}</span> : null}
+                      </td>
                       <td className="p-2 font-mono">
                         {r.start && r.end ? `${r.start}–${r.end}` : <span className="text-ink-300">—</span>}
                       </td>

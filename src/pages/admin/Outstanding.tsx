@@ -148,6 +148,12 @@ export default function Outstanding() {
                       <td className="p-2">
                         {b.requester_name}
                         <span className="ml-1 font-mono text-xs text-ink-400">{b.requester_code}</span>
+                        {(b.requester_dept || b.requester_sub_dept) && (
+                          <p className="text-xs text-ink-400">
+                            {b.requester_dept}
+                            {b.requester_sub_dept ? ` · ${b.requester_sub_dept}` : ''}
+                          </p>
+                        )}
                       </td>
                       <td className="p-2 text-ink-500">{fmtDateTime(b.created_at)}</td>
                       <td className="p-2">

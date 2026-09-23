@@ -253,7 +253,17 @@ export async function listProfiles(): Promise<Profile[]> {
 export async function updateProfile(
   id: string,
   patch: Partial<
-    Pick<Profile, 'role' | 'is_active' | 'hub_code' | 'dept_code' | 'extra_depts' | 'shift_start' | 'shift_end'>
+    Pick<
+      Profile,
+      | 'role'
+      | 'is_active'
+      | 'hub_code'
+      | 'dept_code'
+      | 'sub_dept'
+      | 'extra_depts'
+      | 'shift_start'
+      | 'shift_end'
+    >
   >,
 ) {
   const { error } = await supabase.from('profiles').update(patch).eq('id', id)
@@ -276,6 +286,7 @@ export async function createEmployee(args: {
   deptCode: string
   role: UserRole
   password: string
+  subDept?: string | null
   shiftStart?: string | null
   shiftEnd?: string | null
   extraDepts?: string[]
@@ -290,6 +301,7 @@ export async function createEmployee(args: {
       dept_code: args.deptCode,
       role: args.role,
       password: args.password,
+      sub_dept: args.subDept ?? null,
       shift_start: args.shiftStart ?? null,
       shift_end: args.shiftEnd ?? null,
       extra_depts: args.extraDepts ?? [],
@@ -406,6 +418,10 @@ export interface EvidenceRow {
   archived: boolean
   who: string
   employee_code: string
+  dept_code: string | null
+  sub_dept: string | null
+  shift_start: string | null
+  shift_end: string | null
   has_returnable: boolean
   summary: string
   /** รูปทุกใบของคำขอนี้ ใบแรกคือรูปหลัก */
@@ -435,6 +451,8 @@ export async function listEvidence(opts: {
   kind?: 'all' | 'requisition' | 'return'
   fromISO?: string
   toISO?: string
+  /** กรองรายกะ — ส่งเวลาเข้ากะกับเลิกกะเป็นคู่ */
+  shift?: { start: string; end: string } | null
   limit?: number
 }): Promise<EvidenceRow[]> {
   let q = supabase.from('evidence_feed').select('*').order('created_at', { ascending: false })
@@ -443,6 +461,7 @@ export async function listEvidence(opts: {
   if (opts.kind && opts.kind !== 'all') q = q.eq('kind', opts.kind)
   if (opts.fromISO) q = q.gte('created_at', opts.fromISO)
   if (opts.toISO) q = q.lte('created_at', opts.toISO)
+  if (opts.shift) q = q.eq('shift_start', opts.shift.start).eq('shift_end', opts.shift.end)
   return unwrap(await q.limit(opts.limit ?? 500)) as unknown as EvidenceRow[]
 }
 
@@ -651,4 +670,16 @@ export async function deleteItem(id: number): Promise<'deleted' | 'archived'> {
   const { data, error } = await supabase.rpc('delete_item', { p_id: id })
   if (error) throw new Error(readableError(error))
   return data as 'deleted' | 'archived'
+}
+
+/** กะที่มีพนักงานใช้อยู่จริง ใช้ทำดรอปดาวน์กรอง */
+export interface ShiftOption {
+  shift_start: string
+  shift_end: string
+  label: string
+  staff_count: number
+}
+
+export async function listShiftsInUse(): Promise<ShiftOption[]> {
+  return unwrap(await supabase.from('shifts_in_use').select('*')) as unknown as ShiftOption[]
 }

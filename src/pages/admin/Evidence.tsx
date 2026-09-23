@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
-import { listEvidence, setEvidenceArchived, type EvidenceRow } from '../../lib/api'
+import { listEvidence, listShiftsInUse, setEvidenceArchived, type EvidenceRow } from '../../lib/api'
 import { readableError } from '../../lib/supabase'
 import { EmptyState, ErrorBox, Loading, Modal, Spinner } from '../../components/ui'
 import { EvidenceImg, ThumbStrip } from '../../components/EvidenceThumbs'
@@ -23,6 +23,8 @@ export default function Evidence() {
   const [scope, setScope] = useState<Scope>('borrow')
   const [showArchived, setShowArchived] = useState(false)
   const [kind, setKind] = useState<'all' | 'requisition' | 'return'>('all')
+  // เก็บเป็น "HH:MM|HH:MM" เพื่อให้ค่าใน <select> เป็นข้อความเดียว
+  const [shiftKey, setShiftKey] = useState('')
   const [from, setFrom] = useState(isoDay(new Date(Date.now() - 30 * 864e5)))
   const [to, setTo] = useState(isoDay(new Date()))
   const [page, setPage] = useState(0)
@@ -45,16 +47,21 @@ export default function Evidence() {
     [from, to],
   )
 
+  const shifts = useAsync(() => listShiftsInUse(), [])
+
   const feed = useAsync(
     () =>
       listEvidence({
         returnableOnly: scope === 'borrow',
         includeArchived: showArchived,
         kind,
+        shift: shiftKey
+          ? { start: shiftKey.split('|')[0], end: shiftKey.split('|')[1] }
+          : null,
         fromISO: range.fromISO,
         toISO: range.toISO,
       }),
-    [scope, showArchived, kind, range.fromISO, range.toISO],
+    [scope, showArchived, kind, shiftKey, range.fromISO, range.toISO],
   )
 
   const all = useMemo(
@@ -163,6 +170,28 @@ export default function Evidence() {
           </select>
         </div>
 
+        <div>
+          <label className="label mb-1" htmlFor="ev-shift">
+            กะ
+          </label>
+          <select
+            id="ev-shift"
+            className="input h-tap w-[170px]"
+            value={shiftKey}
+            onChange={(e) => {
+              setShiftKey(e.target.value)
+              setPage(0)
+            }}
+          >
+            <option value="">ทุกกะ</option>
+            {(shifts.data ?? []).map((sh) => (
+              <option key={sh.label} value={`${sh.shift_start}|${sh.shift_end}`}>
+                {sh.label} ({sh.staff_count} คน)
+              </option>
+            ))}
+          </select>
+        </div>
+
         {/* ปฏิทินอันเดียว กดวันเริ่มแล้วกดวันจบ พร้อมปุ่มช่วงสำเร็จรูปอยู่ในนั้น */}
         <DateRangePicker
           from={from}
@@ -250,6 +279,12 @@ export default function Evidence() {
                   <td className="p-2">
                     {r.who}
                     <span className="ml-1 font-mono text-xs text-ink-400">{r.employee_code}</span>
+                    {(r.dept_code || r.sub_dept) && (
+                      <p className="text-xs text-ink-400">
+                        {r.dept_code}
+                        {r.sub_dept ? ` · ${r.sub_dept}` : ''}
+                      </p>
+                    )}
                   </td>
                   <td className="max-w-[260px] p-2 text-ink-500">
                     <span className="line-clamp-2">{r.summary}</span>
