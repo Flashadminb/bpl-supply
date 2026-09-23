@@ -174,7 +174,7 @@ export function NotifyBell() {
           onClick={() => setOpen(false)}
           className="btn-soft mt-3 block w-full py-3 text-center"
         >
-          เปิดหน้าภาพรวมทั้งหมด
+          เปิดหน้าแรกดูทั้งหมด
         </Link>
 
         {/* เสียงเตือน — กดฟังได้ว่าแต่ละเรื่องเสียงเป็นยังไง */}

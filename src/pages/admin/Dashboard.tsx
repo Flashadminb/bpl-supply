@@ -25,7 +25,7 @@ import { OutstandingNow } from '../../components/OutstandingNow'
 import { STATUS_TH, fmtDateTime, relativeAge, statusClass } from '../../lib/format'
 
 /**
- * หน้าภาพรวม — ตอบคำถามเดียว: ตอนนี้มีอะไรต้องจัดการบ้าง
+ * หน้าแรก — ตอบคำถามเดียว: ตอนนี้มีอะไรต้องจัดการบ้าง
  *
  * บนสุดคือเรื่องที่ต้องลงมือ เรียงตามความเร่ง
  * ถัดลงมาแยกสองฝั่งชัดเจน สิ้นเปลืองกับ Asset เป็นคนละงานคนละคนดูแล
@@ -331,7 +331,7 @@ export default function Dashboard() {
   return (
     <div className="mx-auto max-w-[1180px]">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-lg">ภาพรวม</h1>
+        <h1 className="font-display text-lg">หน้าแรก</h1>
         <div className="flex flex-wrap items-center gap-2">
           {RANGES.map((r) => (
             <button
