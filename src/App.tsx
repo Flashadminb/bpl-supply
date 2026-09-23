@@ -21,6 +21,11 @@ import { Privacy, Terms } from './pages/Legal'
 // เน็ตในฮับไม่นิ่ง หน้าแรกต้องเบาที่สุด
 const Scan = lazy(() => import('./pages/staff/Scan'))
 const Returns = lazy(() => import('./pages/staff/Returns'))
+const AssetPick = lazy(() => import('./pages/staff/AssetPick'))
+const AssetTypes = lazy(() =>
+  import('./pages/staff/AssetPick').then((m) => ({ default: m.AssetTypes })),
+)
+const AssetDone = lazy(() => import('./pages/staff/AssetDone'))
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'))
 const Dashboard = lazy(() => import('./pages/admin/Dashboard'))
 const Stock = lazy(() => import('./pages/admin/Stock'))
@@ -93,6 +98,9 @@ export default function App() {
       <Route path="/evidence" element={<Guard><Evidence /></Guard>} />
       <Route path="/success/:refNo" element={<Guard><Success /></Guard>} />
       <Route path="/returns" element={<Guard><Returns /></Guard>} />
+      <Route path="/assets" element={<Guard><AssetTypes /></Guard>} />
+      <Route path="/assets/done/:refNo" element={<Guard><AssetDone /></Guard>} />
+      <Route path="/assets/:typeCode" element={<Guard><AssetPick /></Guard>} />
       <Route path="/history" element={<Guard><History /></Guard>} />
       <Route path="/account" element={<Guard><Account /></Guard>} />
 

@@ -78,6 +78,26 @@ export default function Home() {
           สแกน QR เพื่อเบิก
         </button>
 
+        {(profile?.can_assets || can(...MANAGER_ROLES)) && (
+          <Link
+            to="/assets"
+            className="card mt-3 flex items-center gap-3 border-brand-300 p-4"
+          >
+            <span aria-hidden className="text-md">
+              ⚙
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-display text-md">เบิกอุปกรณ์ Asset</span>
+              <span className="block text-sm text-ink-400">
+                ไอดาต้า · Power Pallet · วิทยุ · เลเซอร์ลบ
+              </span>
+            </span>
+            <span aria-hidden className="text-ink-400">
+              ›
+            </span>
+          </Link>
+        )}
+
         <div className="mt-3 grid grid-cols-2 gap-3">
           <Link to="/items" className="card flex min-h-[92px] flex-col justify-between p-3">
             <span className="text-md" aria-hidden>
