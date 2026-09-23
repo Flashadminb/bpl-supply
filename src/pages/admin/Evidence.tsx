@@ -4,6 +4,7 @@ import { listEvidence, setEvidenceArchived, type EvidenceRow } from '../../lib/a
 import { readableError } from '../../lib/supabase'
 import { EmptyState, ErrorBox, Loading, Modal, Spinner } from '../../components/ui'
 import { EvidenceImg, ThumbStrip } from '../../components/EvidenceThumbs'
+import { DateRangePicker } from '../../components/DateRangePicker'
 import { fmtDateTime } from '../../lib/format'
 
 /**
@@ -16,45 +17,12 @@ type Scope = 'borrow' | 'all'
 const PAGE = 25
 
 
-/** ช่วงเวลาสำเร็จรูป — เลือกเองก็ได้ด้วยปฏิทิน */
-type RangeKey = 'today' | '7d' | '30d' | 'month' | 'custom'
-
-const RANGES: { key: RangeKey; label: string }[] = [
-  { key: 'today', label: 'วันนี้' },
-  { key: '7d', label: '7 วันล่าสุด' },
-  { key: '30d', label: '30 วันล่าสุด' },
-  { key: 'month', label: 'เดือนนี้' },
-  { key: 'custom', label: 'เลือกช่วงเอง' },
-]
-
 const isoDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(d)
-
-function rangeOf(key: RangeKey, from: string, to: string): { fromISO?: string; toISO?: string } {
-  const now = new Date()
-  if (key === 'custom') {
-    return {
-      fromISO: from ? new Date(`${from}T00:00:00`).toISOString() : undefined,
-      toISO: to ? new Date(`${to}T23:59:59`).toISOString() : undefined,
-    }
-  }
-  if (key === 'today') {
-    const d = new Date()
-    d.setHours(0, 0, 0, 0)
-    return { fromISO: d.toISOString(), toISO: now.toISOString() }
-  }
-  if (key === 'month') {
-    const d = new Date(now.getFullYear(), now.getMonth(), 1)
-    return { fromISO: d.toISOString(), toISO: now.toISOString() }
-  }
-  const days = key === '7d' ? 7 : 30
-  return { fromISO: new Date(Date.now() - days * 864e5).toISOString(), toISO: now.toISOString() }
-}
 
 export default function Evidence() {
   const [scope, setScope] = useState<Scope>('borrow')
   const [showArchived, setShowArchived] = useState(false)
   const [kind, setKind] = useState<'all' | 'requisition' | 'return'>('all')
-  const [rangeKey, setRangeKey] = useState<RangeKey>('30d')
   const [from, setFrom] = useState(isoDay(new Date(Date.now() - 30 * 864e5)))
   const [to, setTo] = useState(isoDay(new Date()))
   const [page, setPage] = useState(0)
@@ -66,10 +34,16 @@ export default function Evidence() {
 
   const withPhotos = scope === 'borrow'
   /**
-   * ต้อง memo ไว้ ไม่งั้น rangeOf จะคืนค่า "ตอนนี้" ใหม่ทุกครั้งที่วาดจอ
-   * deps ของ useAsync เลยเปลี่ยนตลอด แล้ววนโหลดไม่หยุด
+   * แปลงวันที่เป็นช่วงเวลาเต็มวัน และ memo ไว้
+   * ถ้าไม่ memo ค่าจะเป็นอ็อบเจกต์ใหม่ทุกครั้งที่วาดจอ deps ของ useAsync เปลี่ยนตลอด แล้ววนโหลดไม่หยุด
    */
-  const range = useMemo(() => rangeOf(rangeKey, from, to), [rangeKey, from, to])
+  const range = useMemo(
+    () => ({
+      fromISO: new Date(`${from}T00:00:00`).toISOString(),
+      toISO: new Date(`${to}T23:59:59`).toISOString(),
+    }),
+    [from, to],
+  )
 
   const feed = useAsync(
     () =>
@@ -189,62 +163,16 @@ export default function Evidence() {
           </select>
         </div>
 
-        <div>
-          <label className="label mb-1" htmlFor="ev-range">
-            ช่วงเวลา
-          </label>
-          <select
-            id="ev-range"
-            className="input h-tap w-[170px]"
-            value={rangeKey}
-            onChange={(e) => {
-              setRangeKey(e.target.value as RangeKey)
-              setPage(0)
-            }}
-          >
-            {RANGES.map((r) => (
-              <option key={r.key} value={r.key}>
-                {r.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* ปฏิทินโชว์ตลอด กดเลือกวันแล้วสลับเป็นโหมดเลือกเองให้เอง ไม่ต้องไปกดดรอปดาวน์ก่อน */}
-        <div>
-          <label className="label mb-1" htmlFor="ev-from">
-            ตั้งแต่วันที่
-          </label>
-          <input
-            id="ev-from"
-            type="date"
-            className={`input h-tap ${rangeKey === 'custom' ? '' : 'opacity-60'}`}
-            value={rangeKey === 'custom' ? from : isoDay(new Date(range.fromISO ?? Date.now()))}
-            max={to}
-            onChange={(e) => {
-              setFrom(e.target.value)
-              setRangeKey('custom')
-              setPage(0)
-            }}
-          />
-        </div>
-        <div>
-          <label className="label mb-1" htmlFor="ev-to">
-            ถึงวันที่
-          </label>
-          <input
-            id="ev-to"
-            type="date"
-            className={`input h-tap ${rangeKey === 'custom' ? '' : 'opacity-60'}`}
-            value={rangeKey === 'custom' ? to : isoDay(new Date(range.toISO ?? Date.now()))}
-            min={rangeKey === 'custom' ? from : undefined}
-            onChange={(e) => {
-              setTo(e.target.value)
-              setRangeKey('custom')
-              setPage(0)
-            }}
-          />
-        </div>
+        {/* ปฏิทินอันเดียว กดวันเริ่มแล้วกดวันจบ พร้อมปุ่มช่วงสำเร็จรูปอยู่ในนั้น */}
+        <DateRangePicker
+          from={from}
+          to={to}
+          onChange={(f, t) => {
+            setFrom(f)
+            setTo(t)
+            setPage(0)
+          }}
+        />
 
         <button
           type="button"

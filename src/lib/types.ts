@@ -66,6 +66,9 @@ export interface Requisition {
   id: string
   ref_no: string
   requester_id: string
+  requester_name: string
+  requester_code: string
+  requester_dept: string | null
   hub_code: string
   purpose: string | null
   note: string | null
@@ -96,6 +99,9 @@ export interface OpenBorrowing {
   requisition_id: string
   ref_no: string
   requester_id: string
+  requester_name: string
+  requester_code: string
+  requester_dept: string | null
   hub_code: string
   item_id: number
   sku: string

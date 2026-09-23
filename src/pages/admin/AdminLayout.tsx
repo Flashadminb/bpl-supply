@@ -9,6 +9,7 @@ const LINKS = [
   { to: '/admin', label: 'ภาพรวม', end: true, adminOnly: false },
   { to: '/admin/stock', label: 'สต็อกวัสดุ', end: false, adminOnly: false },
   { to: '/admin/approvals', label: 'คำขอเบิก', end: false, adminOnly: false, badge: true },
+  { to: '/admin/outstanding', label: 'ของค้างคืน', end: false, adminOnly: false },
   { to: '/admin/evidence', label: 'หลักฐานการเบิก-คืน', end: false, adminOnly: false },
   { to: '/admin/qr', label: 'พิมพ์ QR ติดชั้นวาง', end: false, adminOnly: false },
   { to: '/admin/export', label: 'ส่งออก Google Sheet', end: false, adminOnly: false },
