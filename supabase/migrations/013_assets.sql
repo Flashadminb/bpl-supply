@@ -104,10 +104,10 @@ create index if not exists asset_txn_items_asset_idx on asset_txn_items (asset_c
 create unique index if not exists asset_txn_items_out_uniq
   on asset_txn_items (out_item_id) where out_item_id is not null;
 
-do $ begin
+do $$ begin
   alter table assets add constraint assets_held_item_fk
     foreign key (held_item_id) references asset_txn_items(id) on delete set null;
-exception when duplicate_object then null; end $;
+exception when duplicate_object then null; end $$;
 
 -- เผื่อเคยรันเวอร์ชันก่อนหน้าไปแล้วและมีรายการค้างอยู่ — เติมให้ตรงกับความจริง
 update assets a set held_item_id = ai.id
