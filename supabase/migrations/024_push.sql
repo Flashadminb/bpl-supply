@@ -68,44 +68,48 @@ declare
 begin
   -- ① ใกล้เลิกกะ 10 นาที · เตือนคนที่ถือเครื่อง
   v_jobs := v_jobs || coalesce((
-    select jsonb_agg(jsonb_build_object(
-      'kind',    'due_soon',
-      'subject', h.txn_id::text,
-      'user_id', h.user_id,
-      'title',   'ใกล้เลิกกะแล้ว',
-      'body',    'คุณยังถือ ' || count(*) || ' เครื่อง — ' ||
-                 string_agg(h.asset_code, ', ' order by h.asset_code),
-      'url',     '/returns'
-    ))
-    from asset_holdings h
-    where h.due_at is not null
-      and h.due_at between v_now and v_now + interval '10 minutes'
-      and not exists (
-        select 1 from notification_log n
-        where n.kind = 'due_soon' and n.subject = h.txn_id::text and n.user_id = h.user_id
-      )
-    group by h.txn_id, h.user_id
+    select jsonb_agg(j) from (
+      select jsonb_build_object(
+        'kind',    'due_soon',
+        'subject', h.txn_id::text,
+        'user_id', h.user_id,
+        'title',   'ใกล้เลิกกะแล้ว',
+        'body',    'คุณยังถือ ' || count(*) || ' เครื่อง — ' ||
+                   string_agg(h.asset_code, ', ' order by h.asset_code),
+        'url',     '/returns'
+      ) as j
+      from asset_holdings h
+      where h.due_at is not null
+        and h.due_at between v_now and v_now + interval '10 minutes'
+        and not exists (
+          select 1 from notification_log n
+          where n.kind = 'due_soon' and n.subject = h.txn_id::text and n.user_id = h.user_id
+        )
+      group by h.txn_id, h.user_id
+    ) g
   ), '[]'::jsonb);
 
   -- ② เลยเวลาคืนมาแล้ว 10 นาที · เตือนเจ้าตัว
   v_jobs := v_jobs || coalesce((
-    select jsonb_agg(jsonb_build_object(
-      'kind',    'overdue',
-      'subject', h.txn_id::text,
-      'user_id', h.user_id,
-      'title',   'เลยเวลาคืนแล้ว',
-      'body',    'ยังไม่ได้คืน ' || count(*) || ' เครื่อง — ' ||
-                 string_agg(h.asset_code, ', ' order by h.asset_code),
-      'url',     '/returns'
-    ))
-    from asset_holdings h
-    where h.due_at is not null
-      and v_now >= h.due_at + interval '10 minutes'
-      and not exists (
-        select 1 from notification_log n
-        where n.kind = 'overdue' and n.subject = h.txn_id::text and n.user_id = h.user_id
-      )
-    group by h.txn_id, h.user_id
+    select jsonb_agg(j) from (
+      select jsonb_build_object(
+        'kind',    'overdue',
+        'subject', h.txn_id::text,
+        'user_id', h.user_id,
+        'title',   'เลยเวลาคืนแล้ว',
+        'body',    'ยังไม่ได้คืน ' || count(*) || ' เครื่อง — ' ||
+                   string_agg(h.asset_code, ', ' order by h.asset_code),
+        'url',     '/returns'
+      ) as j
+      from asset_holdings h
+      where h.due_at is not null
+        and v_now >= h.due_at + interval '10 minutes'
+        and not exists (
+          select 1 from notification_log n
+          where n.kind = 'overdue' and n.subject = h.txn_id::text and n.user_id = h.user_id
+        )
+      group by h.txn_id, h.user_id
+    ) g
   ), '[]'::jsonb);
 
   -- ③ สรุปของค้างให้แอดมินและเจ้าของระบบ · 1 ครั้งต่อ 1 รายการที่ค้าง

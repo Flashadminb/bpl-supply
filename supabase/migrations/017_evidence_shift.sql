@@ -93,7 +93,7 @@ with (security_invoker = true) as
 select
   shift_start,
   shift_end,
-  to_char(shift_start, 'HH24:MI') || ' – ' || to_char(shift_end, 'HH24:MI') as label,
+  substring(shift_start::text, 1, 5) || ' – ' || substring(shift_end::text, 1, 5) as label,
   count(*)::int as staff_count
 from profiles
 where shift_start is not null and shift_end is not null and is_active
