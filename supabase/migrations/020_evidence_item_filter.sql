@@ -7,6 +7,9 @@
 -- จึงแนบรหัสวัสดุมาเป็นชุด ให้กรองที่ฐานข้อมูลได้ตรง ๆ
 -- =====================================================================
 
+-- evidence_items สร้างทับ evidence_feed อีกที ต้องรื้อตัวลูกก่อนเสมอ
+-- ไม่งั้นรันไฟล์นี้ซ้ำรอบสองจะติด "other objects depend on it"
+drop view if exists evidence_items;
 drop view if exists evidence_feed;
 
 create view evidence_feed

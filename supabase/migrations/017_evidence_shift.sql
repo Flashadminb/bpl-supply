@@ -15,6 +15,9 @@ comment on column profiles.sub_dept is
   'แผนกย่อย เป็นป้ายกำกับอย่างเดียว ไม่มีผลกับสิทธิ์';
 
 -- คอลัมน์เพิ่มตรงกลาง create or replace view จึงไม่พอ ต้อง drop ก่อน
+-- evidence_items สร้างทับ evidence_feed อีกที ต้องรื้อตัวลูกก่อนเสมอ
+-- ไม่งั้นรันไฟล์นี้ซ้ำรอบสองจะติด "other objects depend on it"
+drop view if exists evidence_items;
 drop view if exists evidence_feed;
 
 create view evidence_feed
