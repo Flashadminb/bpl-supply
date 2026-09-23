@@ -137,6 +137,8 @@ export default function Account() {
 
         <PushSetup />
 
+        <p className="mt-6 text-center text-xs text-ink-300">Created by Thanawat Phuttarit</p>
+
         <p className="mt-4 text-center text-sm text-ink-400">
           ลืมรหัสผ่านจนเข้าระบบไม่ได้ ต้องให้แอดมินตั้งรหัสใหม่ให้
         </p>

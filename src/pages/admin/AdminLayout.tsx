@@ -103,6 +103,9 @@ export default function AdminLayout() {
           {nav}
         </div>
         <div className="text-sm text-dark-muted">
+          <p className="mb-2 text-[10px] tracking-wide text-dark-muted/60">
+            Created by Thanawat Phuttarit
+          </p>
           <p className="text-dark-text">{profile?.full_name}</p>
           <p className="font-mono text-xs">
             {profile?.employee_code} · {profile?.hub_code}

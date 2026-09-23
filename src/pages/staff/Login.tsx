@@ -1,4 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { CodeScanner } from '../../components/CodeScanner'
+import { parseLoginQr } from '../../components/LoginQr'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { rememberedCode, useAuth } from '../../lib/auth'
 import { supabaseConfigured, readableError } from '../../lib/supabase'
@@ -16,6 +18,7 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [install, setInstall] = useState<InstallPrompt | null>(null)
+  const [scanning, setScanning] = useState(false)
 
   useEffect(() => {
     const onPrompt = (e: Event) => {
@@ -43,6 +46,27 @@ export default function Login() {
     }
   }
 
+  /**
+   * สแกน QR ที่แอดมินส่งมา — เติมช่องให้แล้วเข้าระบบเลย
+   * เติมช่องด้วยเสมอ เผื่อเข้าไม่ผ่านจะได้เห็นว่าอ่านรหัสอะไรมาได้
+   */
+  function onScan(raw: string): { ok: boolean; message: string } {
+    const hit = parseLoginQr(raw)
+    if (!hit) return { ok: false, message: 'ไม่ใช่ QR เข้าระบบของ BPL SUPPLY' }
+
+    setCode(hit.code)
+    setPassword(hit.password)
+    setScanning(false)
+    setError(null)
+    setBusy(true)
+    void signIn(hit.code, hit.password, remember)
+      .then(() => nav('/', { replace: true }))
+      .catch((err) => setError(readableError(err)))
+      .finally(() => setBusy(false))
+
+    return { ok: true, message: `อ่านได้ ${hit.code} · กำลังเข้าระบบ` }
+  }
+
   // ระบบไม่ผูกอีเมลจริง จึงส่งลิงก์รีเซ็ตทางอีเมลไม่ได้ — ต้องให้แอดมินตั้งรหัสใหม่ให้แทน
   function onForgot() {
     setError(null)
@@ -58,7 +82,7 @@ export default function Login() {
         <div className="mx-auto max-w-phone">
           <p className="font-mono text-xs tracking-widest">FLASH EXPRESS</p>
           <h1 className="mt-1 font-display text-xl font-semibold">BPL SUPPLY</h1>
-          <p className="mt-1 text-base">ระบบเบิก–คืนวัสดุสิ้นเปลือง</p>
+          <p className="mt-1 text-base">ระบบเบิก-คืนของ</p>
         </div>
       </div>
 
@@ -126,8 +150,18 @@ export default function Login() {
           </button>
         </form>
 
-        <p className="mt-4 text-center text-sm text-ink-400">
-          เข้าระบบด้วย QR บัตรพนักงาน — ยังไม่เปิดใช้ในเวอร์ชันนี้
+        <button
+          type="button"
+          className="btn-soft mt-3 w-full py-3"
+          onClick={() => {
+            setError(null)
+            setScanning(true)
+          }}
+        >
+          สแกน QR ที่แอดมินส่งให้
+        </button>
+        <p className="mt-2 text-center text-sm text-ink-400">
+          ไม่ต้องพิมพ์รหัส — สแกนรูปที่แอดมินส่งมาแล้วเข้าได้เลย
         </p>
 
         {install && (
@@ -149,6 +183,17 @@ export default function Login() {
           </div>
         )}
       </main>
+
+      {scanning && (
+        <CodeScanner
+          title="สแกน QR เข้าระบบ"
+          hint="เอากล้องส่องรูป QR ที่แอดมินส่งมาในแชต"
+          onCode={onScan}
+          onClose={() => setScanning(false)}
+        />
+      )}
+
+      <p className="mt-6 text-center text-xs text-ink-300">Created by Thanawat Phuttarit</p>
     </div>
   )
 }

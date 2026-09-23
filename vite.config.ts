@@ -9,9 +9,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icon-192.png', 'icon-512.png'],
       manifest: {
-        name: 'BPL SUPPLY — เบิก/คืนวัสดุสิ้นเปลือง',
+        name: 'BPL SUPPLY — ระบบเบิก-คืนของ',
         short_name: 'BPL SUPPLY',
-        description: 'ระบบเบิก–คืนวัสดุสิ้นเปลืองสำหรับฮับขนส่ง',
+        description: 'ระบบเบิก-คืนของสำหรับฮับขนส่ง',
         lang: 'th',
         theme_color: '#F5B301',
         background_color: '#FAF8F3',

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { StaffImport } from '../../components/StaffImport'
+import { LoginQr } from '../../components/LoginQr'
 import { useAsync } from '../../lib/useAsync'
 import {
   createEmployee,
@@ -59,6 +60,8 @@ export default function Users() {
   const [busy, setBusy] = useState(false)
   const [modalError, setModalError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
+  // QR รหัสเริ่มต้นที่เพิ่งสร้าง — ให้ก๊อปรูปส่งให้เจ้าตัวได้เลย
+  const [qr, setQr] = useState<{ code: string; name?: string; password: string } | null>(null)
   const [importing, setImporting] = useState(false)
   const [search, setSearch] = useState('')
   const [onlyInactive, setOnlyInactive] = useState(false)
@@ -119,9 +122,7 @@ export default function Users() {
         shiftStart: draft.shift_start || null,
         shiftEnd: draft.shift_end || null,
       })
-      setDone(
-        `สร้างบัญชี ${draft.employee_code} แล้ว — แจ้งรหัสผ่าน "${draft.password}" ให้เจ้าตัว แล้วบอกให้เปลี่ยนรหัสเองที่หน้า "บัญชีของฉัน"`,
-      )
+      setQr({ code: draft.employee_code, name: draft.full_name, password: draft.password })
       setDraft(null)
       users.reload()
     } catch (e) {
@@ -137,7 +138,7 @@ export default function Users() {
     setModalError(null)
     try {
       await resetEmployeePassword(resetting.id, newPwd)
-      setDone(`ตั้งรหัสใหม่ให้ ${resetting.employee_code} แล้ว — แจ้งรหัส "${newPwd}" ให้เจ้าตัว`)
+      setQr({ code: resetting.employee_code, name: resetting.full_name, password: newPwd })
       setResetting(null)
       setNewPwd('')
     } catch (e) {
@@ -601,6 +602,24 @@ export default function Users() {
           </>
         )}
       </Modal>
+      <Modal open={Boolean(qr)} onClose={() => setQr(null)} title="ส่ง QR ให้พนักงาน">
+        {qr && (
+          <>
+            <p className="mb-3 text-sm text-ink-500">
+              ก๊อปรูปนี้ส่งในแชตให้เจ้าตัว เขาเปิดหน้าล็อกอินแล้วกด
+              <b> สแกน QR ที่แอดมินส่งให้ </b>
+              เข้าได้เลย ไม่ต้องพิมพ์รหัส
+            </p>
+            <LoginQr employeeCode={qr.code} fullName={qr.name} password={qr.password} />
+            <div className="mt-3 flex justify-end">
+              <button type="button" className="btn-primary" onClick={() => setQr(null)}>
+                เสร็จแล้ว
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
+
       <StaffImport
         open={importing}
         onClose={() => setImporting(false)}
