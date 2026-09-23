@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
 import {
+  countAssetExportRows,
   countSheetExportRows,
   exportToSheet,
   listDepartments,
@@ -41,6 +42,8 @@ export default function ExportSheet() {
     [from, to],
   )
 
+  const assetTally = useAsync(() => countAssetExportRows(range), [range])
+
   const tally = useAsync(
     () => countSheetExportRows({ ...range, dept: dept || undefined }),
     [range, dept],
@@ -58,6 +61,9 @@ export default function ExportSheet() {
   const rows = feed.data ?? []
   const pending = tally.data?.pending ?? 0
   const done = tally.data?.done ?? 0
+  const assetPending = assetTally.data?.pending ?? 0
+  const assetDone = assetTally.data?.done ?? 0
+  const totalPending = pending + assetPending
 
   async function send() {
     setBusy(true)
@@ -73,6 +79,7 @@ export default function ExportSheet() {
       ])
       // ดึงใหม่ให้แถวที่เพิ่งส่งเปลี่ยนสถานะทันที
       tally.reload()
+      assetTally.reload()
       feed.reload()
     } catch (e) {
       setRuns((r) => [{ at: new Date().toISOString(), ok: false, message: (e as Error).message }, ...r])
@@ -103,11 +110,24 @@ export default function ExportSheet() {
           <p className="mt-1 font-display text-xl leading-none">{tally.loading ? '…' : done}</p>
           <p className="mt-1 text-xs text-ink-400">บรรทัด</p>
         </div>
-        <div className="rounded-card border border-line bg-surface p-4 sm:col-span-2">
-          <p className="text-sm text-ink-500">ในช่วงที่เลือกทั้งหมด</p>
-          <p className="mt-1 font-display text-xl leading-none">{tally.loading ? '…' : pending + done}</p>
+        <div
+          className={`rounded-card border p-4 ${
+            assetPending > 0 ? 'border-brand-300 bg-brand-50' : 'border-line bg-surface'
+          }`}
+        >
+          <p className="text-sm text-ink-500">Asset ยังไม่ส่ง</p>
+          <p className="mt-1 font-display text-xl leading-none">
+            {assetTally.loading ? '…' : assetPending}
+          </p>
+          <p className="mt-1 text-xs text-ink-400">ส่งแล้ว {assetDone} บรรทัด</p>
+        </div>
+        <div className="rounded-card border border-line bg-surface p-4">
+          <p className="text-sm text-ink-500">รวมที่ค้างส่ง</p>
+          <p className="mt-1 font-display text-xl leading-none">
+            {tally.loading ? '…' : totalPending}
+          </p>
           <p className="mt-1 text-xs text-ink-400">
-            ส่งแล้วจะไม่ถูกส่งซ้ำเป็นแถวใหม่ แต่ถ้าข้อมูลเปลี่ยนจะเขียนทับแถวเดิมให้
+            ส่งซ้ำได้ ถ้าข้อมูลเปลี่ยนจะเขียนทับแถวเดิม
           </p>
         </div>
       </div>
@@ -138,24 +158,25 @@ export default function ExportSheet() {
           <button
             type="button"
             className="btn-primary h-tap min-w-[190px]"
-            disabled={busy || pending === 0}
+            disabled={busy || totalPending === 0}
             onClick={() => void send()}
           >
             {busy ? <Spinner /> : null}
-            {busy ? 'กำลังส่ง…' : pending === 0 ? 'ส่งครบแล้ว' : `ส่ง ${pending} บรรทัดที่ยังไม่ส่ง`}
+            {busy ? 'กำลังส่ง…' : totalPending === 0 ? 'ส่งครบแล้ว' : `ส่ง ${totalPending} บรรทัดที่ยังไม่ส่ง`}
           </button>
         </div>
 
         <p className="mt-3 rounded-btn bg-surface-2 px-3 py-2 text-xs text-ink-500">
           ปุ่มส่งจะทำงานกับ<b>ทั้งช่วงวันที่ที่เลือก</b> ไม่ขึ้นกับตัวกรองแผนก ·
-          แท็บแยกรายเดือน เช่น <span className="font-mono">เบิก-คืน 2569-09</span> ·
-          กุญแจกันแถวซ้ำคือเลขที่คำขอคู่กับ SKU
+          แท็บแยกรายเดือนและแยกชนิด: <span className="font-mono">เบิก-คืน 2569-09</span>,{' '}
+          <span className="font-mono">Asset 2569-09</span>,{' '}
+          <span className="font-mono">ชำรุด 2569-09</span>
         </p>
       </section>
 
       <section className="panel mt-4 p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-display text-md">รายการในช่วงที่เลือก</h2>
+          <h2 className="font-display text-md">วัสดุสิ้นเปลืองในช่วงที่เลือก</h2>
           <div className="flex gap-1">
             <button
               type="button"

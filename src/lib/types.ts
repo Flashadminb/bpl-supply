@@ -180,6 +180,8 @@ export type AssetTxnKind = 'out' | 'in'
 export interface AssetType {
   code: string
   name: string
+  /** ถ้ามีค่า = เป็นของพ่วงประเภทนี้ ไม่ขึ้นเป็นเมนูแยก */
+  parent_code: string | null
   sort_no: number
   is_active: boolean
   photo_min: number

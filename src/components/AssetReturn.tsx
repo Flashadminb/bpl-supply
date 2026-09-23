@@ -48,6 +48,7 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
 
   const rows = held.data ?? []
 
+
   // บอกหน้าแม่ว่าถืออุปกรณ์อยู่กี่เครื่อง จะได้ไม่ขึ้น "ไม่มีของค้างคืน" ทั้งที่ยังมี
   const reported = useRef<number>(-1)
   useEffect(() => {
@@ -55,6 +56,16 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
     reported.current = rows.length
     onCount?.(rows.length)
   }, [rows.length, held.loading, onCount])
+  // ของพ่วงคืนพร้อมประเภทแม่ในรอบเดียว จึงจับกลุ่มด้วย "ประเภทหลัก"
+  const rootOf = useMemo(() => {
+    const m = new Map((types.data ?? []).map((t) => [t.code, t.parent_code ?? t.code]))
+    return (code: string) => m.get(code) ?? code
+  }, [types.data])
+  const nameOf = useMemo(() => {
+    const m = new Map((types.data ?? []).map((t) => [t.code, t.name]))
+    return (code: string) => m.get(code) ?? code
+  }, [types.data])
+
   const type = (types.data ?? []).find((t) => t.code === typeCode)
   const issueBy = useMemo(
     () => new Map((issues.data ?? []).map((i) => [i.asset_code, i])),
@@ -64,16 +75,17 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
   const groups = useMemo(() => {
     const map = new Map<string, typeof rows>()
     for (const h of rows) {
-      const list = map.get(h.type_code) ?? []
+      const root = rootOf(h.type_code)
+      const list = map.get(root) ?? []
       list.push(h)
-      map.set(h.type_code, list)
+      map.set(root, list)
     }
     return [...map.entries()].map(([code, list]) => ({
       code,
-      name: list[0]?.type_name ?? code,
+      name: nameOf(code),
       list,
     }))
-  }, [rows])
+  }, [rows, rootOf, nameOf])
 
   const photos = shotsToPhotos(shots)
   const needPhotos =
@@ -160,6 +172,9 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="font-display">{h.asset_code}</span>
+                      {rootOf(h.type_code) !== h.type_code && (
+                        <span className="ml-1 text-xs text-ink-400">{h.type_name}</span>
+                      )}
                       <span className="block text-sm text-ink-500">
                         เบิก {fmtDateTime(h.taken_at)} · ถือมาแล้ว {relativeAge(h.taken_at)}
                       </span>

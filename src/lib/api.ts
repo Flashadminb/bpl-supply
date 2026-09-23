@@ -586,14 +586,15 @@ export async function listAssetPhotoSteps(typeCode?: string): Promise<AssetPhoto
  * เครื่องที่ผู้ใช้คนนี้มองเห็น — RLS กรองตามแผนกให้แล้ว ไม่ต้องกรองซ้ำที่นี่
  * ทั้งฮับมี 139 เครื่อง ดึงมาทีเดียวถูกกว่าไล่ถามทีละประเภท
  */
-export async function listAssets(typeCode?: string): Promise<Asset[]> {
+export async function listAssets(typeCodes?: string | string[]): Promise<Asset[]> {
+  const list = typeof typeCodes === 'string' ? [typeCodes] : typeCodes
   let q = supabase
     .from('assets')
     .select(
       'code,type_code,dept_code,share_depts,is_enabled,note,held_item_id,created_at,asset_types(code,name)',
     )
     .order('code')
-  if (typeCode) q = q.eq('type_code', typeCode)
+  if (list && list.length > 0) q = q.in('type_code', list)
   return unwrap(await q) as unknown as Asset[]
 }
 
@@ -713,4 +714,24 @@ export interface EvidenceItemOption {
 
 export async function listEvidenceItems(): Promise<EvidenceItemOption[]> {
   return unwrap(await supabase.from('evidence_items').select('*')) as unknown as EvidenceItemOption[]
+}
+
+/** นับบรรทัด Asset ที่ยังไม่ได้ส่งเข้าชีต */
+export async function countAssetExportRows(args: {
+  fromISO: string
+  toISO: string
+}): Promise<{ pending: number; done: number }> {
+  const base = () =>
+    supabase
+      .from('asset_export_rows')
+      .select('line_id', { count: 'exact', head: true })
+      .gte('created_at', args.fromISO)
+      .lte('created_at', args.toISO)
+  const [pending, done] = await Promise.all([
+    base().is('tab', null),
+    base().not('tab', 'is', null),
+  ])
+  if (pending.error) throw new Error(readableError(pending.error))
+  if (done.error) throw new Error(readableError(done.error))
+  return { pending: pending.count ?? 0, done: done.count ?? 0 }
 }

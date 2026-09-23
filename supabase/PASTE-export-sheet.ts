@@ -1,17 +1,50 @@
 // =====================================================================
-// export-sheet — เขียนข้อมูลการเบิกลง Google Sheet
-// 1 แถวต่อ 1 รายการวัสดุ · แยกแท็บรายเดือน
+// export-sheet — เขียนข้อมูลลง Google Sheet
 //
-// กันแถวซ้ำโดยจำตำแหน่งไว้ในตาราง sheet_exports (แท็บ + เลขแถว)
+// สามชุดแยกแท็บกัน แต่ละชุดแยกรายเดือนอีกที
+//   เบิก-คืน 2569-09   วัสดุสิ้นเปลือง 1 แถวต่อ 1 รายการ
+//   Asset 2569-09      อุปกรณ์ 1 แถวต่อ 1 เครื่องต่อครั้งที่เบิกหรือคืน
+//   ชำรุด 2569-09      ใบแจ้งชำรุด 1 แถวต่อ 1 ใบ
+//
+// กันแถวซ้ำโดยจำตำแหน่งไว้ในฐานข้อมูล (แท็บ + เลขแถว)
 // จึงไม่ต้องอ่านทั้งชีตมาเทียบทุกครั้ง — เร็วคงที่ไม่ว่าชีตจะใหญ่แค่ไหน
 //
 // ไฟล์นี้เขียนให้จบในตัวเอง ก๊อปวางใน Supabase Dashboard ได้ตรง ๆ
-// secrets: GOOGLE_SA_EMAIL, GOOGLE_SA_PRIVATE_KEY, GSHEET_ID, GSHEET_TAB (ไม่บังคับ)
+// secrets: GOOGLE_SA_EMAIL, GOOGLE_SA_PRIVATE_KEY, GSHEET_ID
 // =====================================================================
 
-const VERSION = 'monthly-v3'
+const VERSION = 'assets-v4'
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
+
 const HEADER = ['เลขที่คำขอ', 'วันเวลา', 'ผู้เบิก (ฮับ)', 'วัสดุ', 'จำนวน', 'หลักฐาน', 'Drive File ID']
+
+const ASSET_HEADER = [
+  'เลขที่',
+  'วันเวลา',
+  'รายการ',
+  'ผู้ทำรายการ',
+  'รหัสพนักงาน',
+  'แผนก',
+  'กะ',
+  'ประเภท',
+  'รหัสเครื่อง',
+  'กำหนดคืน',
+  'หลักฐาน',
+  'Drive File ID',
+]
+
+const ISSUE_HEADER = [
+  'วันที่แจ้ง',
+  'รหัสเครื่อง',
+  'ประเภท',
+  'อาการ',
+  'แจ้งตอน',
+  'ผู้แจ้ง',
+  'รหัสพนักงาน',
+  'สถานะ',
+  'วันที่เคลียร์',
+  'เลขที่รายการ',
+]
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -144,6 +177,9 @@ async function gfetch(url: string, token: string, init: RequestInit = {}) {
   return data
 }
 
+/** A, B, C … สำหรับหัวตารางกว้างเท่าไหร่ก็ได้ */
+const colLetter = (n: number) => String.fromCharCode(64 + n)
+
 /* ------------------------------------------------------------------ data */
 
 interface DbLine {
@@ -165,17 +201,47 @@ interface DbReq {
   requisition_items: DbLine[]
 }
 
-/** ชื่อแท็บรายเดือนแบบ พ.ศ. เช่น "เบิก-คืน 2569-09" */
-function tabFor(iso: string): string {
-  const d = new Date(iso)
+interface DbAssetItem {
+  id: number
+  asset_code: string
+  out_item_id: number | null
+  assets: { type_code: string; asset_types: { name: string } | null } | null
+  asset_txns: {
+    ref_no: string
+    kind: string
+    created_at: string
+    dept_code: string | null
+    shift_start: string | null
+    shift_end: string | null
+    due_at: string | null
+    profiles: { full_name: string; employee_code: string; sub_dept: string | null } | null
+    asset_txn_photos: { file_id: string }[] | null
+  } | null
+}
+
+interface DbIssue {
+  id: number
+  asset_code: string
+  symptom: string
+  phase: string | null
+  reported_at: string
+  reported_name: string | null
+  resolved_at: string | null
+  assets: { asset_types: { name: string } | null } | null
+  profiles: { full_name: string; employee_code: string } | null
+  asset_txns: { ref_no: string } | null
+}
+
+/** เดือน พ.ศ. ของแท็บ เช่น "2569-09" */
+function monthOf(iso: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Bangkok',
     year: 'numeric',
     month: '2-digit',
-  }).formatToParts(d)
+  }).formatToParts(new Date(iso))
   const y = Number(parts.find((p) => p.type === 'year')?.value ?? '0') + 543
   const m = parts.find((p) => p.type === 'month')?.value ?? '01'
-  return `เบิก-คืน ${y}-${m}`
+  return `${y}-${m}`
 }
 
 function thaiDateTime(iso: string): string {
@@ -190,39 +256,123 @@ function thaiDateTime(iso: string): string {
 }
 
 /** สร้างแท็บถ้ายังไม่มี พร้อมใส่หัวตาราง คืนจำนวนแถวที่มีอยู่แล้ว */
-async function ensureTab(sheetId: string, tab: string, token: string): Promise<number> {
+async function ensureTab(
+  sheetId: string,
+  tab: string,
+  token: string,
+  header: string[],
+): Promise<number> {
+  const end = colLetter(header.length)
   const meta = (await gfetch(api(sheetId, ''), token)) as {
-    sheets?: { properties?: { title?: string; gridProperties?: { rowCount?: number } } }[]
+    sheets?: { properties?: { title?: string } }[]
   }
   const found = (meta.sheets ?? []).find((s) => s.properties?.title === tab)
+
+  const writeHeader = async () => {
+    await gfetch(
+      api(sheetId, `/values/${encodeURIComponent(`${tab}!A1:${end}1`)}`, '?valueInputOption=RAW'),
+      token,
+      { method: 'PUT', body: JSON.stringify({ values: [header] }) },
+    )
+  }
 
   if (!found) {
     await gfetch(api(sheetId, ':batchUpdate'), token, {
       method: 'POST',
       body: JSON.stringify({ requests: [{ addSheet: { properties: { title: tab } } }] }),
     })
-    await gfetch(api(sheetId, `/values/${encodeURIComponent(`${tab}!A1:G1`)}`, '?valueInputOption=RAW'), token, {
-      method: 'PUT',
-      body: JSON.stringify({ values: [HEADER] }),
-    })
+    await writeHeader()
     return 1
   }
 
   // อ่านแค่คอลัมน์ A เพื่อรู้ว่าตอนนี้มีกี่แถว ไม่ได้อ่านข้อมูลทั้งชีต
-  const col = (await gfetch(
-    api(sheetId, `/values/${encodeURIComponent(`${tab}!A:A`)}`),
-    token,
-  )) as { values?: string[][] }
+  const col = (await gfetch(api(sheetId, `/values/${encodeURIComponent(`${tab}!A:A`)}`), token)) as {
+    values?: string[][]
+  }
   const used = col.values?.length ?? 0
   if (used === 0) {
-    await gfetch(api(sheetId, `/values/${encodeURIComponent(`${tab}!A1:G1`)}`, '?valueInputOption=RAW'), token, {
-      method: 'PUT',
-      body: JSON.stringify({ values: [HEADER] }),
-    })
+    await writeHeader()
     return 1
   }
   return used
 }
+
+interface OutRow {
+  key: number
+  tab: string
+  values: (string | number)[]
+}
+
+/**
+ * เขียนแถวลงชีต — ที่เคยส่งแล้วเขียนทับตำแหน่งเดิม ที่ยังไม่เคยส่งต่อท้าย
+ * คืนตำแหน่งของแถวใหม่ไว้ให้คนเรียกเอาไปจำต่อ
+ */
+async function pushRows(
+  sheetId: string,
+  token: string,
+  rows: OutRow[],
+  placed: Map<number, { tab: string; row_no: number }>,
+  header: string[],
+): Promise<{ updated: number; appended: number; fresh: OutRow[]; rowNos: number[]; tabs: string[] }> {
+  const end = colLetter(header.length)
+  const tabs = new Set<string>()
+  let updated = 0
+  let appended = 0
+
+  const updates = rows
+    .filter((r) => placed.has(r.key))
+    .map((r) => {
+      const p = placed.get(r.key) as { tab: string; row_no: number }
+      tabs.add(p.tab)
+      return { range: `${p.tab}!A${p.row_no}:${end}${p.row_no}`, values: [r.values] }
+    })
+
+  if (updates.length > 0) {
+    await gfetch(api(sheetId, '/values:batchUpdate'), token, {
+      method: 'POST',
+      body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data: updates }),
+    })
+    updated = updates.length
+  }
+
+  const fresh: OutRow[] = []
+  const rowNos: number[] = []
+  const byTab = new Map<string, OutRow[]>()
+  for (const r of rows.filter((x) => !placed.has(x.key))) {
+    const arr = byTab.get(r.tab)
+    if (arr) arr.push(r)
+    else byTab.set(r.tab, [r])
+  }
+
+  for (const [tab, list] of byTab) {
+    const startRow = await ensureTab(sheetId, tab, token, header)
+    await gfetch(
+      api(
+        sheetId,
+        `/values/${encodeURIComponent(`${tab}!A1`)}:append`,
+        '?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',
+      ),
+      token,
+      { method: 'POST', body: JSON.stringify({ values: list.map((r) => r.values) }) },
+    )
+    list.forEach((r, i) => {
+      fresh.push(r)
+      rowNos.push(startRow + 1 + i)
+    })
+    appended += list.length
+    tabs.add(tab)
+  }
+
+  return { updated, appended, fresh, rowNos, tabs: [...tabs] }
+}
+
+const driveLink = (id: string, text: string) =>
+  `=HYPERLINK("https://drive.google.com/file/d/${id}/view";"${text}")`
+
+const shiftText = (a: string | null, b: string | null) =>
+  a && b ? `${a.slice(0, 5)}–${b.slice(0, 5)}` : ''
+
+/* ------------------------------------------------------------------ serve */
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -236,131 +386,211 @@ Deno.serve(async (req) => {
       from?: string
       to?: string
       hub?: string
+      /** 'all' (ค่าเริ่มต้น) | 'supply' | 'asset' */
+      scope?: string
     }
 
     const sheetId = envOrThrow('GSHEET_ID')
+    const scope = payload.scope ?? 'all'
+    const token = await getAccessToken()
 
-    const select =
-      'id,ref_no,created_at,hub_code,evidence_file_id,' +
-      'profiles!requisitions_requester_id_fkey(full_name),' +
-      'requisition_photos(file_id),' +
-      'requisition_items(id,qty_requested,qty_approved,status,items(sku,name,unit))'
+    let updated = 0
+    let appended = 0
+    const tabs = new Set<string>()
 
-    const qs = new URLSearchParams({ select })
-    if (payload.requisitionId) {
-      qs.set('id', `eq.${payload.requisitionId}`)
-    } else {
-      if (payload.from) qs.append('created_at', `gte.${payload.from}`)
-      if (payload.to) qs.append('created_at', `lte.${payload.to}`)
-      if (payload.hub) qs.set('hub_code', `eq.${payload.hub}`)
-    }
-    qs.set('order', 'created_at.asc')
+    /* ------------------------------------------------ วัสดุสิ้นเปลือง */
+    if (scope === 'all' || scope === 'supply') {
+      const select =
+        'id,ref_no,created_at,hub_code,evidence_file_id,' +
+        'profiles!requisitions_requester_id_fkey(full_name),' +
+        'requisition_photos(file_id),' +
+        'requisition_items(id,qty_requested,qty_approved,status,items(sku,name,unit))'
 
-    const reqs = await db<DbReq[]>(`requisitions?${qs}`)
+      const qs = new URLSearchParams({ select })
+      if (payload.requisitionId) {
+        qs.set('id', `eq.${payload.requisitionId}`)
+      } else {
+        if (payload.from) qs.append('created_at', `gte.${payload.from}`)
+        if (payload.to) qs.append('created_at', `lte.${payload.to}`)
+        if (payload.hub) qs.set('hub_code', `eq.${payload.hub}`)
+      }
+      qs.set('order', 'created_at.asc')
 
-    // แปลงเป็นแถว พร้อมจับกลุ่มตามแท็บรายเดือน
-    interface Row {
-      lineId: number
-      tab: string
-      values: (string | number)[]
-    }
-    const allRows: Row[] = []
-    for (const r of reqs) {
-      // แนบได้หลายใบ ลิงก์ในชีตชี้ไปใบแรก แล้วบอกจำนวนไว้ในข้อความ
-      const photos = (r.requisition_photos ?? []).map((p) => p.file_id)
-      const count = Math.max(photos.length, r.evidence_file_id ? 1 : 0)
-      const mainId = r.evidence_file_id ?? photos[0] ?? null
-      const linkText = count > 1 ? `ดูรูป (${count} ใบ)` : 'ดูรูป'
+      const reqs = await db<DbReq[]>(`requisitions?${qs}`)
+      const rows: OutRow[] = []
+      for (const r of reqs) {
+        const photos = (r.requisition_photos ?? []).map((p) => p.file_id)
+        const count = Math.max(photos.length, r.evidence_file_id ? 1 : 0)
+        const mainId = r.evidence_file_id ?? photos[0] ?? null
+        const linkText = count > 1 ? `ดูรูป (${count} ใบ)` : 'ดูรูป'
 
-      for (const l of r.requisition_items ?? []) {
-        if (l.status === 'rejected') continue
-        allRows.push({
-          lineId: l.id,
-          tab: tabFor(r.created_at),
-          values: [
-            r.ref_no,
-            thaiDateTime(r.created_at),
-            `${r.profiles?.full_name ?? '—'} (${r.hub_code})`,
-            l.items?.name ?? '',
-            `${l.qty_approved ?? l.qty_requested} ${l.items?.unit ?? ''}`,
-            mainId ? `=HYPERLINK("https://drive.google.com/file/d/${mainId}/view";"${linkText}")` : '',
-            photos.length > 1 ? photos.join(' ') : (mainId ?? ''),
-          ],
-        })
+        for (const l of r.requisition_items ?? []) {
+          if (l.status === 'rejected') continue
+          rows.push({
+            key: l.id,
+            tab: `เบิก-คืน ${monthOf(r.created_at)}`,
+            values: [
+              r.ref_no,
+              thaiDateTime(r.created_at),
+              `${r.profiles?.full_name ?? '—'} (${r.hub_code})`,
+              l.items?.name ?? '',
+              `${l.qty_approved ?? l.qty_requested} ${l.items?.unit ?? ''}`,
+              mainId ? driveLink(mainId, linkText) : '',
+              photos.length > 1 ? photos.join(' ') : (mainId ?? ''),
+            ],
+          })
+        }
+      }
+
+      if (rows.length > 0) {
+        const known = await db<{ requisition_item_id: number; tab: string; row_no: number }[]>(
+          `sheet_exports?requisition_item_id=in.(${rows.map((r) => r.key).join(',')})&select=requisition_item_id,tab,row_no`,
+        )
+        const placed = new Map(known.map((k) => [k.requisition_item_id, k]))
+        const out = await pushRows(sheetId, token, rows, placed, HEADER)
+        updated += out.updated
+        appended += out.appended
+        out.tabs.forEach((t) => tabs.add(t))
+
+        if (out.fresh.length > 0) {
+          await db('sheet_exports?on_conflict=requisition_item_id', {
+            method: 'POST',
+            headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+            body: JSON.stringify(
+              out.fresh.map((r, i) => ({
+                requisition_item_id: r.key,
+                tab: r.tab,
+                row_no: out.rowNos[i],
+              })),
+            ),
+          })
+        }
       }
     }
 
-    if (allRows.length === 0) return json({ updated: 0, appended: 0, sheet: '-', version: VERSION })
+    /* --------------------------------------------------------- Asset */
+    if (scope === 'all' || scope === 'asset') {
+      const select =
+        'id,asset_code,out_item_id,' +
+        'assets(type_code,asset_types(name)),' +
+        'asset_txns!inner(ref_no,kind,created_at,dept_code,shift_start,shift_end,due_at,' +
+        'profiles(full_name,employee_code,sub_dept),asset_txn_photos(file_id))'
 
-    // ดูว่าบรรทัดไหนเคยส่งไปแล้วและอยู่ตรงไหน
-    const ids = allRows.map((r) => r.lineId)
-    const known = await db<{ requisition_item_id: number; tab: string; row_no: number }[]>(
-      `sheet_exports?requisition_item_id=in.(${ids.join(',')})&select=requisition_item_id,tab,row_no`,
-    )
-    const placed = new Map(known.map((k) => [k.requisition_item_id, k]))
+      const qs = new URLSearchParams({ select, order: 'id.asc' })
+      if (payload.from) qs.append('asset_txns.created_at', `gte.${payload.from}`)
+      if (payload.to) qs.append('asset_txns.created_at', `lte.${payload.to}`)
 
-    const token = await getAccessToken()
-    let updated = 0
-    let appended = 0
-    const touchedTabs = new Set<string>()
+      const items = await db<DbAssetItem[]>(`asset_txn_items?${qs}`)
+      const rows: OutRow[] = []
+      for (const it of items) {
+        const t = it.asset_txns
+        if (!t) continue
+        const photos = (t.asset_txn_photos ?? []).map((p) => p.file_id)
+        const mainId = photos[0] ?? null
+        const linkText = photos.length > 1 ? `ดูรูป (${photos.length} ใบ)` : 'ดูรูป'
+        const dept = [t.dept_code ?? '', t.profiles?.sub_dept ?? ''].filter(Boolean).join(' · ')
 
-    // ---- เขียนทับแถวเดิม เฉพาะตำแหน่งที่จำไว้ ----
-    const updates = allRows
-      .filter((r) => placed.has(r.lineId))
-      .map((r) => {
-        const p = placed.get(r.lineId) as { tab: string; row_no: number }
-        touchedTabs.add(p.tab)
-        return { range: `${p.tab}!A${p.row_no}:G${p.row_no}`, values: [r.values] }
+        rows.push({
+          key: it.id,
+          tab: `Asset ${monthOf(t.created_at)}`,
+          values: [
+            t.ref_no,
+            thaiDateTime(t.created_at),
+            t.kind === 'out' ? 'เบิก' : 'คืน',
+            t.profiles?.full_name ?? '—',
+            t.profiles?.employee_code ?? '',
+            dept,
+            shiftText(t.shift_start, t.shift_end),
+            it.assets?.asset_types?.name ?? it.assets?.type_code ?? '',
+            it.asset_code,
+            t.kind === 'out' && t.due_at ? thaiDateTime(t.due_at) : '',
+            mainId ? driveLink(mainId, linkText) : '',
+            photos.join(' '),
+          ],
+        })
+      }
+
+      if (rows.length > 0) {
+        const known = await db<{ asset_txn_item_id: number; tab: string; row_no: number }[]>(
+          `asset_sheet_exports?asset_txn_item_id=in.(${rows.map((r) => r.key).join(',')})&select=asset_txn_item_id,tab,row_no`,
+        )
+        const placed = new Map(known.map((k) => [k.asset_txn_item_id, k]))
+        const out = await pushRows(sheetId, token, rows, placed, ASSET_HEADER)
+        updated += out.updated
+        appended += out.appended
+        out.tabs.forEach((t) => tabs.add(t))
+
+        if (out.fresh.length > 0) {
+          await db('asset_sheet_exports?on_conflict=asset_txn_item_id', {
+            method: 'POST',
+            headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+            body: JSON.stringify(
+              out.fresh.map((r, i) => ({
+                asset_txn_item_id: r.key,
+                tab: r.tab,
+                row_no: out.rowNos[i],
+              })),
+            ),
+          })
+        }
+      }
+
+      /* ----------------------------------------------------- ใบแจ้งชำรุด */
+      const iqs = new URLSearchParams({
+        select:
+          'id,asset_code,symptom,phase,reported_at,reported_name,resolved_at,' +
+          'assets(asset_types(name)),' +
+          'profiles!asset_issues_reported_by_fkey(full_name,employee_code),' +
+          'asset_txns(ref_no)',
+        order: 'reported_at.asc',
       })
+      if (payload.from) iqs.append('reported_at', `gte.${payload.from}`)
+      if (payload.to) iqs.append('reported_at', `lte.${payload.to}`)
 
-    if (updates.length > 0) {
-      await gfetch(api(sheetId, '/values:batchUpdate'), token, {
-        method: 'POST',
-        body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data: updates }),
-      })
-      updated = updates.length
-    }
+      const issues = await db<DbIssue[]>(`asset_issues?${iqs}`)
+      const irows: OutRow[] = issues.map((i) => ({
+        key: i.id,
+        tab: `ชำรุด ${monthOf(i.reported_at)}`,
+        values: [
+          thaiDateTime(i.reported_at),
+          i.asset_code,
+          i.assets?.asset_types?.name ?? '',
+          i.symptom,
+          i.phase === 'out' ? 'ตอนเบิก' : i.phase === 'in' ? 'ตอนคืน' : '',
+          i.profiles?.full_name ?? i.reported_name ?? '—',
+          i.profiles?.employee_code ?? '',
+          i.resolved_at ? 'เคลียร์แล้ว' : 'ยังค้าง',
+          i.resolved_at ? thaiDateTime(i.resolved_at) : '',
+          i.asset_txns?.ref_no ?? '',
+        ],
+      }))
 
-    // ---- ต่อท้ายแถวใหม่ แยกทีละแท็บ ----
-    const fresh = allRows.filter((r) => !placed.has(r.lineId))
-    const byTab = new Map<string, Row[]>()
-    for (const r of fresh) {
-      const arr = byTab.get(r.tab)
-      if (arr) arr.push(r)
-      else byTab.set(r.tab, [r])
-    }
+      if (irows.length > 0) {
+        const known = await db<{ issue_id: number; tab: string; row_no: number }[]>(
+          `asset_issue_exports?issue_id=in.(${irows.map((r) => r.key).join(',')})&select=issue_id,tab,row_no`,
+        )
+        const placed = new Map(known.map((k) => [k.issue_id, k]))
+        const out = await pushRows(sheetId, token, irows, placed, ISSUE_HEADER)
+        updated += out.updated
+        appended += out.appended
+        out.tabs.forEach((t) => tabs.add(t))
 
-    const records: { requisition_item_id: number; tab: string; row_no: number }[] = []
-    for (const [tab, list] of byTab) {
-      const startRow = await ensureTab(sheetId, tab, token)
-      await gfetch(
-        api(
-          sheetId,
-          `/values/${encodeURIComponent(`${tab}!A1`)}:append`,
-          '?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',
-        ),
-        token,
-        { method: 'POST', body: JSON.stringify({ values: list.map((r) => r.values) }) },
-      )
-      list.forEach((r, i) => {
-        records.push({ requisition_item_id: r.lineId, tab, row_no: startRow + 1 + i })
-      })
-      appended += list.length
-      touchedTabs.add(tab)
-    }
-
-    if (records.length > 0) {
-      await db('sheet_exports?on_conflict=requisition_item_id', {
-        method: 'POST',
-        headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify(records),
-      })
+        if (out.fresh.length > 0) {
+          await db('asset_issue_exports?on_conflict=issue_id', {
+            method: 'POST',
+            headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+            body: JSON.stringify(
+              out.fresh.map((r, i) => ({ issue_id: r.key, tab: r.tab, row_no: out.rowNos[i] })),
+            ),
+          })
+        }
+      }
     }
 
     return json({
       updated,
       appended,
-      sheet: [...touchedTabs].join(', '),
+      sheet: [...tabs].join(', ') || '-',
       version: VERSION,
     })
   } catch (e) {
