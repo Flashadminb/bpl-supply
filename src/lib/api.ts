@@ -743,7 +743,7 @@ export async function pushSubscribe(subscription: {
   keys: { p256dh: string; auth: string }
 }) {
   return callFunction<{ ok: true }>(
-    'push-send',
+    'push-sent',
     JSON.stringify({ action: 'subscribe', subscription }),
     { 'Content-Type': 'application/json' },
   )
@@ -751,7 +751,7 @@ export async function pushSubscribe(subscription: {
 
 export async function pushUnsubscribe(endpoint: string) {
   return callFunction<{ ok: true }>(
-    'push-send',
+    'push-sent',
     JSON.stringify({ action: 'unsubscribe', subscription: { endpoint } }),
     { 'Content-Type': 'application/json' },
   )
@@ -759,7 +759,7 @@ export async function pushUnsubscribe(endpoint: string) {
 
 export async function pushTest() {
   return callFunction<{ ok: true; sent: number; errors: string[] }>(
-    'push-send',
+    'push-sent',
     JSON.stringify({ action: 'test' }),
     { 'Content-Type': 'application/json' },
   )

@@ -281,7 +281,7 @@ export default function AssetPick() {
         ))}
       </div>
 
-      <StaffPage>
+      <StaffPage nav={false} className="pb-[150px]">
         {loading && <Loading />}
         {assets.error && <ErrorBox message={assets.error} onRetry={assets.reload} />}
 
@@ -439,7 +439,7 @@ export default function AssetPick() {
       </StaffPage>
 
       {/* ------------------------------------------------- แถบปุ่มติดขอบล่าง */}
-      <div className="safe-b sticky bottom-0 border-t border-line bg-surface p-3 shadow-float">
+      <div className="safe-b fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface p-3 shadow-float">
         <div className="mx-auto max-w-phone">
           {step === 'pick' && (
             <>

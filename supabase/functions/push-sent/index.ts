@@ -1,5 +1,5 @@
 // =====================================================================
-// push-send — แจ้งเตือนเข้ามือถือ (Web Push)
+// push-sent — แจ้งเตือนเข้ามือถือ (Web Push)
 //
 // สามคำสั่ง
 //   subscribe  เครื่องนี้ขออนุญาตแล้ว เก็บ endpoint ไว้
@@ -257,7 +257,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method === 'GET') {
     return json({
-      name: 'push-send',
+      name: 'push-sent',
       version: VERSION,
       publicKeySet: Boolean(Deno.env.get('VAPID_PUBLIC_KEY')),
       cronKeySet: Boolean(Deno.env.get('CRON_SECRET')),

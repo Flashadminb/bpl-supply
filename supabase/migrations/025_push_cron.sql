@@ -2,7 +2,7 @@
 -- BPL SUPPLY — นาฬิกาเดินทุก 5 นาที คอยดูว่าใครต้องเตือนแล้ว
 -- รันต่อจาก 024 · ปลอดภัยที่จะรันซ้ำ
 --
--- ใช้ pg_cron เดินเวลา + pg_net ยิงไปที่ Edge Function push-send
+-- ใช้ pg_cron เดินเวลา + pg_net ยิงไปที่ Edge Function push-sent
 -- ทั้งสองตัวมีอยู่แล้วใน Supabase ไม่มีค่าใช้จ่ายเพิ่ม
 --
 -- ถ้าส่วนขยายยังไม่ได้เปิด ไฟล์นี้จะไม่ล้ม แต่จะขึ้น NOTICE บอกให้ไปเปิด
@@ -84,7 +84,7 @@ end $$;
 -- ค่าที่ต้องใส่อยู่ในไฟล์ "แจ้งเตือน-ตั้งค่า.txt" หัวข้อ ②
 --
 --   insert into private_settings (key, value) values
---     ('push_url',         'https://<project>.supabase.co/functions/v1/push-send'),
+--     ('push_url',         'https://<project>.supabase.co/functions/v1/push-sent'),
 --     ('push_cron_secret', '<CRON_SECRET ตัวเดียวกับที่ใส่ใน Edge Function>')
 --   on conflict (key) do update set value = excluded.value;
 -- =====================================================================
