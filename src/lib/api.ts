@@ -812,11 +812,18 @@ export async function createByBarcode(args: {
   return data as { id: string; ref_no: string; photos: number }
 }
 
-export async function setByStatus(id: string, status: ByStatus, note?: string) {
+export async function setByStatus(
+  id: string,
+  status: ByStatus,
+  opts: { note?: string; itemId?: number | null; qty?: number | null; cutStock?: boolean } = {},
+) {
   const { error } = await supabase.rpc('set_by_status', {
     p_id: id,
     p_status: status,
-    p_note: note ?? null,
+    p_note: opts.note ?? null,
+    p_item_id: opts.itemId ?? null,
+    p_qty: opts.qty ?? null,
+    p_cut_stock: opts.cutStock ?? false,
   })
   if (error) throw new Error(readableError(error))
 }

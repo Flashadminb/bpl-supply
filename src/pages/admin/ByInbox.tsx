@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
-import { listByRows, listByStats, setByStatus } from '../../lib/api'
+import { listAllItemsForAdmin, listByRows, listByStats, setByStatus } from '../../lib/api'
 import { readableError } from '../../lib/supabase'
 import { EmptyState, ErrorBox, Loading, Modal, Spinner } from '../../components/ui'
 import { EvidenceImg, ThumbStrip } from '../../components/EvidenceThumbs'
 import { DateRangePicker } from '../../components/DateRangePicker'
+import { SearchSelect, type Option } from '../../components/SearchSelect'
+import { QtyStepper } from '../../components/ui'
 import { fmtDateTime, relativeAge } from '../../lib/format'
 import type { ByRow, ByStatus } from '../../lib/types'
 
@@ -45,6 +47,21 @@ export default function ByInbox() {
     [range],
   )
   const stats = useAsync(() => listByStats(), [])
+  const items = useAsync(() => listAllItemsForAdmin(), [])
+
+  // ตอนปิดรายการ ระบุได้ว่าบาร์โค้ดนั้นคือวัสดุตัวไหนกี่ชิ้น
+  const [pickItem, setPickItem] = useState('')
+  const [pickQty, setPickQty] = useState(1)
+  const [cutStock, setCutStock] = useState(false)
+
+  const itemOpts: Option[] = useMemo(
+    () =>
+      (items.data ?? [])
+        .filter((i) => i.is_active)
+        .map((i) => ({ value: String(i.id), label: i.name, hint: `${i.sku} · เหลือ ${i.qty_on_hand} ${i.unit}` })),
+    [items.data],
+  )
+  const pickedItem = (items.data ?? []).find((i) => String(i.id) === pickItem)
 
   const rows = view === 'pending' ? (pending.data ?? []) : (history.data ?? [])
   const loading = view === 'pending' ? pending.loading : history.loading
@@ -62,12 +79,30 @@ export default function ByInbox() {
     return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
   }, [monthRows])
 
-  async function mark(row: ByRow, status: ByStatus) {
+  /** วัสดุที่ถูกขอผ่าน BY บ่อยที่สุด — เอาไปใช้ตัดสินใจสั่งของได้ตรงกว่าเหตุผล */
+  const topItems = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const s of monthRows) {
+      if (!s.item_name) continue
+      m.set(s.item_name, (m.get(s.item_name) ?? 0) + s.qty_done)
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
+  }, [monthRows])
+
+  async function mark(row: ByRow, status: ByStatus, withItem = false) {
     setBusyId(row.id)
     setError(null)
     try {
-      await setByStatus(row.id, status)
+      await setByStatus(row.id, status, {
+        itemId: withItem && pickItem ? Number(pickItem) : null,
+        qty: withItem && pickItem ? pickQty : null,
+        cutStock: withItem && cutStock,
+      })
       setOpen(null)
+      setPickItem('')
+      setPickQty(1)
+      setCutStock(false)
+      items.reload()
       pending.reload()
       history.reload()
       stats.reload()
@@ -110,7 +145,22 @@ export default function ByInbox() {
           <p className="mt-1 font-display text-xl leading-none">{monthTotal}</p>
           <p className="mt-1 text-xs text-ink-400">ตัดแล้ว {monthDone}</p>
         </div>
-        <div className="rounded-card border border-line bg-surface p-4 sm:col-span-2">
+        <div className="rounded-card border border-line bg-surface p-4">
+          <p className="text-sm text-ink-500">วัสดุที่ถูกขอมากสุดเดือนนี้</p>
+          {topItems.length === 0 ? (
+            <p className="mt-1 text-sm text-ink-400">ยังไม่ได้ระบุวัสดุตอนปิดรายการ</p>
+          ) : (
+            <ul className="mt-1 space-y-[2px] text-sm">
+              {topItems.map(([name, n]) => (
+                <li key={name} className="flex justify-between gap-2">
+                  <span className="min-w-0 truncate">{name}</span>
+                  <b>{n}</b>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="rounded-card border border-line bg-surface p-4">
           <p className="text-sm text-ink-500">เหตุผลที่เจอบ่อยเดือนนี้</p>
           {topReasons.length === 0 ? (
             <p className="mt-1 text-sm text-ink-400">ยังไม่มีข้อมูล</p>
@@ -217,6 +267,12 @@ export default function ByInbox() {
                   </td>
                   <td className="max-w-[230px] p-2">
                     <p>{r.reason}</p>
+                    {r.item_name && (
+                      <p className="text-xs text-ink-700">
+                        {r.item_name}
+                        {r.qty ? ` ${r.qty} ${r.item_unit ?? ''}` : ''}
+                      </p>
+                    )}
                     {r.note && <p className="text-xs text-ink-400">{r.note}</p>}
                   </td>
                   <td className="p-2">
@@ -289,6 +345,50 @@ export default function ByInbox() {
               />
             </div>
 
+            <div className="mt-3 rounded-card border border-line p-3">
+              <p className="font-display">บาร์โค้ดนี้คือวัสดุตัวไหน</p>
+              <p className="mb-2 text-sm text-ink-400">
+                ไม่บังคับ — ใส่ไว้เพื่อให้สถิติบอกได้ว่าของอะไรถูกขอบ่อย
+              </p>
+
+              <SearchSelect
+                label="วัสดุ"
+                value={pickItem}
+                options={itemOpts}
+                onChange={setPickItem}
+                allLabel="ไม่ระบุ"
+                placeholder="พิมพ์ชื่อหรือ SKU"
+                width="w-full"
+              />
+
+              {pickItem && (
+                <>
+                  <p className="label mt-3">จำนวน {pickedItem?.unit ?? ''}</p>
+                  <QtyStepper value={pickQty} max={9999} onChange={setPickQty} />
+
+                  <label className="mt-3 flex items-start gap-2 rounded-card bg-surface-2 p-3">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-5 w-5 shrink-0"
+                      checked={cutStock}
+                      onChange={(e) => setCutStock(e.target.checked)}
+                    />
+                    <span className="text-sm">
+                      <b>ตัดสต็อกในระบบนี้ด้วย</b>
+                      <span className="block text-ink-400">
+                        ติ๊กเฉพาะตอนของชิ้นนี้นับรวมอยู่ในคลังนี้จริง ๆ
+                        {pickedItem
+                          ? ` — ตอนนี้เหลือ ${pickedItem.qty_on_hand} ${pickedItem.unit} ตัดแล้วจะเหลือ ${pickedItem.qty_on_hand - pickQty}`
+                          : ''}
+                        <br />
+                        ถ้าตัดในระบบ BY อย่างเดียว อย่าติ๊ก ไม่งั้นยอดจะหายสองเด้ง
+                      </span>
+                    </span>
+                  </label>
+                </>
+              )}
+            </div>
+
             <p className="mt-3 rounded-card bg-surface-2 px-3 py-2 text-sm text-ink-500">
               ตัดสต็อกในระบบ BY ให้เรียบร้อยก่อน แล้วค่อยกดปุ่มด้านล่าง
             </p>
@@ -309,7 +409,7 @@ export default function ByInbox() {
                 type="button"
                 className="btn-primary"
                 disabled={busyId === open.id}
-                onClick={() => void mark(open, 'done')}
+                onClick={() => void mark(open, 'done', true)}
               >
                 {busyId === open.id ? <Spinner /> : null} ตัดสต็อกแล้ว
               </button>

@@ -282,6 +282,11 @@ export interface ByRow {
   handled_at: string | null
   handled_note: string | null
   handled_by_name: string | null
+  item_id: number | null
+  item_name: string | null
+  item_sku: string | null
+  item_unit: string | null
+  qty: number | null
   user_id: string
   who: string
   employee_code: string
@@ -297,6 +302,9 @@ export interface ByStatRow {
   ym: string
   dept_code: string | null
   reason: string
+  item_id: number | null
+  item_name: string | null
+  qty_done: number
   total: number
   pending: number
   done: number

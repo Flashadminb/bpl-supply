@@ -8,6 +8,7 @@ import { EmptyState, ErrorBox, Loading } from '../../components/ui'
 import { STATUS_TH, fmtDateTime, statusClass } from '../../lib/format'
 import { MANAGER_ROLES, ROLE_TH } from '../../lib/roles'
 import { usePendingApprovals } from '../../lib/usePendingApprovals'
+import { NotifyBell } from '../../components/NotifyBell'
 import { relativeAge } from '../../lib/format'
 
 
@@ -38,9 +39,12 @@ export default function Home() {
           </div>
           <div className="flex flex-col items-end gap-1">
             {can(...MANAGER_ROLES) && (
-              <Link to="/admin" className="rounded-btn bg-ink px-3 py-2 text-sm text-white">
-                หน้าแอดมิน
-              </Link>
+              <span className="flex items-center gap-2">
+                <NotifyBell />
+                <Link to="/admin" className="rounded-btn bg-ink px-3 py-2 text-sm text-white">
+                  หน้าแอดมิน
+                </Link>
+              </span>
             )}
             <Link to="/account" className="min-h-tap px-1 py-2 text-sm underline">
               บัญชีของฉัน
