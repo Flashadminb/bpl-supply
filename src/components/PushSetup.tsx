@@ -135,7 +135,8 @@ export function PushSetup() {
     <section className="card mt-4 p-4">
       <h2 className="font-display text-md">แจ้งเตือนเข้ามือถือ</h2>
       <p className="mt-1 text-sm text-ink-500">
-        เตือนก่อนเลิกกะ 10 นาที และเมื่อเลยเวลาคืนอุปกรณ์แล้ว — ปิดแอพอยู่ก็เด้ง
+        เตือนก่อนเลิกกะ 10 นาที · เลยเวลาคืน 15 นาทีเตือนอีกครั้ง แล้วย้ำทุก 15 นาทีจนกว่าจะกดคืน
+        — ปิดแอพอยู่ก็เด้ง
       </p>
 
       {!supported && (
