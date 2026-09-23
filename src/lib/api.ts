@@ -12,6 +12,14 @@ import type {
   UserRole,
   Department,
   SheetExportRow,
+  Asset,
+  AssetHolding,
+  AssetIssue,
+  AssetIssueInput,
+  AssetOpenIssue,
+  AssetPhotoInput,
+  AssetPhotoStep,
+  AssetType,
 } from './types'
 
 const ITEM_COLS =
@@ -524,4 +532,105 @@ export async function countSheetExportRows(args: {
   if (pending.error) throw new Error(readableError(pending.error))
   if (done.error) throw new Error(readableError(done.error))
   return { pending: pending.count ?? 0, done: done.count ?? 0 }
+}
+
+/* ---------------------------------------------------------------- assets */
+
+export async function listAssetTypes(): Promise<AssetType[]> {
+  return unwrap(
+    await supabase.from('asset_types').select('*').eq('is_active', true).order('sort_no'),
+  ) as unknown as AssetType[]
+}
+
+export async function listAssetPhotoSteps(typeCode?: string): Promise<AssetPhotoStep[]> {
+  let q = supabase.from('asset_photo_steps').select('*').order('seq')
+  if (typeCode) q = q.eq('type_code', typeCode)
+  return unwrap(await q) as unknown as AssetPhotoStep[]
+}
+
+/**
+ * เครื่องที่ผู้ใช้คนนี้มองเห็น — RLS กรองตามแผนกให้แล้ว ไม่ต้องกรองซ้ำที่นี่
+ * ทั้งฮับมี 139 เครื่อง ดึงมาทีเดียวถูกกว่าไล่ถามทีละประเภท
+ */
+export async function listAssets(typeCode?: string): Promise<Asset[]> {
+  let q = supabase
+    .from('assets')
+    .select('code,type_code,dept_code,is_enabled,note,held_item_id,created_at,asset_types(code,name)')
+    .order('code')
+  if (typeCode) q = q.eq('type_code', typeCode)
+  return unwrap(await q) as unknown as Asset[]
+}
+
+export async function listAssetHoldings(mineOnly = false, userId?: string): Promise<AssetHolding[]> {
+  let q = supabase.from('asset_holdings').select('*').order('taken_at')
+  if (mineOnly && userId) q = q.eq('user_id', userId)
+  return unwrap(await q) as unknown as AssetHolding[]
+}
+
+export async function listAssetOpenIssues(): Promise<AssetOpenIssue[]> {
+  return unwrap(await supabase.from('asset_open_issues').select('*')) as unknown as AssetOpenIssue[]
+}
+
+/** ประวัติการแจ้งชำรุดของเครื่องหนึ่ง รวมที่เคลียร์ไปแล้ว */
+export async function listAssetIssues(assetCode: string): Promise<AssetIssue[]> {
+  return unwrap(
+    await supabase
+      .from('asset_issues')
+      .select('*')
+      .eq('asset_code', assetCode)
+      .order('reported_at', { ascending: false }),
+  ) as unknown as AssetIssue[]
+}
+
+export async function assetCheckout(args: {
+  typeCode: string
+  codes: string[]
+  photos: AssetPhotoInput[]
+  issues?: AssetIssueInput[]
+  note?: string
+}) {
+  const { data, error } = await supabase.rpc('asset_checkout', {
+    p_type: args.typeCode,
+    p_codes: args.codes,
+    p_photos: args.photos,
+    p_issues: args.issues ?? [],
+    p_note: args.note ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { id: string; ref_no: string; due_at: string | null; count: number }
+}
+
+export async function assetReturn(args: {
+  codes: string[]
+  photos: AssetPhotoInput[]
+  issues?: AssetIssueInput[]
+  note?: string
+}) {
+  const { data, error } = await supabase.rpc('asset_return', {
+    p_codes: args.codes,
+    p_photos: args.photos,
+    p_issues: args.issues ?? [],
+    p_note: args.note ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { id: string; ref_no: string; count: number }
+}
+
+export async function setAssetEnabled(code: string, on: boolean) {
+  const { error } = await supabase.rpc('set_asset_enabled', { p_code: code, p_on: on })
+  if (error) throw new Error(readableError(error))
+}
+
+export async function resolveAssetIssue(id: number, note?: string) {
+  const { error } = await supabase.rpc('resolve_asset_issue', { p_id: id, p_note: note ?? null })
+  if (error) throw new Error(readableError(error))
+}
+
+export async function resolveAssetIssuesFor(code: string, note?: string) {
+  const { data, error } = await supabase.rpc('resolve_asset_issues_for', {
+    p_code: code,
+    p_note: note ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as number
 }

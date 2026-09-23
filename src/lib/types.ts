@@ -162,3 +162,93 @@ export interface SheetExportRow {
   exported_at: string | null
   is_exported: boolean
 }
+
+/* ---------------------------------------------------------------- assets */
+
+export type AssetTxnKind = 'out' | 'in'
+
+export interface AssetType {
+  code: string
+  name: string
+  sort_no: number
+  is_active: boolean
+  photo_min: number
+  photo_max: number
+  issue_tags: string[]
+}
+
+export interface AssetPhotoStep {
+  type_code: string
+  seq: number
+  label: string
+  hint: string | null
+}
+
+export interface Asset {
+  code: string
+  type_code: string
+  dept_code: string | null
+  is_enabled: boolean
+  note: string | null
+  held_item_id: number | null
+  created_at: string
+  asset_types?: Pick<AssetType, 'code' | 'name'> | null
+}
+
+/** เครื่องที่ยังไม่ถูกคืน — อ่านจากตารางเครื่องโดยตรง ไม่ไล่ประวัติย้อนหลัง */
+export interface AssetHolding {
+  out_item_id: number
+  asset_code: string
+  type_code: string
+  type_name: string
+  asset_dept: string | null
+  txn_id: string
+  ref_no: string
+  user_id: string
+  holder_name: string
+  holder_code: string
+  holder_dept: string | null
+  shift_start: string | null
+  shift_end: string | null
+  due_at: string | null
+  taken_at: string
+}
+
+export interface AssetOpenIssue {
+  asset_code: string
+  issue_count: number
+  symptoms: string
+  last_reported_at: string
+}
+
+export interface AssetIssue {
+  id: number
+  asset_code: string
+  txn_id: string | null
+  phase: AssetTxnKind | null
+  symptom: string
+  reported_by: string | null
+  reported_name: string | null
+  reported_at: string
+  file_id: string | null
+  web_link: string | null
+  resolved_at: string | null
+  resolved_by: string | null
+  resolve_note: string | null
+}
+
+/** รูปหนึ่งใบที่ส่งเข้า RPC — label ไว้บอกว่ารูปนี้คือขั้นตอนอะไร */
+export interface AssetPhotoInput {
+  file_id: string
+  web_link: string | null
+  bytes: number | null
+  seq: number
+  label: string | null
+}
+
+export interface AssetIssueInput {
+  asset_code: string
+  symptom: string
+  file_id?: string | null
+  web_link?: string | null
+}

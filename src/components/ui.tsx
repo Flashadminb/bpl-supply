@@ -129,7 +129,7 @@ export function Sheet({
         className="absolute inset-0 bg-ink/45"
         onClick={onClose}
       />
-      <div className="safe-b relative w-full max-w-phone rounded-t-panel bg-surface p-4 shadow-pop">
+      <div className="safe-b relative max-h-[86vh] w-full max-w-phone overflow-y-auto rounded-t-panel bg-surface p-4 shadow-pop">
         <div className="mx-auto mb-3 h-1 w-10 rounded-pill bg-line-2" />
         {title && <h2 className="mb-3 font-display text-lg">{title}</h2>}
         {children}

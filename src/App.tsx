@@ -30,6 +30,7 @@ const ExportSheet = lazy(() => import('./pages/admin/ExportSheet'))
 const AdminEvidence = lazy(() => import('./pages/admin/Evidence'))
 const QrLabels = lazy(() => import('./pages/admin/QrLabels'))
 const Outstanding = lazy(() => import('./pages/admin/Outstanding'))
+const AssetRegistry = lazy(() => import('./pages/admin/AssetRegistry'))
 
 function Guard({ children, roles }: { children: ReactNode; roles?: UserRole[] }) {
   const { session, profile, loading } = useAuth()
@@ -108,6 +109,7 @@ export default function App() {
         <Route path="approvals" element={<Approvals />} />
         <Route path="stock" element={<Stock />} />
         <Route path="outstanding" element={<Outstanding />} />
+        <Route path="assets" element={<AssetRegistry />} />
         <Route path="export" element={<ExportSheet />} />
         <Route path="evidence" element={<AdminEvidence />} />
         <Route path="qr" element={<QrLabels />} />
