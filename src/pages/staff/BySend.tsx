@@ -37,14 +37,16 @@ export default function BySend() {
   const photos = shotsToPhotos(shots)
   const uploading = shots.some((s) => s.state === 'uploading' || s.state === 'ready')
   const failed = shots.some((s) => s.state === 'failed')
-  // รูปไม่บังคับ แนบกี่ใบก็ได้ · ติดแค่ตอนรูปที่แนบมายังส่งไม่เสร็จ
-  const ready = reason.trim().length > 0 && !uploading && !failed
+  // ต้องมีรูปอย่างน้อย 1 ใบ แต่ไม่บังคับให้ถ่ายเยอะ · เกินจากนั้นแล้วแต่คน
+  const ready = photos.length > 0 && reason.trim().length > 0 && !uploading && !failed
 
   const blockedWhy = failed
     ? 'มีรูปส่งไม่สำเร็จ กดที่รูปนั้นเพื่อส่งใหม่'
     : uploading
       ? 'กำลังส่งรูปขึ้นระบบ รอสักครู่'
-      : 'ใส่เหตุผลก่อน'
+      : photos.length === 0
+        ? 'แนบรูปบาร์โค้ดอย่างน้อย 1 ใบ'
+        : 'ใส่เหตุผลก่อน'
 
   async function submit() {
     setBusy(true)
@@ -85,13 +87,7 @@ export default function BySend() {
 
         <StaffPage className="-mt-3">
           <p className="rounded-card border border-line bg-surface p-4 text-center">
-            {done.photos > 0 ? (
-              <>
-                ส่งรูปบาร์โค้ด <b>{done.photos} ใบ</b> ให้แอดมินแล้ว
-              </>
-            ) : (
-              <>ส่งรายการให้แอดมินแล้ว</>
-            )}
+            ส่งรูปบาร์โค้ด <b>{done.photos} ใบ</b> ให้แอดมินแล้ว
             <br />
             <span className="text-sm text-ink-500">แอดมินจะไปตัดสต็อกในระบบ BY ให้</span>
           </p>
@@ -116,12 +112,12 @@ export default function BySend() {
         <p className="mb-3 rounded-card border border-line bg-surface p-3 text-sm text-ink-500">
           ของที่ไม่ได้กดเบิกในระบบนี้ — ส่งบาร์โค้ดมา แอดมินจะตัดสต็อกในระบบ BY ให้
           <br />
-          แนบรูปกี่ใบก็ได้ ไม่แนบก็ได้
+          แนบรูปอย่างน้อย 1 ใบ จะกี่ใบก็ได้ ไม่ต้องถ่ายเยอะ
         </p>
 
         <section className="mb-3 rounded-card border border-line bg-surface p-3">
           <h2 className="font-display">รูปบาร์โค้ด</h2>
-          <p className="mb-2 text-sm text-ink-400">ไม่บังคับ แนบเท่าที่ต้องการ</p>
+          <p className="mb-2 text-sm text-ink-400">อย่างน้อย 1 ใบ เกินจากนั้นแล้วแต่คุณ</p>
           <PhotoSteps
             steps={[]}
             maxFree={30}
@@ -217,13 +213,7 @@ export default function BySend() {
             onClick={() => void submit()}
           >
             {busy ? <Spinner /> : null}
-            {busy
-              ? 'กำลังส่ง…'
-              : ready
-                ? photos.length > 0
-                  ? `ส่ง · แนบรูป ${photos.length} ใบ`
-                  : 'ส่งรายการนี้'
-                : blockedWhy}
+            {busy ? 'กำลังส่ง…' : ready ? `ส่งบาร์โค้ด ${photos.length} ใบ` : blockedWhy}
           </button>
         </div>
       </div>

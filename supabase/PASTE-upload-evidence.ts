@@ -108,7 +108,7 @@ async function requireUser(req: Request): Promise<string> {
 }
 
 // ป้ายบอกเวอร์ชัน — เรียกด้วย GET เพื่อเช็คว่าโค้ดที่ deploy อยู่เป็นตัวไหน
-const VERSION = 'oauth-v2'
+const VERSION = 'folder-v3'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -124,6 +124,7 @@ Deno.serve(async (req) => {
           Deno.env.get('GOOGLE_OAUTH_REFRESH_TOKEN'),
       ),
       folderIdSet: Boolean(Deno.env.get('GDRIVE_FOLDER_ID')),
+      folderId: Deno.env.get('GDRIVE_FOLDER_ID') ?? null,
     })
   }
 
@@ -139,22 +140,39 @@ Deno.serve(async (req) => {
 
     const folderId = envOrThrow('GDRIVE_FOLDER_ID')
     const token = await getAccessToken()
-    const name = String(form.get('filename') ?? file.name ?? `evidence-${Date.now()}.webp`)
+    const mime = file.type || 'image/webp'
 
-    // multipart upload — ส่ง metadata + ตัวไฟล์ในคำขอเดียว
-    const body = new FormData()
-    body.append(
-      'metadata',
-      new Blob([JSON.stringify({ name, parents: [folderId], mimeType: file.type || 'image/webp' })], {
-        type: 'application/json',
-      }),
-    )
-    body.append('file', file)
+    // นามสกุลต้องตรงกับชนิดไฟล์จริง — iPhone บางรุ่นทำ WebP ไม่ได้ จะได้ JPEG มาแทน
+    // ถ้าปล่อยชื่อเป็น .webp ทั้งที่ข้างในเป็น JPEG โปรแกรมดูรูปบางตัวจะเปิดไม่ขึ้น
+    const ext = mime.includes('jpeg') ? 'jpg' : mime.includes('png') ? 'png' : 'webp'
+    const raw = String(form.get('filename') ?? file.name ?? `evidence-${Date.now()}`)
+    const name = `${raw.replace(/\.(webp|jpe?g|png)$/i, '')}.${ext}`
+
+    // ต้องเป็น multipart/related เท่านั้น ไม่ใช่ multipart/form-data
+    // ที่ผ่านมาใช้ FormData ซึ่ง fetch ตั้ง Content-Type เป็น form-data ให้เอง
+    // Google เลยอ่านส่วน metadata ไม่ออก ไฟล์จึงไปกองที่ My Drive ชั้นนอกแทนที่จะเข้าโฟลเดอร์
+    const boundary = `bpl${crypto.randomUUID().replace(/-/g, '')}`
+    const meta = JSON.stringify({ name, parents: [folderId], mimeType: mime })
+    const head =
+      `--${boundary}\r\n` +
+      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+      `${meta}\r\n` +
+      `--${boundary}\r\n` +
+      `Content-Type: ${mime}\r\n\r\n`
+    const tail = `\r\n--${boundary}--\r\n`
+    const body = new Blob([head, new Uint8Array(await file.arrayBuffer()), tail])
 
     const res = await fetch(
       'https://www.googleapis.com/upload/drive/v3/files' +
-        '?uploadType=multipart&supportsAllDrives=true&fields=id,webViewLink,size',
-      { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body },
+        '?uploadType=multipart&supportsAllDrives=true&fields=id,webViewLink,size,parents',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': `multipart/related; boundary=${boundary}`,
+        },
+        body,
+      },
     )
 
     const data = (await res.json()) as {
