@@ -2,11 +2,18 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import {
+  countAssetExportRows,
   countSheetExportRows,
-  listByRows,
   listAllItemsForAdmin,
+  listAssetLinesBetween,
+  listAssets,
+  listAssetHoldings,
+  listAssetTypes,
+  listBadReturns,
+  listByRows,
   listCategories,
   listDepartments,
+  listOpenAssetIssues,
   listOpenBorrowings,
   listRequisitionsBetween,
 } from '../../lib/api'
@@ -14,11 +21,21 @@ import { ErrorBox, Loading } from '../../components/ui'
 import { BarsH, Columns, DataTable, Stat, STATUS, type Datum } from '../../components/charts'
 import { STATUS_TH, fmtDateTime, relativeAge, statusClass } from '../../lib/format'
 
+/**
+ * หน้าภาพรวม — ตอบคำถามเดียว: ตอนนี้มีอะไรต้องจัดการบ้าง
+ *
+ * บนสุดคือเรื่องที่ต้องลงมือ เรียงตามความเร่ง
+ * ถัดลงมาแยกสองฝั่งชัดเจน สิ้นเปลืองกับ Asset เป็นคนละงานคนละคนดูแล
+ * เอามาปนกันแล้วอ่านไม่ออกว่าตัวเลขไหนของอะไร
+ */
+
 const RANGES = [
   { days: 7, label: '7 วัน' },
   { days: 30, label: '30 วัน' },
   { days: 90, label: '90 วัน' },
 ]
+
+const LATE_HOURS = 18
 
 const dayKey = (iso: string) =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(new Date(iso))
@@ -28,6 +45,8 @@ const dayShort = (key: string) => {
   return `${d}/${m}`
 }
 
+const COND_TH: Record<string, string> = { damaged: 'ชำรุด', lost: 'สูญหาย', ok: 'ใช้ได้' }
+
 export default function Dashboard() {
   const [days, setDays] = useState(30)
   const [dept, setDept] = useState('')
@@ -35,12 +54,21 @@ export default function Dashboard() {
   const fromISO = useMemo(() => new Date(Date.now() - days * 864e5).toISOString(), [days])
   const toISO = useMemo(() => new Date().toISOString(), [days])
 
+  /* ---------------------------------------------------------- ดึงข้อมูล */
   const reqs = useAsync(() => listRequisitionsBetween(fromISO, toISO), [fromISO])
   const items = useAsync(() => listAllItemsForAdmin(), [])
   const cats = useAsync(() => listCategories(), [])
   const depts = useAsync(() => listDepartments(), [])
   const borrow = useAsync(() => listOpenBorrowings(false), [])
+  const badReturns = useAsync(() => listBadReturns(fromISO, toISO), [fromISO])
   const unsent = useAsync(() => countSheetExportRows({ fromISO, toISO }), [fromISO])
+
+  const assets = useAsync(() => listAssets(), [])
+  const assetTypes = useAsync(() => listAssetTypes(), [])
+  const held = useAsync(() => listAssetHoldings(false), [])
+  const assetLines = useAsync(() => listAssetLinesBetween(fromISO, toISO), [fromISO])
+  const assetIssues = useAsync(() => listOpenAssetIssues(50), [])
+  const assetUnsent = useAsync(() => countAssetExportRows({ fromISO, toISO }), [fromISO])
   const byPending = useAsync(() => listByRows({ status: 'pending', limit: 200 }), [])
 
   // แผนกอยู่ที่ตัวคน ไม่ได้อยู่ที่ใบเบิก จึงกรองหลังดึงมาแล้ว
@@ -48,18 +76,16 @@ export default function Dashboard() {
     const all = reqs.data ?? []
     return dept ? all.filter((r) => r.profiles?.dept_code === dept) : all
   }, [reqs.data, dept])
-  const catName = useMemo(
-    () => new Map((cats.data ?? []).map((c) => [c.id, c.name])),
-    [cats.data],
-  )
 
+  const catName = useMemo(() => new Map((cats.data ?? []).map((c) => [c.id, c.name])), [cats.data])
+
+  /* ------------------------------------------------------ ฝั่งสิ้นเปลือง */
   const stats = useMemo(() => {
     const today = dayKey(new Date().toISOString())
     const todayRows = rows.filter((r) => dayKey(r.created_at) === today)
     const pending = rows.filter((r) => r.status === 'pending')
     const oldest = pending[pending.length - 1]
 
-    // เวลาที่ใช้ตัดสินใจ นับเฉพาะใบที่แอดมินกดเอง ไม่นับที่อนุมัติอัตโนมัติ
     const decided = rows.filter(
       (r) => r.decided_at && r.status !== 'pending' && r.decided_by && r.decided_by !== r.requester_id,
     )
@@ -78,19 +104,72 @@ export default function Dashboard() {
       0,
     )
     const noEvidence = rows.filter((r) => !r.evidence_file_id).length
-
     return { todayRows, pending, oldest, avgMins, unitsToday, noEvidence }
   }, [rows])
 
   const low = (items.data ?? []).filter((i) => i.is_active && i.qty_on_hand <= i.min_qty)
+  const outOfStock = low.filter((i) => i.qty_on_hand === 0)
   const openBorrow = borrow.data ?? []
   const openUnits = openBorrow.reduce((n, b) => n + b.qty_open, 0)
-  // ค้างเกิน 2 กะ ถือว่าผิดปกติ ตรงกับเกณฑ์ในหน้าของค้างคืน
-  const lateBorrow = openBorrow.filter((b) => Date.now() - Date.parse(b.created_at) >= 18 * 3600_000)
+  const lateBorrow = openBorrow.filter(
+    (b) => Date.now() - Date.parse(b.created_at) >= LATE_HOURS * 3600_000,
+  )
   const pendingSheet = unsent.data?.pending ?? 0
-  const byCount = (byPending.data ?? []).length
+  const bad = badReturns.data ?? []
 
-  /** จำนวนคำขอรายวัน เติมวันที่ไม่มีการเบิกให้เป็นศูนย์ ไม่งั้นกราฟหลอกตา */
+  /* ----------------------------------------------------------- ฝั่ง Asset */
+  const allAssets = assets.data ?? []
+  const holdings = held.data ?? []
+  const issues = assetIssues.data ?? []
+  const byCount = (byPending.data ?? []).length
+  const assetPendingSheet = assetUnsent.data?.pending ?? 0
+
+  const lateAssets = holdings.filter((h) => h.due_at && Date.now() > Date.parse(h.due_at))
+  const disabledAssets = allAssets.filter((a) => !a.is_enabled)
+  const issueAssets = new Set(issues.map((i) => i.asset_code))
+
+  const assetToday = useMemo(() => {
+    const today = dayKey(new Date().toISOString())
+    const lines = (assetLines.data ?? []).filter(
+      (l) => l.asset_txns && dayKey(l.asset_txns.created_at) === today,
+    )
+    return {
+      out: lines.filter((l) => l.asset_txns?.kind === 'out').length,
+      back: lines.filter((l) => l.asset_txns?.kind === 'in').length,
+    }
+  }, [assetLines.data])
+
+  /** เครื่องที่ถูกหยิบบ่อยที่สุดในช่วงที่เลือก — บอกว่าตัวไหนสึกเร็ว */
+  const busiestAssets: Datum[] = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const l of assetLines.data ?? []) {
+      if (l.asset_txns?.kind !== 'out') continue
+      m.set(l.asset_code, (m.get(l.asset_code) ?? 0) + 1)
+    }
+    return [...m.entries()]
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8)
+  }, [assetLines.data])
+
+  /** เครื่องแยกตามประเภท: ว่าง / ถูกยืม / ปิดซ่อม */
+  const byType = useMemo(() => {
+    const takenSet = new Set(holdings.map((h) => h.asset_code))
+    return (assetTypes.data ?? [])
+      .filter((t) => allAssets.some((a) => a.type_code === t.code))
+      .map((t) => {
+        const pool = allAssets.filter((a) => a.type_code === t.code)
+        return {
+          code: t.code,
+          name: t.name,
+          total: pool.length,
+          out: pool.filter((a) => takenSet.has(a.code)).length,
+          off: pool.filter((a) => !a.is_enabled).length,
+        }
+      })
+  }, [assetTypes.data, allAssets, holdings])
+
+  /* ------------------------------------------------------------- กราฟ */
   const daily: Datum[] = useMemo(() => {
     const map = new Map<string, number>()
     for (let i = days - 1; i >= 0; i--) {
@@ -115,19 +194,7 @@ export default function Dashboard() {
     return [...map.entries()]
       .map(([label, value]) => ({ label, value }))
       .sort((a, b) => b.value - a.value)
-      .slice(0, 10)
-  }, [rows])
-
-  const topPeople: Datum[] = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const r of rows) {
-      const who = r.profiles?.full_name ?? '—'
-      map.set(who, (map.get(who) ?? 0) + 1)
-    }
-    return [...map.entries()]
-      .map(([label, value]) => ({ label, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 10)
+      .slice(0, 8)
   }, [rows])
 
   const byCategory: Datum[] = useMemo(() => {
@@ -152,183 +219,322 @@ export default function Dashboard() {
       rejected: STATUS.danger,
     }
     return order
-      .map((s) => ({
-        label: STATUS_TH[s],
-        value: rows.filter((r) => r.status === s).length,
-        color: color[s],
-      }))
+      .map((s) => ({ label: STATUS_TH[s], value: rows.filter((r) => r.status === s).length, color: color[s] }))
       .filter((d) => d.value > 0)
   }, [rows])
+
+  /* ------------------------------------------------ เรื่องที่ต้องลงมือ */
+  const todo = [
+    stats.pending.length > 0 && {
+      key: 'approve',
+      tone: 'warn' as const,
+      to: '/admin/approvals',
+      title: `รออนุมัติ ${stats.pending.length} คำขอ`,
+      detail: stats.oldest ? `เก่าสุดรอมาแล้ว ${relativeAge(stats.oldest.created_at)}` : 'กดเพื่ออนุมัติ',
+    },
+    byCount > 0 && {
+      key: 'by',
+      tone: 'warn' as const,
+      to: '/admin/by',
+      title: `บาร์โค้ด BY รอตัดสต็อก ${byCount} รายการ`,
+      detail: 'หน้างานส่งรูปมาแล้ว รอไปตัดในระบบ BY',
+    },
+    lateAssets.length > 0 && {
+      key: 'lateasset',
+      tone: 'danger' as const,
+      to: '/admin/assets-out',
+      title: `Asset เลยเวลาคืน ${lateAssets.length} เครื่อง`,
+      detail: `${new Set(lateAssets.map((h) => h.holder_code)).size} คนที่ต้องตาม`,
+    },
+    issues.length > 0 && {
+      key: 'issue',
+      tone: 'danger' as const,
+      to: '/admin/assets',
+      title: `เครื่องชำรุดยังไม่เคลียร์ ${issueAssets.size} เครื่อง`,
+      detail: issues[0] ? `ล่าสุด ${issues[0].asset_code} · ${issues[0].symptom}` : '',
+    },
+    outOfStock.length > 0 && {
+      key: 'out',
+      tone: 'danger' as const,
+      to: '/admin/stock',
+      title: `ของหมดสต็อก ${outOfStock.length} รายการ`,
+      detail: outOfStock.slice(0, 3).map((i) => i.name).join(', '),
+    },
+    low.length - outOfStock.length > 0 && {
+      key: 'low',
+      tone: 'warn' as const,
+      to: '/admin/stock',
+      title: `ของใกล้หมด ${low.length - outOfStock.length} รายการ`,
+      detail: 'ต่ำกว่าจุดสั่งซื้อแล้ว',
+    },
+    lateBorrow.length > 0 && {
+      key: 'lateitem',
+      tone: 'danger' as const,
+      to: '/admin/outstanding',
+      title: `วัสดุยืม-คืนค้างเกิน ${LATE_HOURS} ชม. ${lateBorrow.length} รายการ`,
+      detail: 'ประมาณ 2 กะแล้ว',
+    },
+    bad.length > 0 && {
+      key: 'bad',
+      tone: 'warn' as const,
+      to: '/admin/evidence',
+      title: `คืนของแบบชำรุด/สูญหาย ${bad.length} ครั้ง`,
+      detail: `ใน ${days} วันที่ผ่านมา`,
+    },
+    pendingSheet + assetPendingSheet > 0 && {
+      key: 'sheet',
+      tone: 'mute' as const,
+      to: '/admin/export',
+      title: `ค้างส่งเข้า Google Sheet ${pendingSheet + assetPendingSheet} บรรทัด`,
+      detail: `สิ้นเปลือง ${pendingSheet} · Asset ${assetPendingSheet}`,
+    },
+  ].filter(Boolean) as { key: string; tone: 'danger' | 'warn' | 'mute'; to: string; title: string; detail: string }[]
+
+  const toneClass = {
+    danger: 'border-danger/25 bg-danger-bg text-danger-txt',
+    warn: 'border-warn/30 bg-warn-bg text-warn-txt',
+    mute: 'border-line bg-surface text-ink-700',
+  }
 
   return (
     <div className="mx-auto max-w-[1180px]">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-lg">ภาพรวม</h1>
-        <Link to="/admin/export" className="btn-soft h-tap px-3 text-sm">
-          ส่งออก Google Sheet
-        </Link>
-      </div>
-
-      {/* แถบตัวกรองอยู่แถวเดียวเหนือทุกกราฟ กรองพร้อมกันทั้งหน้า */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        {RANGES.map((r) => (
-          <button
-            key={r.days}
-            type="button"
-            className={`chip ${days === r.days ? 'chip-on' : ''}`}
-            onClick={() => setDays(r.days)}
-          >
-            {r.label}
-          </button>
-        ))}
-        <span className="mx-1 h-6 w-px bg-line-2" />
-        <select
-          className="input h-tap max-w-[200px]"
-          value={dept}
-          onChange={(e) => setDept(e.target.value)}
-          aria-label="แผนก"
-        >
-          <option value="">ทุกแผนก</option>
-          {(depts.data ?? []).map((d) => (
-            <option key={d.code} value={d.code}>
-              {d.name}
-            </option>
+        <div className="flex flex-wrap items-center gap-2">
+          {RANGES.map((r) => (
+            <button
+              key={r.days}
+              type="button"
+              className={`chip ${days === r.days ? 'chip-on' : ''}`}
+              onClick={() => setDays(r.days)}
+            >
+              {r.label}
+            </button>
           ))}
-        </select>
-        <button type="button" className="btn-soft h-tap px-3 text-sm" onClick={reqs.reload}>
-          รีเฟรช
-        </button>
+          <select
+            className="input h-tap max-w-[170px]"
+            value={dept}
+            onChange={(e) => setDept(e.target.value)}
+            aria-label="แผนก"
+          >
+            <option value="">ทุกแผนก</option>
+            {(depts.data ?? []).map((d) => (
+              <option key={d.code} value={d.code}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+          <button type="button" className="btn-soft h-tap px-3 text-sm" onClick={reqs.reload}>
+            รีเฟรช
+          </button>
+        </div>
       </div>
 
-      {/* ---- แถบเตือนเรื่องที่ต้องรีบจัดการ ---- */}
-      {(low.length > 0 ||
-        stats.pending.length > 0 ||
-        lateBorrow.length > 0 ||
-        byCount > 0 ||
-        pendingSheet > 0) && (
-        <div className="mb-4 grid gap-2 sm:grid-cols-2">
-          {low.length > 0 && (
-            <Link
-              to="/admin/stock"
-              className="rounded-card border border-danger/25 bg-danger-bg px-4 py-3 text-sm text-danger-txt"
-            >
-              <b>ของต่ำกว่าขั้นต่ำ {low.length} รายการ</b> — {low.filter((i) => i.qty_on_hand === 0).length}{' '}
-              รายการหมดสต็อกแล้ว · กดเพื่อดูและสั่งซื้อเพิ่ม
-            </Link>
-          )}
-          {stats.pending.length > 0 && (
-            <Link
-              to="/admin/approvals"
-              className="rounded-card border border-warn/30 bg-warn-bg px-4 py-3 text-sm text-warn-txt"
-            >
-              <b>รออนุมัติ {stats.pending.length} คำขอ</b>
-              {stats.oldest ? ` — เก่าสุดรอมาแล้ว ${relativeAge(stats.oldest.created_at)}` : ''} · กดเพื่ออนุมัติ
-            </Link>
-          )}
-          {lateBorrow.length > 0 && (
-            <Link
-              to="/admin/outstanding"
-              className="rounded-card border border-danger/25 bg-danger-bg px-4 py-3 text-sm text-danger-txt"
-            >
-              <b>ค้างคืนเกิน 18 ชม. {lateBorrow.length} รายการ</b> — ประมาณ 2 กะ · กดเพื่อดูว่าอยู่กับใคร
-            </Link>
-          )}
-          {byCount > 0 && (
-            <Link
-              to="/admin/by"
-              className="rounded-card border border-warn/30 bg-warn-bg px-4 py-3 text-sm text-warn-txt"
-            >
-              <b>บาร์โค้ด BY รอตัดสต็อก {byCount} รายการ</b> — หน้างานส่งมาแล้ว · กดเพื่อดูรูป
-            </Link>
-          )}
-          {pendingSheet > 0 && (
-            <Link
-              to="/admin/export"
-              className="rounded-card border border-line bg-surface px-4 py-3 text-sm text-ink-700"
-            >
-              <b>ค้างส่งเข้า Google Sheet {pendingSheet} บรรทัด</b> — ใน {days} วันที่ผ่านมา · กดเพื่อส่ง
-            </Link>
-          )}
-        </div>
-      )}
+      {/* ---------------------------------------------- ต้องจัดการตอนนี้ */}
+      <section className="mb-5">
+        <h2 className="mb-2 font-display text-md">ต้องจัดการตอนนี้</h2>
+        {todo.length === 0 ? (
+          <p className="rounded-card border border-success/25 bg-success-bg px-4 py-3 text-sm text-success-txt">
+            ไม่มีอะไรค้าง ทุกอย่างเรียบร้อย
+          </p>
+        ) : (
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {todo.map((t) => (
+              <Link key={t.key} to={t.to} className={`rounded-card border px-4 py-3 ${toneClass[t.tone]}`}>
+                <p className="font-display text-base">{t.title}</p>
+                {t.detail && <p className="mt-[2px] truncate text-sm opacity-90">{t.detail}</p>}
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
 
       {reqs.loading && <Loading />}
       {reqs.error && <ErrorBox message={reqs.error} onRetry={reqs.reload} />}
 
-      {/* ---- ตัวเลขสรุป ---- */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-        <Stat label="เบิกวันนี้" value={stats.todayRows.length} hint={`${stats.unitsToday} ชิ้น`} />
-        <Stat label={`คำขอใน ${days} วัน`} value={rows.length} hint="ทุกสถานะ" />
-        <Stat
-          label="รออนุมัติ"
-          value={stats.pending.length}
-          hint={stats.oldest ? `เก่าสุด ${relativeAge(stats.oldest.created_at)}` : 'ไม่มีค้าง'}
-          tone={stats.pending.length > 0 ? 'warn' : 'ok'}
-        />
-        <Stat
-          label="ต่ำกว่าขั้นต่ำ"
-          value={low.length}
-          hint="ต้องสั่งซื้อเพิ่ม"
-          tone={low.length > 0 ? 'danger' : 'ok'}
-        />
-        <Stat
-          label="ค้างคืน"
-          value={openUnits}
-          hint={lateBorrow.length > 0 ? `เกิน 18 ชม. ${lateBorrow.length} รายการ` : 'ชิ้นที่ยังไม่คืน'}
-          tone={lateBorrow.length > 0 ? 'danger' : undefined}
-        />
-        <Stat
-          label="เวลาอนุมัติเฉลี่ย"
-          value={stats.avgMins === null ? '—' : stats.avgMins < 60 ? `${stats.avgMins} นาที` : `${(stats.avgMins / 60).toFixed(1)} ชม.`}
-          hint="เฉพาะใบที่กดอนุมัติเอง"
-        />
-      </div>
+      {/* ------------------------------------------------------- สิ้นเปลือง */}
+      <section className="mb-6">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h2 className="font-display text-md">วัสดุสิ้นเปลือง</h2>
+          <Link to="/admin/stock" className="text-sm underline">
+            ไปหน้าสต็อก
+          </Link>
+        </div>
 
-      {/* ---- แนวโน้มรายวัน ---- */}
-      <section className="panel mt-4 p-4">
-        <h2 className="mb-1 font-display text-md">จำนวนคำขอต่อวัน</h2>
-        <p className="mb-3 text-sm text-ink-400">ชี้ที่แท่งเพื่อดูตัวเลขของวันนั้น</p>
-        <Columns data={daily} unit="คำขอ" />
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+          <Stat label="เบิกวันนี้" value={stats.todayRows.length} hint={`${stats.unitsToday} ชิ้น`} />
+          <Stat label={`คำขอใน ${days} วัน`} value={rows.length} hint="ทุกสถานะ" />
+          <Stat
+            label="รออนุมัติ"
+            value={stats.pending.length}
+            hint={stats.oldest ? `เก่าสุด ${relativeAge(stats.oldest.created_at)}` : 'ไม่มีค้าง'}
+            tone={stats.pending.length > 0 ? 'warn' : 'ok'}
+          />
+          <Stat
+            label="ต่ำกว่าขั้นต่ำ"
+            value={low.length}
+            hint={`หมดแล้ว ${outOfStock.length}`}
+            tone={low.length > 0 ? 'danger' : 'ok'}
+          />
+          <Stat
+            label="ยืม-คืนค้าง"
+            value={openUnits}
+            hint={lateBorrow.length > 0 ? `ค้างนาน ${lateBorrow.length}` : 'ชิ้นที่ยังไม่คืน'}
+            tone={lateBorrow.length > 0 ? 'danger' : undefined}
+          />
+          <Stat
+            label="เวลาอนุมัติเฉลี่ย"
+            value={
+              stats.avgMins === null
+                ? '—'
+                : stats.avgMins < 60
+                  ? `${stats.avgMins} นาที`
+                  : `${(stats.avgMins / 60).toFixed(1)} ชม.`
+            }
+            hint="เฉพาะใบที่กดเอง"
+          />
+        </div>
+
+        <div className="mt-3 panel p-4">
+          <h3 className="mb-1 font-display">จำนวนคำขอต่อวัน</h3>
+          <p className="mb-3 text-sm text-ink-400">ชี้ที่แท่งเพื่อดูตัวเลขของวันนั้น</p>
+          <Columns data={daily} unit="คำขอ" />
+        </div>
+
+        <div className="mt-3 grid gap-3 xl:grid-cols-2">
+          <div className="panel p-4">
+            <h3 className="mb-1 font-display">วัสดุที่เบิกมากที่สุด</h3>
+            <p className="mb-3 text-sm text-ink-400">นับเป็นจำนวนชิ้นใน {days} วัน</p>
+            <BarsH data={topItems} unit="ชิ้น" />
+            <DataTable rows={topItems} head={['วัสดุ', 'จำนวนชิ้น']} />
+          </div>
+
+          <div className="panel p-4">
+            <h3 className="mb-1 font-display">แยกตามหมวด</h3>
+            <p className="mb-3 text-sm text-ink-400">จำนวนชิ้นรวมในแต่ละหมวด</p>
+            <BarsH data={byCategory} unit="ชิ้น" />
+            <div className="mt-4">
+              <h3 className="mb-1 font-display">สถานะคำขอ</h3>
+              <BarsH data={byStatus} unit="ใบ" />
+            </div>
+            {stats.noEvidence > 0 && (
+              <p className="mt-2 rounded-btn bg-warn-bg px-3 py-2 text-sm text-warn-txt">
+                มี {stats.noEvidence} คำขอที่ไม่มีรูปหลักฐาน — เกิดตอนอัปรูปไม่สำเร็จแล้วกดบันทึกต่อ
+              </p>
+            )}
+          </div>
+        </div>
       </section>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-2">
-        <section className="panel p-4">
-          <h2 className="mb-1 font-display text-md">วัสดุที่เบิกมากที่สุด</h2>
-          <p className="mb-3 text-sm text-ink-400">นับเป็นจำนวนชิ้นใน {days} วันที่ผ่านมา</p>
-          <BarsH data={topItems} unit="ชิ้น" />
-          <DataTable rows={topItems} head={['วัสดุ', 'จำนวนชิ้น']} />
-        </section>
+      {/* ------------------------------------------------------------ Asset */}
+      <section className="mb-6">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h2 className="font-display text-md">อุปกรณ์ Asset</h2>
+          <Link to="/admin/assets" className="text-sm underline">
+            ไปทะเบียนเครื่อง
+          </Link>
+        </div>
 
-        <section className="panel p-4">
-          <h2 className="mb-1 font-display text-md">ผู้เบิกบ่อยที่สุด</h2>
-          <p className="mb-3 text-sm text-ink-400">นับเป็นจำนวนคำขอใน {days} วันที่ผ่านมา</p>
-          <BarsH data={topPeople} unit="คำขอ" />
-          <DataTable rows={topPeople} head={['ผู้เบิก', 'จำนวนคำขอ']} />
-        </section>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+          <Stat label="เครื่องทั้งหมด" value={allAssets.length} hint={`${byType.length} ประเภท`} />
+          <Stat label="ถูกยืมอยู่" value={holdings.length} hint="เครื่อง" />
+          <Stat
+            label="เลยเวลาคืน"
+            value={lateAssets.length}
+            hint="วัดจากกะของเจ้าตัว"
+            tone={lateAssets.length > 0 ? 'danger' : 'ok'}
+          />
+          <Stat
+            label="ชำรุดยังไม่เคลียร์"
+            value={issueAssets.size}
+            hint={`${issues.length} ใบแจ้ง`}
+            tone={issueAssets.size > 0 ? 'warn' : 'ok'}
+          />
+          <Stat
+            label="ปิดซ่อม"
+            value={disabledAssets.length}
+            hint="เบิกไม่ได้"
+            tone={disabledAssets.length > 0 ? 'warn' : undefined}
+          />
+          <Stat
+            label="วันนี้"
+            value={`${assetToday.out} / ${assetToday.back}`}
+            hint="เบิก / คืน (เครื่อง)"
+          />
+        </div>
 
-        <section className="panel p-4">
-          <h2 className="mb-1 font-display text-md">แยกตามหมวดวัสดุ</h2>
-          <p className="mb-3 text-sm text-ink-400">จำนวนชิ้นรวมในแต่ละหมวด</p>
-          <BarsH data={byCategory} unit="ชิ้น" />
-          <DataTable rows={byCategory} head={['หมวด', 'จำนวนชิ้น']} />
-        </section>
+        <div className="mt-3 grid gap-3 xl:grid-cols-2">
+          <div className="panel overflow-x-auto p-4">
+            <h3 className="mb-1 font-display">เครื่องแยกตามประเภท</h3>
+            <p className="mb-3 text-sm text-ink-400">ว่างเท่าไหร่ ถูกยืมเท่าไหร่ ปิดซ่อมเท่าไหร่</p>
+            <table className="w-full text-left text-sm">
+              <thead className="text-ink-500">
+                <tr className="border-b border-line">
+                  <th className="py-2 font-medium">ประเภท</th>
+                  <th className="py-2 font-medium">ทั้งหมด</th>
+                  <th className="py-2 font-medium">ว่าง</th>
+                  <th className="py-2 font-medium">ถูกยืม</th>
+                  <th className="py-2 font-medium">ปิดซ่อม</th>
+                </tr>
+              </thead>
+              <tbody>
+                {byType.map((t) => (
+                  <tr key={t.code} className="border-b border-line last:border-0">
+                    <td className="py-2">{t.name}</td>
+                    <td className="py-2 font-display">{t.total}</td>
+                    <td className="py-2 text-success-txt">{t.total - t.out - t.off}</td>
+                    <td className="py-2 text-warn-txt">{t.out}</td>
+                    <td className="py-2 text-danger-txt">{t.off}</td>
+                  </tr>
+                ))}
+                {byType.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-6 text-center text-ink-400">
+                      ยังไม่มีเครื่องในระบบ
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
 
-        <section className="panel p-4">
-          <h2 className="mb-1 font-display text-md">สถานะคำขอ</h2>
-          <p className="mb-3 text-sm text-ink-400">
-            แต่ละสถานะมีกี่ใบ · สีบอกความหมาย เขียวผ่าน เหลืองรอ แดงถูกปฏิเสธ
-          </p>
-          <BarsH data={byStatus} unit="ใบ" />
-          {stats.noEvidence > 0 && (
-            <p className="mt-2 rounded-btn bg-warn-bg px-3 py-2 text-sm text-warn-txt">
-              มี {stats.noEvidence} คำขอที่ไม่มีรูปหลักฐาน — เกิดตอนอัปรูปไม่สำเร็จแล้วพนักงานกดบันทึกต่อ
-            </p>
-          )}
-        </section>
-      </div>
+          <div className="panel p-4">
+            <h3 className="mb-1 font-display">เครื่องที่ถูกหยิบบ่อยที่สุด</h3>
+            <p className="mb-3 text-sm text-ink-400">นับจำนวนครั้งที่ถูกเบิกใน {days} วัน</p>
+            <BarsH data={busiestAssets} unit="ครั้ง" />
+            <DataTable rows={busiestAssets} head={['เครื่อง', 'ครั้งที่เบิก']} />
+          </div>
+        </div>
 
-      {/* ---- ตารางรายละเอียด ---- */}
-      <div className="mt-4 grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+        {issues.length > 0 && (
+          <div className="panel mt-3 p-4">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h3 className="font-display">อาการชำรุดที่ยังค้าง</h3>
+              <Link to="/admin/assets" className="text-sm underline">
+                ไปเคลียร์
+              </Link>
+            </div>
+            <ul className="space-y-1 text-sm">
+              {issues.slice(0, 8).map((i) => (
+                <li key={i.id} className="flex flex-wrap items-baseline gap-x-2 border-b border-line py-1 last:border-0">
+                  <b className="font-display">{i.asset_code}</b>
+                  <span className="text-warn-txt">{i.symptom}</span>
+                  <span className="text-xs text-ink-400">
+                    แจ้ง {fmtDateTime(i.reported_at)}
+                    {i.reported_name ? ` โดย ${i.reported_name}` : ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {issues.length > 8 && (
+              <p className="mt-2 text-sm text-ink-400">และอีก {issues.length - 8} รายการ</p>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* ------------------------------------------------- ของเสียหาย + ล่าสุด */}
+      <div className="grid gap-3 xl:grid-cols-[1.4fr_1fr]">
         <section className="panel p-4">
           <h2 className="mb-3 font-display text-md">รายการเบิกล่าสุด</h2>
           <div className="overflow-x-auto">
@@ -340,11 +546,10 @@ export default function Dashboard() {
                   <th className="py-2 font-medium">ผู้เบิก</th>
                   <th className="py-2 font-medium">รายการ</th>
                   <th className="py-2 font-medium">สถานะ</th>
-                  <th className="py-2 font-medium">หลักฐาน</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.slice(0, 15).map((r) => (
+                {rows.slice(0, 12).map((r) => (
                   <tr key={r.id} className="border-b border-line last:border-0">
                     <td className="py-2 font-mono text-xs">{r.ref_no}</td>
                     <td className="py-2 text-ink-500">{fmtDateTime(r.created_at)}</td>
@@ -353,20 +558,11 @@ export default function Dashboard() {
                     <td className="py-2">
                       <span className={statusClass(r.status)}>{STATUS_TH[r.status]}</span>
                     </td>
-                    <td className="py-2">
-                      {r.evidence_web_link ? (
-                        <a href={r.evidence_web_link} target="_blank" rel="noreferrer" className="underline">
-                          ดูรูป
-                        </a>
-                      ) : (
-                        <span className="text-danger-txt">ไม่มี</span>
-                      )}
-                    </td>
                   </tr>
                 ))}
                 {!reqs.loading && rows.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="py-6 text-center text-ink-400">
+                    <td colSpan={5} className="py-6 text-center text-ink-400">
                       ยังไม่มีคำขอในช่วงที่เลือก
                     </td>
                   </tr>
@@ -377,24 +573,27 @@ export default function Dashboard() {
         </section>
 
         <section className="panel p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-display text-md">ต้องสั่งซื้อเพิ่ม</h2>
-            <Link to="/admin/stock" className="text-sm underline">
-              ดูสต็อก
-            </Link>
-          </div>
-          {items.loading && <Loading />}
-          <ul className="space-y-2">
-            {low.slice(0, 12).map((i) => (
-              <li key={i.id} className="flex items-center justify-between gap-2 text-sm">
-                <span className="min-w-0 truncate">{i.name}</span>
-                <span className={i.qty_on_hand === 0 ? 'badge-dang' : 'badge-warn'}>
-                  {i.qty_on_hand}/{i.min_qty}
-                </span>
+          <h2 className="mb-3 font-display text-md">ของที่คืนมาไม่ปกติ</h2>
+          {badReturns.loading && <Loading />}
+          <ul className="space-y-2 text-sm">
+            {bad.slice(0, 10).map((b) => (
+              <li key={b.id} className="border-b border-line pb-2 last:border-0">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="min-w-0">
+                    <b>{b.requisition_items?.items?.name ?? '—'}</b> {b.qty}{' '}
+                    {b.requisition_items?.items?.unit ?? ''}
+                  </span>
+                  <span className={b.condition === 'lost' ? 'badge-dang' : 'badge-warn'}>
+                    {COND_TH[b.condition] ?? b.condition}
+                  </span>
+                </div>
+                <p className="text-xs text-ink-400">
+                  {b.profiles?.full_name ?? '—'} · {fmtDateTime(b.created_at)}
+                </p>
               </li>
             ))}
-            {!items.loading && low.length === 0 && (
-              <li className="text-sm text-success-txt">สต็อกครบทุกรายการ</li>
+            {!badReturns.loading && bad.length === 0 && (
+              <li className="text-sm text-success-txt">ไม่มีของชำรุดหรือสูญหายในช่วงนี้</li>
             )}
           </ul>
         </section>

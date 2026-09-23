@@ -23,6 +23,7 @@ import type {
   ByRow,
   ByStatRow,
   ByStatus,
+  AssetTxnKind,
 } from './types'
 
 const ITEM_COLS =
@@ -813,4 +814,61 @@ export async function listByStats(): Promise<ByStatRow[]> {
   return unwrap(
     await supabase.from('by_stats_monthly').select('*').order('ym', { ascending: false }),
   ) as unknown as ByStatRow[]
+}
+
+/* ------------------------------------------------- ข้อมูลสรุปหน้าภาพรวม */
+
+/** หนึ่งแถวต่อหนึ่งเครื่องต่อหนึ่งครั้งที่เบิกหรือคืน ใช้นับความเคลื่อนไหวของ Asset */
+export interface AssetLine {
+  id: number
+  asset_code: string
+  asset_txns: { kind: AssetTxnKind; created_at: string; type_code: string } | null
+}
+
+export async function listAssetLinesBetween(fromISO: string, toISO: string): Promise<AssetLine[]> {
+  return unwrap(
+    await supabase
+      .from('asset_txn_items')
+      .select('id,asset_code,asset_txns!inner(kind,created_at,type_code)')
+      .gte('asset_txns.created_at', fromISO)
+      .lte('asset_txns.created_at', toISO)
+      .limit(5000),
+  ) as unknown as AssetLine[]
+}
+
+/** ของที่คืนมาแล้วไม่ปกติ — ชำรุดหรือสูญหาย */
+export interface BadReturn {
+  id: number
+  qty: number
+  condition: ReturnCond
+  created_at: string
+  profiles: { full_name: string; employee_code: string } | null
+  requisition_items: { items: { name: string; unit: string } | null } | null
+}
+
+export async function listBadReturns(fromISO: string, toISO: string): Promise<BadReturn[]> {
+  return unwrap(
+    await supabase
+      .from('returns')
+      .select(
+        'id,qty,condition,created_at,profiles(full_name,employee_code),requisition_items(items(name,unit))',
+      )
+      .neq('condition', 'ok')
+      .gte('created_at', fromISO)
+      .lte('created_at', toISO)
+      .order('created_at', { ascending: false })
+      .limit(50),
+  ) as unknown as BadReturn[]
+}
+
+/** ใบแจ้งชำรุดที่ยังไม่ได้เคลียร์ เรียงใหม่สุดก่อน */
+export async function listOpenAssetIssues(limit = 50): Promise<AssetIssue[]> {
+  return unwrap(
+    await supabase
+      .from('asset_issues')
+      .select('*')
+      .is('resolved_at', null)
+      .order('reported_at', { ascending: false })
+      .limit(limit),
+  ) as unknown as AssetIssue[]
 }
