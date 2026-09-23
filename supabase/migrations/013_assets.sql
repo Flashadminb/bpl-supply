@@ -58,6 +58,12 @@ create table if not exists assets (
   created_at timestamptz not null default now()
 );
 
+-- ชี้ไปที่แถวตอนเบิกที่ยังไม่ถูกคืน · ว่าง = เครื่องว่าง
+-- มีคอลัมน์นี้เพื่อให้ "ใครถืออะไรอยู่" อ่านแค่ตารางเครื่อง 139 แถว
+-- ไม่ต้องไล่ประวัติย้อนหลังทั้งหมดซึ่งโตขึ้นทุกเดือน
+alter table assets add column if not exists held_item_id bigint;
+
+create index if not exists assets_held_idx on assets (held_item_id) where held_item_id is not null;
 create index if not exists assets_type_idx on assets (type_code) where is_enabled;
 create index if not exists assets_dept_idx on assets (dept_code) where is_enabled;
 
@@ -97,6 +103,20 @@ create index if not exists asset_txn_items_asset_idx on asset_txn_items (asset_c
 -- คืนซ้ำแถวเดิมไม่ได้เด็ดขาด
 create unique index if not exists asset_txn_items_out_uniq
   on asset_txn_items (out_item_id) where out_item_id is not null;
+
+do $ begin
+  alter table assets add constraint assets_held_item_fk
+    foreign key (held_item_id) references asset_txn_items(id) on delete set null;
+exception when duplicate_object then null; end $;
+
+-- เผื่อเคยรันเวอร์ชันก่อนหน้าไปแล้วและมีรายการค้างอยู่ — เติมให้ตรงกับความจริง
+update assets a set held_item_id = ai.id
+from asset_txn_items ai
+join asset_txns t on t.id = ai.txn_id and t.kind = 'out'
+where ai.asset_code = a.code
+  and ai.out_item_id is null
+  and a.held_item_id is null
+  and not exists (select 1 from asset_txn_items r where r.out_item_id = ai.id);
 
 create table if not exists asset_txn_photos (
   id       bigserial primary key,
@@ -140,7 +160,7 @@ create view asset_holdings
 with (security_invoker = true) as
 select
   ai.id                as out_item_id,
-  ai.asset_code,
+  a.code               as asset_code,
   a.type_code,
   ty.name              as type_name,
   a.dept_code          as asset_dept,
@@ -154,13 +174,11 @@ select
   t.shift_end,
   t.due_at,
   t.created_at         as taken_at
-from asset_txn_items ai
-join asset_txns t   on t.id = ai.txn_id and t.kind = 'out'
-join assets a       on a.code = ai.asset_code
-join asset_types ty on ty.code = a.type_code
-join profiles p     on p.id = t.user_id
-where ai.out_item_id is null
-  and not exists (select 1 from asset_txn_items r where r.out_item_id = ai.id);
+from assets a
+join asset_txn_items ai on ai.id = a.held_item_id
+join asset_txns t       on t.id = ai.txn_id
+join asset_types ty     on ty.code = a.type_code
+join profiles p         on p.id = t.user_id;
 
 grant select on asset_holdings to authenticated;
 
@@ -346,12 +364,17 @@ begin
       raise exception 'เครื่อง % ไม่ใช่ประเภทที่เลือก', v_code;
     end if;
 
-    select holder_name into v_taken from asset_holdings where asset_code = v_code;
+    select h.holder_name into v_taken
+      from assets x join asset_holdings h on h.asset_code = x.code
+     where x.code = v_code and x.held_item_id is not null;
     if v_taken is not null then
       raise exception 'เครื่อง % ยังไม่ได้คืน อยู่กับ %', v_code, v_taken;
     end if;
 
-    insert into asset_txn_items (txn_id, asset_code) values (v_txn, v_code);
+    insert into asset_txn_items (txn_id, asset_code)
+    values (v_txn, v_code) returning id into v_item;
+
+    update assets set held_item_id = v_item where code = v_code;
   end loop;
 
   for r in select * from jsonb_array_elements(p_photos) loop
@@ -433,8 +456,11 @@ begin
   foreach v_code in array p_codes loop
     perform 1 from assets where code = v_code for update;
 
-    select out_item_id, user_id into v_out, v_owner
-    from asset_holdings where asset_code = v_code;
+    select a.held_item_id, t.user_id into v_out, v_owner
+      from assets a
+      join asset_txn_items ai on ai.id = a.held_item_id
+      join asset_txns t on t.id = ai.txn_id
+     where a.code = v_code;
 
     if v_out is null then
       raise exception 'เครื่อง % ไม่ได้อยู่ในรายการค้างคืน', v_code;
@@ -446,6 +472,8 @@ begin
 
     insert into asset_txn_items (txn_id, asset_code, out_item_id)
     values (v_txn, v_code, v_out);
+
+    update assets set held_item_id = null where code = v_code;
   end loop;
 
   for r in select * from jsonb_array_elements(p_photos) loop
