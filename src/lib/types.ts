@@ -22,6 +22,8 @@ export interface Profile {
   dept_code: string | null
   sub_dept: string | null
   can_assets: boolean
+  /** ผู้จ่ายอุปกรณ์ — เห็นเครื่องทุกแผนก เบิกแทนและโอนเครื่องได้ */
+  can_dispatch: boolean
   extra_depts: string[]
   shift_start: string | null
   shift_end: string | null
@@ -201,6 +203,8 @@ export interface Asset {
   type_code: string
   dept_code: string | null
   share_depts: string[]
+  /** แผนกที่ได้รับเครื่องนี้มาใช้ชั่วคราวจากการโอน · ว่าง = อยู่บ้านตัวเอง */
+  loan_dept: string | null
   is_enabled: boolean
   note: string | null
   held_item_id: number | null
@@ -216,6 +220,8 @@ export interface AssetHolding {
   type_name: string
   asset_dept: string | null
   asset_share_depts: string[]
+  /** แผนกที่ได้รับเครื่องนี้มาใช้ชั่วคราวจากการโอน */
+  asset_loan_dept: string | null
   txn_id: string
   ref_no: string
   user_id: string
@@ -223,10 +229,28 @@ export interface AssetHolding {
   holder_code: string
   holder_dept: string | null
   holder_sub_dept: string | null
+  /** คนที่กดเบิกให้ · ว่าง = เจ้าตัวเบิกเอง */
+  acted_by: string | null
+  acted_by_name: string | null
   shift_start: string | null
   shift_end: string | null
   due_at: string | null
   taken_at: string
+}
+
+/** แถบเตือนเรื่องการโอนเครื่อง — ขึ้นทั้งฝั่งที่ได้รับและฝั่งที่ถูกตัด */
+export interface TransferNotice {
+  id: number
+  /** in = ถูกโอนมาให้แผนกเรา รอไปกดเบิก · out = ของเราถูกโอนออก ไม่ต้องคืนแล้ว */
+  side: 'in' | 'out'
+  asset_code: string
+  type_name: string
+  to_dept: string
+  from_dept: string | null
+  from_name: string | null
+  by_name: string
+  reason: string | null
+  created_at: string
 }
 
 export interface AssetOpenIssue {

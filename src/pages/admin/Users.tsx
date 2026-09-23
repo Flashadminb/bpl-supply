@@ -11,21 +11,27 @@ import {
 } from '../../lib/api'
 import { emailFromEmployeeCode, readableError } from '../../lib/supabase'
 import { ErrorBox, Loading, Modal, Spinner } from '../../components/ui'
-import type { Profile, UserRole } from '../../lib/types'
-import { ASSIGNABLE_ROLES, ROLE_TH } from '../../lib/roles'
+import type { Profile } from '../../lib/types'
+import { POSTS, ROLE_TH, postOf, postPatch, type PostKey } from '../../lib/roles'
 
 const MIN_PASSWORD = 8
 
-const RBAC: { action: string; staff: boolean; supervisor: boolean; admin: boolean }[] = [
-  { action: 'เบิก / คืนวัสดุ', staff: true, supervisor: true, admin: true },
-  { action: 'เปลี่ยนรหัสผ่านตัวเอง', staff: true, supervisor: true, admin: true },
-  { action: 'ดูประวัติของตัวเอง', staff: true, supervisor: true, admin: true },
-  { action: 'อนุมัติ / ปฏิเสธคำขอ', staff: false, supervisor: true, admin: true },
-  { action: 'เพิ่มวัสดุ / แก้สต็อก / รับของเข้า', staff: false, supervisor: true, admin: true },
-  { action: 'ส่งออก Google Sheet', staff: false, supervisor: true, admin: true },
-  { action: 'เปิดรูปหลักฐานใน Drive', staff: false, supervisor: true, admin: true },
-  { action: 'เพิ่มบัญชี / รีเซ็ตรหัสผ่านคนอื่น', staff: false, supervisor: false, admin: true },
-  { action: 'เห็นหน้านี้และตารางสิทธิ์', staff: false, supervisor: false, admin: true },
+const RBAC: { action: string; staff: boolean; dispatcher: boolean; supervisor: boolean; admin: boolean }[] = [
+  { action: 'เบิก / คืนวัสดุ', staff: true, dispatcher: true, supervisor: true, admin: true },
+  { action: 'เปลี่ยนรหัสผ่านตัวเอง', staff: true, dispatcher: true, supervisor: true, admin: true },
+  { action: 'ดูประวัติของตัวเอง', staff: true, dispatcher: true, supervisor: true, admin: true },
+  { action: 'เห็นเครื่อง Asset ทุกแผนก', staff: false, dispatcher: true, supervisor: true, admin: true },
+  { action: 'เบิกอุปกรณ์แทนคนอื่น', staff: false, dispatcher: true, supervisor: true, admin: true },
+  { action: 'โอนเครื่องให้แผนกอื่น', staff: false, dispatcher: true, supervisor: true, admin: true },
+  { action: 'คืนอุปกรณ์แทนคนอื่น', staff: false, dispatcher: false, supervisor: true, admin: true },
+  { action: 'เข้าหน้าฝั่งแอดมิน', staff: false, dispatcher: false, supervisor: true, admin: true },
+  { action: 'อนุมัติ / ปฏิเสธคำขอ', staff: false, dispatcher: false, supervisor: true, admin: true },
+  { action: 'เพิ่มวัสดุ / แก้สต็อก / รับของเข้า', staff: false, dispatcher: false, supervisor: true, admin: true },
+  { action: 'ส่งออก Google Sheet', staff: false, dispatcher: false, supervisor: true, admin: true },
+  { action: 'เปิดรูปหลักฐานใน Drive', staff: false, dispatcher: false, supervisor: true, admin: true },
+  { action: 'เพิ่มบัญชี / รีเซ็ตรหัสผ่านคนอื่น', staff: false, dispatcher: false, supervisor: false, admin: true },
+  { action: 'ย้ายแผนกเจ้าของเครื่องถาวร', staff: false, dispatcher: false, supervisor: false, admin: true },
+  { action: 'เห็นหน้านี้และตารางสิทธิ์', staff: false, dispatcher: false, supervisor: false, admin: true },
 ]
 
 /** รหัสผ่านตั้งต้นที่อ่านออก พิมพ์ง่าย ไม่มีตัวที่สับสน (0/O, 1/l/I) */
@@ -41,7 +47,7 @@ interface Draft {
   dept_code: string
   sub_dept: string
   can_assets: boolean
-  role: UserRole
+  post: PostKey
   password: string
   shift_start: string
   shift_end: string
@@ -98,7 +104,7 @@ export default function Users() {
       dept_code: 'ALL',
       sub_dept: '',
       can_assets: true,
-      role: 'staff',
+      post: 'staff',
       password: suggestPassword(),
       shift_start: '',
       shift_end: '',
@@ -117,7 +123,8 @@ export default function Users() {
         deptCode: draft.dept_code,
         subDept: draft.sub_dept || null,
         canAssets: draft.can_assets,
-        role: draft.role,
+        role: postPatch(draft.post).role,
+        canDispatch: postPatch(draft.post).can_dispatch,
         password: draft.password,
         shiftStart: draft.shift_start || null,
         shiftEnd: draft.shift_end || null,
@@ -273,11 +280,11 @@ export default function Users() {
                   <td className="px-3 py-2 align-top">
                     <select
                       className="input h-tap"
-                      value={u.role}
+                      value={postOf(u)}
                       disabled={savingId === u.id}
-                      onChange={(e) => void patch(u.id, { role: e.target.value as UserRole })}
+                      onChange={(e) => void patch(u.id, postPatch(e.target.value as PostKey))}
                     >
-                      {ASSIGNABLE_ROLES.map((r) => (
+                      {POSTS.map((r) => (
                         <option key={r.key} value={r.key}>
                           {r.label}
                         </option>
@@ -326,22 +333,23 @@ export default function Users() {
           <summary className="min-h-tap cursor-pointer font-display text-md">
             ตารางสิทธิ์ (RBAC) — ใครทำอะไรได้บ้าง
           </summary>
-          <table className="mt-3 w-full max-w-[620px] text-left text-sm">
+          <table className="mt-3 w-full max-w-[760px] text-left text-sm">
             <thead className="text-ink-500">
               <tr className="border-b border-line">
                 <th className="py-2 font-medium">สิ่งที่ทำได้</th>
-                {(['staff', 'supervisor', 'admin'] as const).map((k) => (
-                  <th key={k} className="py-2 text-center font-medium">
-                    {ROLE_TH[k]}
+                {POSTS.map((r) => (
+                  <th key={r.key} className="py-2 text-center font-medium">
+                    {r.label}
                   </th>
                 ))}
+                <th className="py-2 text-center font-medium">{ROLE_TH.admin}</th>
               </tr>
             </thead>
             <tbody>
               {RBAC.map((row) => (
                 <tr key={row.action} className="border-b border-line last:border-0">
                   <td className="py-2">{row.action}</td>
-                  {(['staff', 'supervisor', 'admin'] as const).map((k) => (
+                  {(['staff', 'dispatcher', 'supervisor', 'admin'] as const).map((k) => (
                     <td key={k} className="py-2 text-center">
                       {row[k] ? <span className="text-success">✓</span> : <span className="text-ink-300">—</span>}
                     </td>
@@ -401,17 +409,17 @@ export default function Users() {
               <label className="label">บทบาท</label>
               <select
                 className="input"
-                value={draft.role}
-                onChange={(e) => setDraft({ ...draft, role: e.target.value as UserRole })}
+                value={draft.post}
+                onChange={(e) => setDraft({ ...draft, post: e.target.value as PostKey })}
               >
-                {ASSIGNABLE_ROLES.map((r) => (
+                {POSTS.map((r) => (
                   <option key={r.key} value={r.key}>
                     {r.label}
                   </option>
                 ))}
               </select>
               <p className="mt-1 text-xs text-ink-400">
-                {ASSIGNABLE_ROLES.find((r) => r.key === draft.role)?.hint}
+                {POSTS.find((r) => r.key === draft.post)?.hint}
               </p>
             </div>
             <div className="sm:col-span-2">

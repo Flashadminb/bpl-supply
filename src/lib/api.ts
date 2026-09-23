@@ -25,6 +25,7 @@ import type {
   ByStatus,
   AssetTxnKind,
   AssetHistoryRow,
+  TransferNotice,
 } from './types'
 
 const ITEM_COLS =
@@ -266,6 +267,7 @@ export async function updateProfile(
       | 'dept_code'
       | 'sub_dept'
       | 'can_assets'
+      | 'can_dispatch'
       | 'extra_depts'
       | 'shift_start'
       | 'shift_end'
@@ -294,6 +296,7 @@ export async function createEmployee(args: {
   password: string
   subDept?: string | null
   canAssets?: boolean
+  canDispatch?: boolean
   shiftStart?: string | null
   shiftEnd?: string | null
   extraDepts?: string[]
@@ -310,6 +313,7 @@ export async function createEmployee(args: {
       password: args.password,
       sub_dept: args.subDept ?? null,
       can_assets: args.canAssets ?? true,
+      can_dispatch: args.canDispatch ?? false,
       shift_start: args.shiftStart ?? null,
       shift_end: args.shiftEnd ?? null,
       extra_depts: args.extraDepts ?? [],
@@ -624,6 +628,13 @@ export async function listAssetHoldings(mineOnly = false, userId?: string): Prom
   return unwrap(await q) as unknown as AssetHolding[]
 }
 
+/** เครื่องที่เรากดเบิกให้คนอื่น — ดูอย่างเดียว คนคืนคือคนที่ถืออยู่จริง */
+export async function listProxyHoldings(userId: string): Promise<AssetHolding[]> {
+  return unwrap(
+    await supabase.from('asset_holdings').select('*').eq('acted_by', userId).order('taken_at'),
+  ) as unknown as AssetHolding[]
+}
+
 export async function listAssetOpenIssues(): Promise<AssetOpenIssue[]> {
   return unwrap(await supabase.from('asset_open_issues').select('*')) as unknown as AssetOpenIssue[]
 }
@@ -645,6 +656,8 @@ export async function assetCheckout(args: {
   photos: AssetPhotoInput[]
   issues?: AssetIssueInput[]
   note?: string
+  /** เบิกให้คนอื่น — ของจะไปค้างชื่อคนนี้ ไม่ใช่ชื่อคนกด */
+  forUserId?: string | null
 }) {
   const { data, error } = await supabase.rpc('asset_checkout', {
     p_type: args.typeCode,
@@ -652,9 +665,68 @@ export async function assetCheckout(args: {
     p_photos: args.photos,
     p_issues: args.issues ?? [],
     p_note: args.note ?? null,
+    p_for_user: args.forUserId ?? null,
   })
   if (error) throw new Error(readableError(error))
-  return data as { id: string; ref_no: string; due_at: string | null; count: number }
+  return data as {
+    id: string
+    ref_no: string
+    due_at: string | null
+    count: number
+    for_name: string | null
+  }
+}
+
+/* ------------------------------------------------- เบิกแทน และการโอนเครื่อง */
+
+export interface ProxyTarget {
+  id: string
+  employee_code: string
+  full_name: string
+  dept_code: string | null
+  sub_dept: string | null
+  shift_start: string | null
+  shift_end: string | null
+}
+
+/** รายชื่อคนที่เบิกแทนได้ — คืนว่างถ้าบัญชีนี้ไม่มีสิทธิ์ */
+export async function listProxyTargets(q?: string): Promise<ProxyTarget[]> {
+  const { data, error } = await supabase.rpc('proxy_targets', { p_q: q ?? null })
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as ProxyTarget[]
+}
+
+/** โอนเครื่องให้แผนกอื่น — ปลายทางต้องไปกดเบิกเองตามขั้นตอน */
+export async function assetTransfer(code: string, toDept: string, reason?: string) {
+  const { data, error } = await supabase.rpc('asset_transfer', {
+    p_code: code,
+    p_to_dept: toDept,
+    p_reason: reason ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { id: number; asset_code: string; to_dept: string; cut_from: string | null }
+}
+
+/** ต้นทางกดรับทราบว่าไม่ต้องตามคืนเครื่องนั้นแล้ว */
+export async function ackTransfer(id: number) {
+  const { error } = await supabase.rpc('asset_transfer_ack', { p_id: id })
+  if (error) throw new Error(readableError(error))
+}
+
+/** ยกเลิกการโอนที่ปลายทางยังไม่ได้รับ */
+export async function cancelTransfer(id: number) {
+  const { error } = await supabase.rpc('asset_transfer_cancel', { p_id: id })
+  if (error) throw new Error(readableError(error))
+}
+
+/** แถบเตือนเรื่องการโอนที่ยังค้าง ทั้งฝั่งรับและฝั่งถูกตัด */
+export async function listTransferNotices(): Promise<TransferNotice[]> {
+  const { data, error } = await supabase
+    .from('asset_transfer_notices')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as TransferNotice[]
 }
 
 export async function assetReturn(args: {

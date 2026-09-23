@@ -20,6 +20,8 @@ interface DoneState {
   typeName: string
   issues?: AssetIssueInput[]
   photoCount: number
+  /** ชื่อคนที่เบิกให้ · ว่าง = เบิกให้ตัวเอง */
+  forName?: string | null
 }
 
 const timeOnly = (iso: string) =>
@@ -62,6 +64,12 @@ export default function AssetDone() {
       </header>
 
       <StaffPage className="-mt-3">
+        {state?.forName && (
+          <p className="mb-3 rounded-card border border-warn/40 bg-warn-bg px-3 py-2 text-center font-display text-md text-warn-txt">
+            เบิกแทน {state.forName} — ของค้างชื่อเขา ไม่ใช่ชื่อคุณ
+          </p>
+        )}
+
         {state?.dueAt && kind === 'out' && (
           <p className="mb-3 rounded-card border border-brand-300 bg-brand-50 px-3 py-2 text-center font-display text-md">
             คืนภายใน {timeOnly(state.dueAt)} น.

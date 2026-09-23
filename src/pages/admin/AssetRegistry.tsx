@@ -16,6 +16,8 @@ import {
 import { EmptyState, ErrorBox, Loading, Sheet, Spinner } from '../../components/ui'
 import { fmtDateTime, relativeAge } from '../../lib/format'
 import type { Asset, Department } from '../../lib/types'
+import { AssetTransfer } from '../../components/AssetTransfer'
+import { canProxy } from '../../lib/roles'
 
 type Filter = 'all' | 'free' | 'out' | 'issue' | 'off'
 
@@ -28,7 +30,8 @@ const FILTERS: { key: Filter; label: string }[] = [
 ]
 
 export default function AssetRegistry() {
-  const { can } = useAuth()
+  const { can, profile } = useAuth()
+  const mayTransfer = canProxy(profile)
   const types = useAsync(() => listAssetTypes(), [])
   const depts = useAsync(() => listDepartments(), [])
   const assets = useAsync(() => listAssets(), [])
@@ -40,6 +43,8 @@ export default function AssetRegistry() {
   const [filter, setFilter] = useState<Filter>('all')
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState<Asset | null>(null)
+  // โอนเครื่องให้แผนกอื่น — แอดมิน เจ้าของระบบ และผู้จ่ายอุปกรณ์
+  const [moving, setMoving] = useState<Asset | null>(null)
 
   const holdBy = useMemo(
     () => new Map((held.data ?? []).map((h) => [h.asset_code, h])),
@@ -204,6 +209,11 @@ export default function AssetRegistry() {
                           + {a.share_depts.map((c) => deptName.get(c) ?? c).join(', ')}
                         </p>
                       )}
+                      {a.loan_dept && (
+                        <p className="text-xs text-warn-txt">
+                          โอนให้ {deptName.get(a.loan_dept) ?? a.loan_dept} ชั่วคราว
+                        </p>
+                      )}
                     </td>
                     <td className="p-2">
                       {!a.is_enabled ? (
@@ -232,13 +242,24 @@ export default function AssetRegistry() {
                       )}
                     </td>
                     <td className="p-2 text-right">
-                      <button
-                        type="button"
-                        className="btn-soft h-tap px-3 text-sm"
-                        onClick={() => setOpen(a)}
-                      >
-                        จัดการ
-                      </button>
+                      <div className="flex justify-end gap-1">
+                        {mayTransfer && (
+                          <button
+                            type="button"
+                            className="btn-soft h-tap px-3 text-sm"
+                            onClick={() => setMoving(a)}
+                          >
+                            โอน
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="btn-soft h-tap px-3 text-sm"
+                          onClick={() => setOpen(a)}
+                        >
+                          จัดการ
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )
@@ -262,6 +283,14 @@ export default function AssetRegistry() {
           onChanged={reloadAll}
         />
       )}
+
+      <AssetTransfer
+        asset={moving}
+        holding={moving ? holdBy.get(moving.code) : undefined}
+        depts={depts.data ?? []}
+        onClose={() => setMoving(null)}
+        onDone={reloadAll}
+      />
     </div>
   )
 }

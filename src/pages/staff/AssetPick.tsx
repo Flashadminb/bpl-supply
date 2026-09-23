@@ -19,6 +19,10 @@ import { CodeScanner } from '../../components/CodeScanner'
 import { stampLines } from '../../lib/image'
 import { fmtDateTime } from '../../lib/format'
 import type { Asset, AssetIssueInput } from '../../lib/types'
+import type { ProxyTarget } from '../../lib/api'
+import { ProxyPicker } from '../../components/ProxyPicker'
+import { canProxy } from '../../lib/roles'
+import { TransferNotices } from '../../components/TransferNotices'
 
 /* ------------------------------------------------------------ เลือกประเภท */
 
@@ -48,6 +52,8 @@ export function AssetTypes() {
       <StaffPage>
         {(types.loading || assets.loading) && <Loading />}
         {types.error && <ErrorBox message={types.error} onRetry={types.reload} />}
+
+        <TransferNotices />
 
         {!types.loading && rows.length === 0 && (
           <EmptyState
@@ -130,6 +136,9 @@ export default function AssetPick() {
   const [scanning, setScanning] = useState(false)
   // ของพ่วงซ่อนไว้ก่อน ไม่ได้หยิบทุกครั้ง กดเปิดเมื่อจะเอา
   const [extraOpen, setExtraOpen] = useState(false)
+  // เบิกแทนคนอื่น — ว่าง = เบิกให้ตัวเอง
+  const [forUser, setForUser] = useState<ProxyTarget | null>(null)
+  const mayProxy = canProxy(profile)
 
   const type = (types.data ?? []).find((t) => t.code === typeCode)
   const holdBy = useMemo(() => new Map((held.data ?? []).map((h) => [h.asset_code, h])), [held.data])
@@ -244,7 +253,13 @@ export default function AssetPick() {
         .filter(([code, text]) => picked.includes(code) && text.trim())
         .map(([code, text]) => ({ asset_code: code, symptom: text.trim() }))
 
-      const res = await assetCheckout({ typeCode, codes: picked, photos, issues: issueList })
+      const res = await assetCheckout({
+        typeCode,
+        codes: picked,
+        photos,
+        issues: issueList,
+        forUserId: forUser?.id ?? null,
+      })
       nav(`/assets/done/${res.ref_no}`, {
         state: {
           kind: 'out',
@@ -254,6 +269,7 @@ export default function AssetPick() {
           typeName: type?.name ?? typeCode,
           issues: issueList,
           photoCount: photos.length,
+          forName: res.for_name,
         },
       })
     } catch (e) {
@@ -331,6 +347,12 @@ export default function AssetPick() {
         {/* -------------------------------------------------- ขั้น 1 เลือกเครื่อง */}
         {step === 'pick' && (
           <>
+            {/* เบิกให้ใคร — ต้องอยู่หน้าสุด เพราะตอบก่อนว่าของจะไปอยู่กับใคร
+                แล้วค่อยเลือกเครื่อง ไม่ใช่เลือกเครื่องเสร็จแล้วค่อยนึกได้ */}
+            {mayProxy && (
+              <ProxyPicker value={forUser} onChange={setForUser} myName={profile?.full_name ?? 'ตัวเอง'} />
+            )}
+
             {!loading && groups.length === 0 && (
               <EmptyState title="ไม่มีเครื่องให้เบิก" hint="แผนกของคุณยังไม่มีเครื่องประเภทนี้" />
             )}
@@ -425,6 +447,18 @@ export default function AssetPick() {
         {/* ------------------------------------------------- ขั้น 3 ตรวจก่อนยืนยัน */}
         {step === 'review' && (
           <>
+            {/* ย้ำอีกรอบก่อนกดยืนยัน เบิกผิดคนแล้วต้องไปตามคืนจากคนที่ไม่รู้เรื่อง */}
+            {forUser && (
+              <div className="mb-3 rounded-card border border-warn/40 bg-warn-bg p-3">
+                <p className="font-display text-warn-txt">เบิกแทน {forUser.full_name}</p>
+                <p className="text-sm text-warn-txt">
+                  <span className="font-mono">{forUser.employee_code}</span>
+                  {forUser.dept_code ? ` · ${forUser.dept_code}` : ''} — ของจะไปค้างชื่อเขา
+                  และเขาเป็นคนต้องเอามาคืน
+                </p>
+              </div>
+            )}
+
             <section className="rounded-card border border-line bg-surface p-3">
               <h2 className="font-display">กำลังจะเบิก {picked.length} เครื่อง</h2>
               <ul className="mt-2 space-y-1">

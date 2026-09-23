@@ -252,6 +252,9 @@ export default function AssetOutstanding() {
                       <td className="p-2">
                         <p className="font-display">{h.asset_code}</p>
                         <p className="text-xs text-ink-400">{h.type_name}</p>
+                        {h.asset_loan_dept && (
+                          <p className="text-xs text-warn-txt">โอนให้ {h.asset_loan_dept}</p>
+                        )}
                       </td>
                       <td className="p-2">
                         {h.holder_name}
@@ -260,6 +263,10 @@ export default function AssetOutstanding() {
                           {h.holder_dept}
                           {h.holder_sub_dept ? ` · ${h.holder_sub_dept}` : ''}
                         </p>
+                        {/* เบิกแทนต้องเห็นว่าใครกดให้ ไม่งั้นตามเรื่องไม่ถูกคนตอนของหาย */}
+                        {h.acted_by_name && (
+                          <p className="text-xs text-ink-500">เบิกให้โดย {h.acted_by_name}</p>
+                        )}
                       </td>
                       <td className="p-2 font-mono text-xs text-ink-500">{shift(h)}</td>
                       <td className="p-2 text-ink-500">{fmtDateTime(h.taken_at)}</td>

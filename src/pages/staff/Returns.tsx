@@ -9,6 +9,8 @@ import { StaffPage, TopBar } from '../../components/Shell'
 import { EmptyState, ErrorBox, Loading, QtyStepper, Sheet, Spinner } from '../../components/ui'
 import { fmtDateTime } from '../../lib/format'
 import { AssetReturn } from '../../components/AssetReturn'
+import { ProxyHoldings } from '../../components/ProxyHoldings'
+import { TransferNotices } from '../../components/TransferNotices'
 
 const CONDITIONS: { key: ReturnCond; label: string }[] = [
   { key: 'ok', label: 'ใช้ได้' },
@@ -199,7 +201,9 @@ export default function Returns() {
     <>
       <TopBar title="คืนของ" back="/" />
       <StaffPage>
+        <TransferNotices />
         <AssetReturn onCount={setAssetCount} />
+        <ProxyHoldings />
 
         {open.loading && <Loading />}
         {open.error && <ErrorBox message={open.error} onRetry={open.reload} />}
