@@ -22,7 +22,7 @@ export interface Profile {
   dept_code: string | null
   sub_dept: string | null
   can_assets: boolean
-  /** ผู้จ่ายอุปกรณ์ — เห็นเครื่องทุกแผนก เบิกแทนและโอนเครื่องได้ */
+  /** ผู้ตรวจสอบ — เห็นเครื่องทุกแผนก เบิกแทนและโอนเครื่องได้ */
   can_dispatch: boolean
   extra_depts: string[]
   shift_start: string | null

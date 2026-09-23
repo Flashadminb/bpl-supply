@@ -43,7 +43,7 @@ export default function AssetRegistry() {
   const [filter, setFilter] = useState<Filter>('all')
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState<Asset | null>(null)
-  // โอนเครื่องให้แผนกอื่น — แอดมิน เจ้าของระบบ และผู้จ่ายอุปกรณ์
+  // โอนเครื่องให้แผนกอื่น — แอดมิน เจ้าของระบบ และผู้ตรวจสอบ
   const [moving, setMoving] = useState<Asset | null>(null)
 
   const holdBy = useMemo(

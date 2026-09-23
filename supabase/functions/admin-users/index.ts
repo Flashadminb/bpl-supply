@@ -204,7 +204,7 @@ Deno.serve(async (req) => {
             sub_dept: sub_dept?.trim() || null,
             // ปิดไว้ = เห็นแต่ของสิ้นเปลือง ไม่เห็นเครื่อง Asset เลย
             can_assets: (body as { can_assets?: boolean }).can_assets !== false,
-            // ผู้จ่ายอุปกรณ์ — เห็นเครื่องทุกแผนก เบิกแทนและโอนเครื่องได้ แต่ไม่ใช่แอดมิน
+            // ผู้ตรวจสอบ — เห็นเครื่องทุกแผนก เบิกแทนและโอนเครื่องได้ แต่ไม่ใช่แอดมิน
             can_dispatch: (body as { can_dispatch?: boolean }).can_dispatch === true,
             shift_start: shift_start || null,
             shift_end: shift_end || null,
