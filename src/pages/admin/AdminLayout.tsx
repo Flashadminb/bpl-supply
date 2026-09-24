@@ -138,13 +138,16 @@ export default function AdminLayout() {
   return (
     <div className="min-h-dvh bg-canvas lg:flex">
       {/* แถบข้างเดสก์ท็อป 244px */}
-      <aside className="hidden w-[244px] shrink-0 flex-col justify-between bg-dark p-4 lg:sticky lg:top-0 lg:flex lg:h-dvh">
-        <div>
+      <aside className="hidden w-[244px] shrink-0 flex-col bg-dark lg:sticky lg:top-0 lg:flex lg:h-dvh">
+        <div className="shrink-0 px-4 pb-3 pt-4">
           <p className="font-mono text-xs tracking-widest text-dark-muted">FLASH EXPRESS</p>
-          <p className="mb-5 font-display text-lg text-white">BPL SUPPLY</p>
-          {nav}
+          <p className="font-display text-lg text-white">BPL SUPPLY</p>
         </div>
-        <div className="text-sm text-dark-muted">
+
+        {/* min-h-0 จำเป็น ไม่งั้น flex ไม่ยอมให้ลูกหดแล้วการเลื่อนจะไม่ทำงาน */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4">{nav}</div>
+
+        <div className="shrink-0 border-t border-dark-3 px-4 pb-4 pt-3 text-sm text-dark-muted">
           <p className="mb-2 text-[10px] tracking-wide text-dark-muted/60">
             Created by Thanawat Phuttarit
           </p>
@@ -172,7 +175,9 @@ export default function AdminLayout() {
         </Link>
       </header>
       {menu && (
-        <div className="sticky top-[52px] z-30 border-b border-dark-3 bg-dark p-3 lg:hidden">{nav}</div>
+        <div className="sticky top-[52px] z-30 max-h-[70dvh] overflow-y-auto border-b border-dark-3 bg-dark p-3 lg:hidden">
+          {nav}
+        </div>
       )}
 
       <main className="min-w-0 flex-1 p-4 lg:p-6">
