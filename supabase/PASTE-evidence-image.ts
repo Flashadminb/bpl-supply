@@ -5,14 +5,18 @@
 // ฟังก์ชันนี้ดึงไฟล์ด้วยสิทธิ์ของเจ้าของระบบแล้วส่งต่อ
 // จึงไม่ต้องเปิดไฟล์เป็นสาธารณะ
 //
-// เข้าได้เฉพาะ supervisor / admin — พนักงานหน้างานเรียกแล้วโดนปฏิเสธ
-// (กติกาข้อ 4 ใน CLAUDE.md: พนักงานห้ามเห็นรูปหลักฐาน)
+// เข้าได้เฉพาะแอดมิน เจ้าของระบบ และผู้ตรวจสอบ
+// พนักงานหน้างานเรียกแล้วโดนปฏิเสธ (กติกาข้อ 4 ใน CLAUDE.md)
+//
+// ผู้ตรวจสอบมี role เป็น staff อยู่ข้างใต้ ต่างกันที่ธง can_dispatch
+// ถ้าดูแค่ role จะโดนปฏิเสธไปด้วย ทั้งที่งานหลักของเขาคือดูรูปเซลฟี่
+// แล้วตัดสินว่าคนนั้นเข้าประชุมจริงไหม — ไม่เห็นรูปก็ทำงานไม่ได้เลย
 //
 // ไฟล์นี้เขียนให้จบในตัวเอง ก๊อปวางใน Supabase Dashboard ได้ตรง ๆ
 // secrets: GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REFRESH_TOKEN
 // =====================================================================
 
-const VERSION = 'v1'
+const VERSION = 'audit-v2'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -99,13 +103,18 @@ async function requireManager(req: Request): Promise<void> {
 
   const key = serviceKey()
   const pres = await fetch(
-    `${envOrThrow('SUPABASE_URL')}/rest/v1/profiles?id=eq.${user.id}&select=role,is_active`,
+    `${envOrThrow('SUPABASE_URL')}/rest/v1/profiles?id=eq.${user.id}&select=role,is_active,can_dispatch`,
     { headers: { apikey: key, Authorization: `Bearer ${key}` } },
   )
-  const rows = (await pres.json()) as { role?: string; is_active?: boolean }[]
+  const rows = (await pres.json()) as {
+    role?: string
+    is_active?: boolean
+    can_dispatch?: boolean
+  }[]
   const me = rows[0]
-  if (!me || !me.is_active || me.role === 'staff' || !me.role) {
-    throw new Error('พนักงานหน้างานเปิดดูรูปหลักฐานไม่ได้')
+  const maySee = Boolean(me?.is_active) && (me?.role === 'supervisor' || me?.role === 'admin' || me?.can_dispatch === true)
+  if (!maySee) {
+    throw new Error('บัญชีนี้เปิดดูรูปหลักฐานไม่ได้')
   }
 }
 
