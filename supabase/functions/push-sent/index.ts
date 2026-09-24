@@ -12,7 +12,7 @@
 // secrets: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT, CRON_SECRET
 // =====================================================================
 
-const VERSION = 'push-v1'
+const VERSION = 'push-v2-batch'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -238,6 +238,47 @@ async function subsOf(userId: string): Promise<Sub[]> {
   )
 }
 
+/**
+ * ดึงเครื่องของทุกคนในรอบเดียว
+ *
+ * เดิมถามทีละคน = หนึ่งรอบเน็ตต่อหนึ่งงาน
+ * พอประกาศประชุมให้ 150 คน กลายเป็น 150 รอบก่อนจะเริ่มส่งด้วยซ้ำ
+ */
+async function subsFor(userIds: string[]): Promise<Map<string, Sub[]>> {
+  const out = new Map<string, Sub[]>()
+  if (userIds.length === 0) return out
+  const ids = [...new Set(userIds)]
+  // แบ่งก้อนกัน URL ยาวเกินที่เซิร์ฟเวอร์รับไหว
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100)
+    const rows = await db<(Sub & { user_id: string })[]>(
+      `push_subscriptions?user_id=in.(${chunk.join(',')})&select=user_id,endpoint,p256dh,auth`,
+    )
+    for (const r of rows) {
+      const list = out.get(r.user_id) ?? []
+      list.push({ endpoint: r.endpoint, p256dh: r.p256dh, auth: r.auth })
+      out.set(r.user_id, list)
+    }
+  }
+  return out
+}
+
+/**
+ * ทำงานพร้อมกันทีละไม่กี่ตัว
+ *
+ * ส่งทีละงานเรียงกันใช้เวลาราวหนึ่งวินาทีต่อคน
+ * 150 คนก็ 150 วินาที ซึ่งเกินเพดานเวลาของ Edge Function
+ * งานจะถูกตัดกลางคัน คนครึ่งหลังต้องรอรอบถัดไปอีก 5 นาที
+ * ซึ่งใช้ไม่ได้เลยกับข้อความว่า "อีก 30 นาทีถึงเวลาประชุม"
+ *
+ * จำกัดที่ 12 ตัวพร้อมกัน มากกว่านี้เสี่ยงโดนฝั่งผู้ให้บริการ push จำกัดอัตรา
+ */
+async function inBatches<T>(items: T[], size: number, fn: (x: T) => Promise<void>) {
+  for (let i = 0; i < items.length; i += size) {
+    await Promise.all(items.slice(i, i + size).map(fn))
+  }
+}
+
 async function dropSub(endpoint: string) {
   await db(`push_subscriptions?endpoint=eq.${encodeURIComponent(endpoint)}`, { method: 'DELETE' })
 }
@@ -328,17 +369,20 @@ Deno.serve(async (req) => {
       const given = req.headers.get('x-cron-key')
       if (!expect || given !== expect) return json({ error: 'ไม่มีสิทธิ์เรียกงานนี้' }, 403)
 
-      const jobs = await rpc<Job[]>('push_due_jobs')
+      const jobs = (await rpc<Job[]>('push_due_jobs')) ?? []
       let sent = 0
       let skipped = 0
 
-      for (const j of jobs ?? []) {
-        const subs = await subsOf(j.user_id)
+      // ถามเครื่องของทุกคนรอบเดียว แล้วค่อยส่งขนานกันทีละก้อน
+      const subsByUser = await subsFor(jobs.map((j) => j.user_id))
+
+      await inBatches(jobs, 12, async (j) => {
+        const subs = subsByUser.get(j.user_id) ?? []
         if (subs.length === 0) {
           // ยังไม่เคยเปิดแจ้งเตือน ข้ามไปแต่ไม่จดว่าเตือนแล้ว
           // เผื่อเปิดทีหลังจะได้ยังได้รับ
           skipped++
-          continue
+          return
         }
         let any = false
         for (const s of subs) {
@@ -350,10 +394,10 @@ Deno.serve(async (req) => {
           await rpc('push_mark_sent', { p_kind: j.kind, p_subject: j.subject, p_user: j.user_id })
           sent++
         }
-      }
+      })
 
       await rpc('push_prune_log').catch(() => undefined)
-      return json({ ok: true, jobs: jobs?.length ?? 0, sent, skipped, version: VERSION })
+      return json({ ok: true, jobs: jobs.length, sent, skipped, version: VERSION })
     }
 
     return json({ error: 'ไม่รู้จักคำสั่งนี้' }, 400)
