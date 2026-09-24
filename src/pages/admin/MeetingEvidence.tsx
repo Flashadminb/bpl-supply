@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
 import {
   deleteMeetings,
@@ -9,24 +9,23 @@ import {
 } from '../../lib/api'
 import { readableError } from '../../lib/supabase'
 import { EmptyState, ErrorBox, Loading, Modal, Spinner } from '../../components/ui'
-import { EvidenceImg } from '../../components/EvidenceThumbs'
 import { fmtDateTime } from '../../lib/format'
-import type { MeetingRow, MeetingStatus } from '../../lib/types'
+import type { MeetingStatus } from '../../lib/types'
 
 /**
- * หลักฐานการเข้าประชุม — คลังรูปที่ตรวจแล้ว
+ * หลักฐานการเข้าประชุม — ตารางรายชื่อ
  *
- * แยกจากหน้า "รายชื่อประชุม" ซึ่งเป็นคิวรอตรวจ
- * พอกดยืนยันในหน้านั้น รายการจะหลุดจากคิวแล้วมาโผล่ที่นี่
- * เหมือนฝั่งสิ้นเปลืองที่แยกหน้าอนุมัติออกจากหน้าหลักฐาน
+ * คำถามที่หน้านี้ตอบคือ "รหัสนี้คนนี้เข้าประชุมวันนั้นไหม" ซึ่งเป็นคำถามแบบตาราง
+ * ไม่ใช่คำถามแบบอัลบั้มรูป จึงไม่โหลดรูปมาแสดงเลย มีแค่ลิงก์ให้กดไปดูใน Drive
  *
- * ดรอปดาวน์ชุดเดียวกับหน้าหลักฐานสิ้นเปลือง — เดือน วัน คน สถานะ
- * เพราะคนที่เปิดสองหน้านี้เป็นคนเดียวกัน ไม่ควรต้องเรียนรู้สองแบบ
+ * ผลพลอยได้คือหน้านี้เบามาก รูปหลักฐานวิ่งผ่าน Edge Function ทุกใบ
+ * ถ้าโชว์เป็นรูป เปิดดูทั้งเดือนทีเดียวกินหลายเมกะไบต์ต่อการเปิดหนึ่งครั้ง
+ * แบบตารางคือไม่กินเลยจนกว่าจะมีคนกดดูจริง
  */
 
 const STATUS_TH: Record<MeetingStatus, string> = {
   pending: 'รอตรวจ',
-  confirmed: 'ยืนยันแล้ว',
+  confirmed: 'เข้าร่วม',
   rejected: 'ไม่นับ',
 }
 
@@ -71,40 +70,9 @@ const dayLabelTH = (day: string) =>
     timeZone: 'UTC',
   }).format(new Date(`${day}T00:00:00Z`))
 
-/** รูปย่อโหลดเมื่อเลื่อนมาถึง — รูปวิ่งผ่าน Edge Function จึงนับเข้าโควตาทุกใบ */
-function LazyThumb({ fileId, alt, onOpen }: { fileId: string; alt: string; onOpen: () => void }) {
-  const boxRef = useRef<HTMLButtonElement>(null)
-  const [seen, setSeen] = useState(false)
-
-  useEffect(() => {
-    const el = boxRef.current
-    if (!el || seen) return
-    const io = new IntersectionObserver(
-      (e) => {
-        if (e.some((x) => x.isIntersecting)) {
-          setSeen(true)
-          io.disconnect()
-        }
-      },
-      { rootMargin: '200px' },
-    )
-    io.observe(el)
-    return () => io.disconnect()
-  }, [seen])
-
-  return (
-    <button
-      ref={boxRef}
-      type="button"
-      className="block aspect-square w-full overflow-hidden rounded-card border border-line bg-surface-2"
-      onClick={onOpen}
-    >
-      {seen ? (
-        <EvidenceImg fileId={fileId} enabled alt={alt} className="h-full w-full object-cover" />
-      ) : null}
-    </button>
-  )
-}
+/** ลิงก์ Drive — ใช้ web_link ที่เก็บไว้ ถ้าไม่มีก็ประกอบจาก file id */
+const driveUrl = (fileId: string, webLink: string | null) =>
+  webLink || `https://drive.google.com/file/d/${fileId}/view`
 
 export default function MeetingEvidence() {
   const [month, setMonth] = useState(todayTH().slice(0, 7))
@@ -115,7 +83,6 @@ export default function MeetingEvidence() {
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [big, setBig] = useState<MeetingRow | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const range = useMemo(() => monthRange(month), [month])
@@ -185,11 +152,10 @@ export default function MeetingEvidence() {
       <div className="mb-4">
         <h1 className="font-display text-lg">หลักฐานการเข้าประชุม</h1>
         <p className="text-sm text-ink-500">
-          รูปที่ตรวจแล้ว เก็บไว้ย้อนดู · รายการที่ยังไม่ได้ตรวจอยู่ในหน้า รายชื่อประชุม
+          ตารางรายชื่อว่ารหัสไหนเข้าประชุมวันไหน · อยากดูรูปกดลิงก์ Drive ท้ายแถว
         </p>
       </div>
 
-      {/* ตัวกรองชุดเดียวกับหน้าหลักฐานสิ้นเปลือง */}
       <div className="mb-3 flex flex-wrap items-end gap-2">
         <div>
           <label className="label mb-1" htmlFor="me-month">เดือน</label>
@@ -257,7 +223,7 @@ export default function MeetingEvidence() {
               setPicked(new Set())
             }}
           >
-            <option value="confirmed">ยืนยันแล้ว</option>
+            <option value="confirmed">เข้าร่วม</option>
             <option value="rejected">ไม่นับ</option>
             <option value="pending">รอตรวจ</option>
             <option value="">ทุกสถานะ</option>
@@ -267,19 +233,19 @@ export default function MeetingEvidence() {
         <input
           className="input h-tap max-w-[240px]"
           type="search"
-          placeholder="ค้นหาชื่อหรือเลขที่"
+          placeholder="ค้นหาชื่อ รหัส หรือเลขที่"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
 
-        <span className="text-sm text-ink-500">{shown.length} รายการ</span>
+        <span className="text-sm text-ink-500">{shown.length} รายชื่อ</span>
       </div>
 
       {error && <div className="mb-3"><ErrorBox message={error} /></div>}
 
       {picked.size > 0 && (
         <div className="sticky top-0 z-20 mb-3 flex flex-wrap items-center gap-2 rounded-card border border-ink bg-ink px-3 py-2 text-white">
-          <span className="font-display">เลือกไว้ {picked.size} รายการ</span>
+          <span className="font-display">เลือกไว้ {picked.size} รายชื่อ</span>
           <span className="flex-1" />
           <button
             type="button"
@@ -287,7 +253,7 @@ export default function MeetingEvidence() {
             disabled={busy}
             onClick={() => void run(() => setMeetingStatus([...picked], 'confirmed'))}
           >
-            ยืนยัน
+            นับเข้าร่วม
           </button>
           <button
             type="button"
@@ -295,7 +261,7 @@ export default function MeetingEvidence() {
             disabled={busy}
             onClick={() => void run(() => setMeetingStatus([...picked], 'rejected'))}
           >
-            ตีตก
+            ไม่นับ
           </button>
           <button
             type="button"
@@ -320,121 +286,105 @@ export default function MeetingEvidence() {
 
       {!rows.loading && shown.length === 0 && (
         <EmptyState
-          title="ไม่มีหลักฐานตามตัวกรอง"
+          title="ไม่มีรายชื่อตามตัวกรอง"
           hint="ลองเปลี่ยนเดือน หรือเปลี่ยนสถานะเป็น ทุกสถานะ"
         />
       )}
 
       {shown.length > 0 && (
-        <>
-          <button
-            type="button"
-            className="btn-soft mb-3 h-tap px-3 text-sm"
-            onClick={() => setPicked(allPicked ? new Set() : new Set(shown.map((m) => m.id)))}
-          >
-            {allPicked ? 'ล้างที่เลือกทั้งหมด' : `เลือกทั้งหมด ${shown.length} รายการ`}
-          </button>
-
-          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6">
-            {shown.map((m) => (
-              <li
-                key={m.id}
-                className={`rounded-card border p-2 ${
-                  picked.has(m.id) ? 'border-ink bg-surface-2' : 'border-line bg-surface'
-                }`}
-              >
-                <LazyThumb
-                  fileId={m.file_id}
-                  alt={`เซลฟี่ของ ${m.full_name}`}
-                  onOpen={() => setBig(m)}
-                />
-                <p className="mt-1 truncate text-sm font-medium">{m.full_name}</p>
-                <p className="truncate text-xs text-ink-400">
-                  {fmtDateTime(m.created_at)}
-                </p>
-                <div className="mt-1 flex items-center justify-between gap-1">
-                  <span className={`${STATUS_CLASS[m.status]} text-[10px]`}>
-                    {STATUS_TH[m.status]}
-                  </span>
+        <section className="panel overflow-x-auto p-2">
+          <table className="w-full min-w-[980px] text-left text-sm">
+            <thead className="text-ink-500">
+              <tr className="border-b border-line">
+                <th className="w-[44px] px-3 py-2">
                   <input
                     type="checkbox"
-                    aria-label={`เลือก ${m.full_name}`}
+                    aria-label="เลือกทั้งหมด"
                     className="h-5 w-5"
-                    checked={picked.has(m.id)}
-                    onChange={() => toggle(m.id)}
+                    checked={allPicked}
+                    onChange={() =>
+                      setPicked(allPicked ? new Set() : new Set(shown.map((m) => m.id)))
+                    }
                   />
-                </div>
-              </li>
-            ))}
-          </ul>
-        </>
+                </th>
+                <th className="w-[124px] px-3 py-2 font-medium">รหัสพนักงาน</th>
+                <th className="px-3 py-2 font-medium">ชื่อ</th>
+                <th className="w-[160px] px-3 py-2 font-medium">แผนก / กะ</th>
+                <th className="w-[150px] px-3 py-2 font-medium">วันเวลาเช็คอิน</th>
+                <th className="w-[110px] px-3 py-2 font-medium">สถานะ</th>
+                <th className="w-[190px] px-3 py-2 font-medium">ผู้ตรวจ</th>
+                <th className="w-[90px] px-3 py-2 font-medium">รูป</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((m) => (
+                <tr key={m.id} className="border-b border-line last:border-0">
+                  <td className="px-3 py-2 align-top">
+                    <input
+                      type="checkbox"
+                      aria-label={`เลือก ${m.full_name}`}
+                      className="h-5 w-5"
+                      checked={picked.has(m.id)}
+                      onChange={() => toggle(m.id)}
+                    />
+                  </td>
+                  <td className="px-3 py-2 align-top font-mono text-xs">{m.employee_code}</td>
+                  <td className="px-3 py-2 align-top">
+                    <p className="truncate">{m.full_name}</p>
+                    <p className="font-mono text-[10px] text-ink-400">{m.ref_no}</p>
+                    {m.note && <p className="text-xs text-ink-500">“{m.note}”</p>}
+                  </td>
+                  <td className="px-3 py-2 align-top text-xs text-ink-500">
+                    {m.dept_code ?? '—'}
+                    {m.sub_dept ? ` · ${m.sub_dept}` : ''}
+                    {m.shift_start && m.shift_end && (
+                      <p>
+                        กะ {m.shift_start.slice(0, 5)}–{m.shift_end.slice(0, 5)}
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 align-top text-ink-500">{fmtDateTime(m.created_at)}</td>
+                  <td className="px-3 py-2 align-top">
+                    <span className={STATUS_CLASS[m.status]}>{STATUS_TH[m.status]}</span>
+                  </td>
+                  <td className="px-3 py-2 align-top text-xs text-ink-500">
+                    {m.decided_by_name ? (
+                      <>
+                        <p className="truncate">{m.decided_by_name}</p>
+                        <p>{m.decided_at ? fmtDateTime(m.decided_at) : ''}</p>
+                        {m.decide_note && <p className="text-danger-txt">{m.decide_note}</p>}
+                      </>
+                    ) : (
+                      <span className="text-ink-300">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 align-top">
+                    <a
+                      href={driveUrl(m.file_id, m.web_link)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn-soft h-tap px-3 text-sm"
+                    >
+                      ดูรูป
+                    </a>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
       )}
-
-      {/* ---------------------------------------------------------- ดูรูปใหญ่ */}
-      <Modal
-        open={Boolean(big)}
-        onClose={() => setBig(null)}
-        title={big ? `${big.full_name} · ${fmtDateTime(big.created_at)}` : ''}
-      >
-        {big && (
-          <>
-            <EvidenceImg fileId={big.file_id} enabled className="w-full rounded-card" />
-            <p className="mt-2 text-sm text-ink-500">
-              <span className="font-mono">{big.employee_code}</span>
-              {big.dept_code ? ` · ${big.dept_code}` : ''} ·{' '}
-              <span className={STATUS_CLASS[big.status]}>{STATUS_TH[big.status]}</span>
-            </p>
-            {big.decided_by_name && (
-              <p className="text-xs text-ink-400">
-                ตรวจโดย {big.decided_by_name}
-                {big.decided_at ? ` · ${fmtDateTime(big.decided_at)}` : ''}
-                {big.decide_note ? ` · ${big.decide_note}` : ''}
-              </p>
-            )}
-            <div className="mt-3 flex justify-end gap-2">
-              <button
-                type="button"
-                className="h-tap rounded-btn bg-danger px-3 text-sm text-white"
-                disabled={busy}
-                onClick={() => {
-                  setPicked(new Set([big.id]))
-                  setBig(null)
-                  setConfirmDelete(true)
-                }}
-              >
-                ลบถาวร
-              </button>
-              <button
-                type="button"
-                className="btn-soft"
-                disabled={busy}
-                onClick={() => void run(() => setMeetingStatus([big.id], 'rejected'))}
-              >
-                ตีตก
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={busy}
-                onClick={() => void run(() => setMeetingStatus([big.id], 'confirmed'))}
-              >
-                ยืนยัน
-              </button>
-            </div>
-          </>
-        )}
-      </Modal>
 
       {/* ------------------------------------------------------- ยืนยันการลบ */}
       <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title="ลบถาวร">
         <p className="rounded-btn bg-danger-bg px-3 py-3 text-sm text-danger-txt">
-          กำลังจะลบ {picked.size} รายการออกจากระบบถาวร กู้คืนไม่ได้
+          กำลังจะลบ {picked.size} รายชื่อออกจากระบบถาวร กู้คืนไม่ได้
         </p>
         {/* บอกตรง ๆ ว่าลบตรงนี้ไม่ได้ลบทุกที่ ไม่งั้นจะเข้าใจว่าหลักฐานหายหมดแล้ว */}
         <p className="mt-2 text-sm text-ink-500">
           รูปใน Google Drive และแถวที่เคยส่งขึ้น Google Sheet ไปแล้วจะยังอยู่
           <br />
-          ถ้าอยากเก็บร่องรอยว่าใครตัดสินว่าไม่นับ ให้กด “ตีตก” แทนการลบ
+          ถ้าอยากเก็บร่องรอยว่าใครตัดสินว่าไม่นับ ให้กด “ไม่นับ” แทนการลบ
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <button type="button" className="btn-ghost" onClick={() => setConfirmDelete(false)}>
@@ -446,7 +396,7 @@ export default function MeetingEvidence() {
             disabled={busy}
             onClick={() => void run(() => deleteMeetings([...picked]))}
           >
-            {busy ? <Spinner /> : null} ลบถาวร {picked.size} รายการ
+            {busy ? <Spinner /> : null} ลบถาวร {picked.size} รายชื่อ
           </button>
         </div>
       </Modal>
