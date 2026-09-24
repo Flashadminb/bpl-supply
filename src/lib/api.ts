@@ -29,6 +29,7 @@ import type {
   MeetingRow,
   MeetingStat,
   MeetingStatus,
+  MeetingEvent,
 } from './types'
 
 const ITEM_COLS =
@@ -1160,4 +1161,121 @@ export async function listRequisitionHistory(
       .order('created_at', { ascending: false })
       .limit(limit),
   ) as unknown as Requisition[]
+}
+
+/** ลบรายการเช็คอินถาวร — รูปใน Drive และแถวที่ส่งขึ้นชีตไปแล้วยังอยู่ */
+export async function deleteMeetings(ids: string[]) {
+  const { data, error } = await supabase.rpc('delete_meetings', { p_ids: ids })
+  if (error) throw new Error(readableError(error))
+  return (data as number) ?? 0
+}
+
+export interface MeetingDay {
+  day: string
+  confirmed: number
+  pending: number
+  rejected: number
+  total: number
+  people: number
+}
+
+export interface MeetingDept {
+  dept_code: string
+  confirmed: number
+  total: number
+  people: number
+}
+
+export async function meetingDaily(fromDay: string, toDay: string): Promise<MeetingDay[]> {
+  const { data, error } = await supabase.rpc('meeting_daily', { p_from: fromDay, p_to: toDay })
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as MeetingDay[]
+}
+
+export async function meetingByDept(fromDay: string, toDay: string): Promise<MeetingDept[]> {
+  const { data, error } = await supabase.rpc('meeting_by_dept', { p_from: fromDay, p_to: toDay })
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as MeetingDept[]
+}
+
+/** จำนวนเช็คอินที่ยังไม่ได้ส่งเข้า Google Sheet */
+export async function countMeetingExportRows(args: {
+  fromISO: string
+  toISO: string
+}): Promise<{ pending: number; done: number }> {
+  const base = () =>
+    supabase
+      .from('meeting_export_rows')
+      .select('id', { count: 'exact', head: true })
+      .gte('created_at', args.fromISO)
+      .lte('created_at', args.toISO)
+  const [pending, done] = await Promise.all([base().is('tab', null), base().not('tab', 'is', null)])
+  if (pending.error) throw new Error(readableError(pending.error))
+  if (done.error) throw new Error(readableError(done.error))
+  return { pending: pending.count ?? 0, done: done.count ?? 0 }
+}
+
+/* --------------------------------------------------------------- นัดประชุม */
+
+/** นัดที่ยังไม่ผ่านไป — ทุกคนเห็น ใช้ขึ้นประกาศในแอพ */
+export async function listUpcomingMeetings(limit = 10): Promise<MeetingEvent[]> {
+  return unwrap(
+    await supabase
+      .from('meeting_event_rows')
+      .select('*')
+      .gte('meet_at', new Date(Date.now() - 6 * 3600_000).toISOString())
+      .order('meet_at', { ascending: true })
+      .limit(limit),
+  ) as unknown as MeetingEvent[]
+}
+
+/** นัดทั้งหมดในช่วงวัน — ใช้ในหน้าตรวจสอบ */
+export async function listMeetingEvents(fromDay: string, toDay: string): Promise<MeetingEvent[]> {
+  return unwrap(
+    await supabase
+      .from('meeting_event_rows')
+      .select('*')
+      .gte('day', fromDay)
+      .lte('day', toDay)
+      .order('meet_at', { ascending: false }),
+  ) as unknown as MeetingEvent[]
+}
+
+export async function createMeetingEvent(args: {
+  title: string
+  meetAt: string
+  audience?: string | null
+  place?: string | null
+  note?: string | null
+}) {
+  const { data, error } = await supabase.rpc('create_meeting_event', {
+    p_title: args.title,
+    p_meet_at: args.meetAt,
+    p_audience: args.audience ?? null,
+    p_place: args.place ?? null,
+    p_note: args.note ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { id: string }
+}
+
+export async function cancelMeetingEvent(id: string) {
+  const { error } = await supabase.rpc('cancel_meeting_event', { p_id: id })
+  if (error) throw new Error(readableError(error))
+}
+
+export async function deleteMeetingEvent(id: string) {
+  const { error } = await supabase.rpc('delete_meeting_event', { p_id: id })
+  if (error) throw new Error(readableError(error))
+}
+
+/**
+ * ลบรายการในหน้าหลักฐานถาวร — เจ้าของระบบเท่านั้น
+ *
+ * สต็อกไม่ถูกคืนกลับให้ ลบแค่ประวัติ
+ * และลบการเบิกเครื่องที่ยังไม่ได้คืนไม่ได้ ต้องกดคืนก่อน
+ */
+export async function deleteEvidence(kind: string, id: string) {
+  const { error } = await supabase.rpc('delete_evidence', { p_kind: kind, p_id: id })
+  if (error) throw new Error(readableError(error))
 }

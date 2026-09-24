@@ -403,3 +403,18 @@ export interface MeetingStat {
   total: number
   last_at: string | null
 }
+
+/** นัดประชุมที่ประกาศไว้ — ผู้เข้าร่วมเป็นข้อความอิสระ ไม่ผูกกับตำแหน่งในระบบ */
+export interface MeetingEvent {
+  id: string
+  title: string
+  meet_at: string
+  audience: string | null
+  place: string | null
+  note: string | null
+  created_by: string
+  created_by_name: string
+  created_at: string
+  cancelled_at: string | null
+  day: string
+}

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import {
+  deleteMeetings,
   listMeetingDays,
   listMeetings,
   meetingStats,
@@ -117,11 +119,13 @@ const dayLabelTH = (day: string) =>
   }).format(new Date(`${day}T00:00:00Z`))
 
 export default function Meetings() {
+  const nav = useNavigate()
   const [tab, setTab] = useState<'list' | 'stats'>('list')
   const [month, setMonth] = useState(todayTH().slice(0, 7))
   // เริ่มที่วันนี้ ไม่ใช่ทั้งเดือน เพราะคำถามแรกคือ 'วันนี้ใครมา' และโหลดเบากว่ามาก
-  const [day, setDay] = useState(todayTH())
-  const [status, setStatus] = useState<MeetingStatus | ''>('')
+  // คิวรอตรวจไม่ควรผูกกับวันเดียว ของเมื่อวานที่ยังไม่ได้ตรวจต้องเห็นด้วย
+  const [day, setDay] = useState('')
+  const [status, setStatus] = useState<MeetingStatus | ''>('pending')
   const [search, setSearch] = useState('')
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
@@ -129,6 +133,7 @@ export default function Meetings() {
   const [big, setBig] = useState<MeetingRow | null>(null)
   const [rejecting, setRejecting] = useState(false)
   const [rejectNote, setRejectNote] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   const range = useMemo(() => monthRange(month), [month])
   const months = useMemo(() => monthOptions(), [])
@@ -200,6 +205,8 @@ export default function Meetings() {
       setRejectNote('')
       rows.reload()
       stats.reload()
+      // ตรวจแล้วของหลุดจากคิวนี้ไปอยู่หน้าหลักฐาน พาไปดูเลยจะได้ไม่งงว่าหายไปไหน
+      if (next === 'confirmed') nav('/admin/meeting-evidence')
     } catch (e) {
       setError(readableError(e))
     } finally {
@@ -215,7 +222,7 @@ export default function Meetings() {
         <div>
           <h1 className="font-display text-lg">รายชื่อประชุม</h1>
           <p className="text-sm text-ink-500">
-            หน้างานเช็คอินด้วยเซลฟี่ · ตรวจแล้วกดยืนยัน หรือตีตกถ้ารูปไม่น่าเชื่อถือ
+            คิวรอตรวจ · กดยืนยันแล้วรายการจะย้ายไปอยู่หน้า หลักฐานการเข้าประชุม
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -344,6 +351,14 @@ export default function Meetings() {
                 onClick={() => setRejecting(true)}
               >
                 ตีตก / ไม่นับ
+              </button>
+              <button
+                type="button"
+                className="h-tap rounded-btn bg-danger px-3 text-sm text-white"
+                disabled={busy}
+                onClick={() => setDeleting(true)}
+              >
+                ลบถาวร
               </button>
               <button
                 type="button"
@@ -558,6 +573,43 @@ export default function Meetings() {
             </div>
           </>
         )}
+      </Modal>
+
+      {/* ------------------------------------------------------- ลบถาวร */}
+      <Modal open={deleting} onClose={() => setDeleting(false)} title="ลบถาวร">
+        <p className="rounded-btn bg-danger-bg px-3 py-3 text-sm text-danger-txt">
+          กำลังจะลบ {picked.size} รายการออกจากระบบถาวร กู้คืนไม่ได้
+        </p>
+        <p className="mt-2 text-sm text-ink-500">
+          รูปใน Google Drive และแถวที่เคยส่งขึ้น Google Sheet ไปแล้วจะยังอยู่
+          <br />
+          ถ้าอยากเก็บร่องรอยว่าใครตัดสินว่าไม่นับ ให้กด “ตีตก” แทน
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" className="btn-ghost" onClick={() => setDeleting(false)}>
+            ยกเลิก
+          </button>
+          <button
+            type="button"
+            className="h-tap rounded-btn bg-danger px-4 text-white"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true)
+              setError(null)
+              void deleteMeetings([...picked])
+                .then(() => {
+                  setPicked(new Set())
+                  setDeleting(false)
+                  rows.reload()
+                  stats.reload()
+                })
+                .catch((e) => setError(readableError(e)))
+                .finally(() => setBusy(false))
+            }}
+          >
+            {busy ? <Spinner /> : null} ลบถาวร {picked.size} รายการ
+          </button>
+        </div>
       </Modal>
 
       {/* ------------------------------------------------------------ ตีตก */}

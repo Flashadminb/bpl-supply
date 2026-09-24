@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { useAuth } from '../lib/auth'
 import { useAsync } from '../lib/useAsync'
-import { listMyMeetings, meetingCheckin } from '../lib/api'
+import { listMyMeetings, listUpcomingMeetings, meetingCheckin } from '../lib/api'
 import { readableError } from '../lib/supabase'
 import { fmtDateTime } from '../lib/format'
 import { Sheet, Spinner } from './ui'
 import { PhotoSteps, shotsToPhotos, type Shot } from './PhotoSteps'
 import { stampLines } from '../lib/image'
+import { MeetingNotices, MeetingPlanner } from './MeetingPlanner'
+import { canProxy } from '../lib/roles'
 
 /**
  * เช็คอินเข้าประชุม — ไอคอนเล็ก ๆ ข้างกระดิ่ง ทุกคนเห็น
@@ -29,6 +31,13 @@ export function MeetingCheckIn() {
   const [done, setDone] = useState<{ ref: string; at: string; dup: boolean } | null>(null)
 
   const mine = useAsync(() => (open ? listMyMeetings(10) : Promise.resolve([])), [open, done])
+  // ประกาศนัดประชุม ทุกคนเห็น · ฟอร์มนัดเห็นเฉพาะคนที่ตรวจสอบได้
+  const [planTick, setPlanTick] = useState(0)
+  const events = useAsync(
+    () => (open ? listUpcomingMeetings(5) : Promise.resolve([])),
+    [open, planTick],
+  )
+  const mayPlan = canProxy(profile)
 
   const photos = shotsToPhotos(shots)
   const uploading = shots.some((s) => s.state === 'uploading' || s.state === 'ready')
@@ -125,6 +134,8 @@ export function MeetingCheckIn() {
           </>
         ) : (
           <>
+            <MeetingNotices rows={events.data ?? []} />
+
             <p className="mb-3 text-sm text-ink-500">
               ถ่ายเซลฟี่ตัวเองหนึ่งรูปเป็นหลักฐาน แล้วกดส่ง
               <br />
@@ -190,6 +201,8 @@ export function MeetingCheckIn() {
                 </ul>
               </section>
             )}
+
+            {mayPlan && <MeetingPlanner onChanged={() => setPlanTick((n) => n + 1)} />}
           </>
         )}
       </Sheet>

@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
+import { useAuth } from '../../lib/auth'
 import {
+  deleteEvidence,
   listEvidence,
   listEvidenceItems,
   listShiftsInUse,
@@ -36,6 +38,11 @@ export default function Evidence() {
   const [to, setTo] = useState(isoDay(new Date()))
   const [page, setPage] = useState(0)
   const [busyId, setBusyId] = useState<string | null>(null)
+  // ลบถาวร — เจ้าของระบบเท่านั้น เพราะลบใบเบิกคือลบประวัติการตัดสต็อก
+  const { can } = useAuth()
+  const isOwner = can('admin')
+  const [killing, setKilling] = useState<EvidenceRow | null>(null)
+  const [killErr, setKillErr] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [big, setBig] = useState<{ row: EvidenceRow; index: number } | null>(null)
   /** แถวที่เพิ่งกด "ใช้แล้ว" — ซ่อนทันทีโดยไม่รอเซิร์ฟเวอร์ตอบ */
@@ -371,6 +378,18 @@ export default function Evidence() {
                           Drive
                         </a>
                       )}
+                      {isOwner && (
+                        <button
+                          type="button"
+                          className="h-tap rounded-btn bg-danger px-3 text-sm text-white"
+                          onClick={() => {
+                            setKillErr(null)
+                            setKilling(r)
+                          }}
+                        >
+                          ลบ
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -450,6 +469,59 @@ export default function Evidence() {
             </p>
             <p className="text-sm text-ink-500">{big.row.summary}</p>
             <p className="mt-2 text-xs text-ink-400">คลิกขวาที่รูป → คัดลอกรูปภาพ เพื่อนำไปวางในไฟล์ส่วนกลาง</p>
+          </>
+        )}
+      </Modal>
+
+      {/* ------------------------------------------------------- ลบถาวร */}
+      <Modal open={Boolean(killing)} onClose={() => setKilling(null)} title="ลบหลักฐานถาวร">
+        {killing && (
+          <>
+            <p className="rounded-btn bg-danger-bg px-3 py-3 text-sm text-danger-txt">
+              กำลังจะลบ <b>{killing.ref_no}</b> ออกจากระบบถาวร กู้คืนไม่ได้
+            </p>
+            <p className="mt-2 text-sm text-ink-500">{killing.summary}</p>
+
+            {/* บอกผลข้างเคียงให้ครบ ไม่งั้นยอดสต็อกจะเพี้ยนแบบหาสาเหตุไม่เจอทีหลัง */}
+            <ul className="mt-3 space-y-1 text-sm text-ink-700">
+              <li>· สต็อกจะ<b>ไม่</b>ถูกคืนกลับให้ ตัวเลขคงเหลือยังเท่าเดิม</li>
+              <li>· รูปใน Google Drive และแถวที่ส่งขึ้น Google Sheet ไปแล้วยังอยู่</li>
+              <li>· ถ้าเป็นการเบิกเครื่องที่ยังไม่ได้คืน ระบบจะไม่ยอมลบ ต้องกดคืนก่อน</li>
+            </ul>
+            <p className="mt-2 text-sm text-ink-500">
+              ถ้าแค่อยากให้หายจากหน้านี้ ใช้ปุ่ม “ใช้แล้ว” แทน ข้อมูลจะยังอยู่ครบ
+            </p>
+
+            {killErr && (
+              <p className="mt-3 rounded-btn bg-danger-bg px-3 py-2 text-sm text-danger-txt">
+                {killErr}
+              </p>
+            )}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="btn-ghost" onClick={() => setKilling(null)}>
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                className="h-tap rounded-btn bg-danger px-4 text-white"
+                disabled={busyId === killing.source_id}
+                onClick={() => {
+                  const row = killing
+                  setBusyId(row.source_id)
+                  setKillErr(null)
+                  void deleteEvidence(row.kind, row.source_id)
+                    .then(() => {
+                      setKilling(null)
+                      feed.reload()
+                    })
+                    .catch((e) => setKillErr(readableError(e)))
+                    .finally(() => setBusyId(null))
+                }}
+              >
+                {busyId === killing.source_id ? <Spinner /> : null} ลบถาวร
+              </button>
+            </div>
           </>
         )}
       </Modal>

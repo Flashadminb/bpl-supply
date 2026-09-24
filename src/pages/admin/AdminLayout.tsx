@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { usePendingApprovals } from '../../lib/usePendingApprovals'
 import { usePendingExports } from '../../lib/usePendingExports'
+import { usePendingMeetings } from '../../lib/usePendingMeetings'
 import { Icon, type IconName } from '../../components/icons'
 import { MANAGER_ROLES } from '../../lib/roles'
 
@@ -21,7 +22,7 @@ interface Link {
   end?: boolean
   adminOnly?: boolean
   /** เลขค้างท้ายเมนู ดึงจากตัวนับคนละตัวกัน */
-  badge?: 'approvals' | 'exports'
+  badge?: 'approvals' | 'exports' | 'meetings'
   /** ผู้ตรวจสอบเห็นเมนูนี้ด้วย — นอกนั้นเห็นเฉพาะแอดมินขึ้นไป */
   audit?: boolean
 }
@@ -37,7 +38,9 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
   {
     title: 'ตรวจสอบ',
     links: [
-      { to: '/admin/meetings', label: 'รายชื่อประชุม', icon: 'clipboard', audit: true },
+      { to: '/admin/meetings', label: 'รายชื่อประชุม', icon: 'clipboard', audit: true, badge: 'meetings' },
+      { to: '/admin/meeting-evidence', label: 'หลักฐานการเข้าประชุม', icon: 'photo', audit: true },
+      { to: '/admin/report/meeting', label: 'แดชบอร์ดประชุม', icon: 'pie', audit: true },
       { to: '/admin/supply-history', label: 'ประวัติเบิกสิ้นเปลือง', icon: 'history', audit: true },
     ],
   },
@@ -83,7 +86,8 @@ export default function AdminLayout() {
   const [menu, setMenu] = useState(false)
   const pending = usePendingApprovals()
   const exports = usePendingExports()
-  const badgeOf = { approvals: pending.count, exports: exports.count }
+  const meetings = usePendingMeetings()
+  const badgeOf = { approvals: pending.count, exports: exports.count, meetings: meetings.count }
 
   const nav = (
     <nav className="flex flex-col gap-1">

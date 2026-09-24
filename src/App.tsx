@@ -43,6 +43,8 @@ const SupplyReport = lazy(() => import('./pages/admin/SupplyReport'))
 const AssetReport = lazy(() => import('./pages/admin/AssetReport'))
 const Meetings = lazy(() => import('./pages/admin/Meetings'))
 const SupplyHistory = lazy(() => import('./pages/admin/SupplyHistory'))
+const MeetingEvidence = lazy(() => import('./pages/admin/MeetingEvidence'))
+const MeetingReport = lazy(() => import('./pages/admin/MeetingReport'))
 
 function Guard({
   children,
@@ -145,6 +147,14 @@ export default function App() {
         <Route path="qr" element={<Guard roles={MANAGER_ROLES}><QrLabels /></Guard>} />
         {/* สองหน้านี้ผู้ตรวจสอบเข้าได้ด้วย นอกนั้นเป็นของแอดมินล้วน */}
         <Route path="meetings" element={<Guard roles={MANAGER_ROLES} allowDispatch><Meetings /></Guard>} />
+        <Route
+          path="meeting-evidence"
+          element={<Guard roles={MANAGER_ROLES} allowDispatch><MeetingEvidence /></Guard>}
+        />
+        <Route
+          path="report/meeting"
+          element={<Guard roles={MANAGER_ROLES} allowDispatch><MeetingReport /></Guard>}
+        />
         <Route
           path="supply-history"
           element={<Guard roles={MANAGER_ROLES} allowDispatch><SupplyHistory /></Guard>}

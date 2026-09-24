@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
 import {
   countAssetExportRows,
+  countMeetingExportRows,
   countSheetExportRows,
   exportToSheet,
   listDepartments,
@@ -43,6 +44,9 @@ export default function ExportSheet() {
   )
 
   const assetTally = useAsync(() => countAssetExportRows(range), [range])
+  // เดิมหน้านี้ไม่รู้จักประชุมเลย รายการที่รอส่งจึงมองไม่เห็น
+  // แล้วเข้าใจว่าระบบไม่เขียนชีต ทั้งที่มันแค่ไม่ได้บอกว่ามีอะไรรออยู่
+  const meetTally = useAsync(() => countMeetingExportRows(range), [range])
 
   const tally = useAsync(
     () => countSheetExportRows({ ...range, dept: dept || undefined }),
@@ -63,7 +67,9 @@ export default function ExportSheet() {
   const done = tally.data?.done ?? 0
   const assetPending = assetTally.data?.pending ?? 0
   const assetDone = assetTally.data?.done ?? 0
-  const totalPending = pending + assetPending
+  const meetPending = meetTally.data?.pending ?? 0
+  const meetDone = meetTally.data?.done ?? 0
+  const totalPending = pending + assetPending + meetPending
 
   async function send() {
     setBusy(true)
@@ -80,6 +86,7 @@ export default function ExportSheet() {
       // ดึงใหม่ให้แถวที่เพิ่งส่งเปลี่ยนสถานะทันที
       tally.reload()
       assetTally.reload()
+      meetTally.reload()
       feed.reload()
     } catch (e) {
       setRuns((r) => [{ at: new Date().toISOString(), ok: false, message: (e as Error).message }, ...r])
@@ -95,7 +102,7 @@ export default function ExportSheet() {
         <span className="badge-mute">ส่งซ้ำได้ ไม่เกิดแถวซ้ำในชีต</span>
       </div>
 
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <div
           className={`rounded-card border p-4 ${
             pending > 0 ? 'border-brand-300 bg-brand-50' : 'border-line bg-surface'
@@ -120,6 +127,17 @@ export default function ExportSheet() {
             {assetTally.loading ? '…' : assetPending}
           </p>
           <p className="mt-1 text-xs text-ink-400">ส่งแล้ว {assetDone} บรรทัด</p>
+        </div>
+        <div
+          className={`rounded-card border p-4 ${
+            meetPending > 0 ? 'border-brand-300 bg-brand-50' : 'border-line bg-surface'
+          }`}
+        >
+          <p className="text-sm text-ink-500">ประชุม ยังไม่ส่ง</p>
+          <p className="mt-1 font-display text-xl leading-none">
+            {meetTally.loading ? '…' : meetPending}
+          </p>
+          <p className="mt-1 text-xs text-ink-400">ส่งแล้ว {meetDone} รายการ · คนละไฟล์ชีต</p>
         </div>
         <div className="rounded-card border border-line bg-surface p-4">
           <p className="text-sm text-ink-500">รวมที่ค้างส่ง</p>
