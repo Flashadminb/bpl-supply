@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { StaffImport } from '../../components/StaffImport'
 import { LoginQr } from '../../components/LoginQr'
+import { TimeSelect } from '../../components/TimeSelect'
 import { useAsync } from '../../lib/useAsync'
 import {
   createEmployee,
@@ -248,22 +249,20 @@ export default function Users() {
                   {/* กะใช้คำนวณกำหนดคืนอุปกรณ์ แก้ตรงนี้ได้เลยไม่ต้องสร้างบัญชีใหม่ */}
                   <td className="px-3 py-2 align-top">
                     <div className="flex items-center gap-1">
-                      <input
-                        type="time"
-                        aria-label={`เวลาเข้ากะของ ${u.full_name}`}
-                        className="input h-tap w-[104px] px-1 text-xs"
-                        value={u.shift_start?.slice(0, 5) ?? ''}
+                      <TimeSelect
+                        ariaLabel={`เวลาเข้ากะของ ${u.full_name}`}
+                        className="h-tap w-[104px] px-1 text-xs"
+                        value={u.shift_start}
                         disabled={savingId === u.id}
-                        onChange={(e) => void patch(u.id, { shift_start: e.target.value || null })}
+                        onChange={(t) => void patch(u.id, { shift_start: t })}
                       />
                       <span className="text-ink-400">–</span>
-                      <input
-                        type="time"
-                        aria-label={`เวลาเลิกกะของ ${u.full_name}`}
-                        className="input h-tap w-[104px] px-1 text-xs"
-                        value={u.shift_end?.slice(0, 5) ?? ''}
+                      <TimeSelect
+                        ariaLabel={`เวลาเลิกกะของ ${u.full_name}`}
+                        className="h-tap w-[104px] px-1 text-xs"
+                        value={u.shift_end}
                         disabled={savingId === u.id}
-                        onChange={(e) => void patch(u.id, { shift_end: e.target.value || null })}
+                        onChange={(t) => void patch(u.id, { shift_end: t })}
                       />
                     </div>
                     {u.role === 'staff' && !(u.shift_start && u.shift_end) && (
@@ -456,23 +455,19 @@ export default function Users() {
               </p>
             </div>
             <div>
-              <label className="label" htmlFor="shift-start">เวลาเข้ากะ</label>
-              <input
-                id="shift-start"
-                type="time"
-                className="input"
+              <label className="label">เวลาเข้ากะ</label>
+              <TimeSelect
+                ariaLabel="เวลาเข้ากะ"
                 value={draft.shift_start}
-                onChange={(e) => setDraft({ ...draft, shift_start: e.target.value })}
+                onChange={(t) => setDraft({ ...draft, shift_start: t ?? '' })}
               />
             </div>
             <div>
-              <label className="label" htmlFor="shift-end">เวลาเลิกกะ</label>
-              <input
-                id="shift-end"
-                type="time"
-                className="input"
+              <label className="label">เวลาเลิกกะ</label>
+              <TimeSelect
+                ariaLabel="เวลาเลิกกะ"
                 value={draft.shift_end}
-                onChange={(e) => setDraft({ ...draft, shift_end: e.target.value })}
+                onChange={(t) => setDraft({ ...draft, shift_end: t ?? '' })}
               />
               <p className="mt-1 text-xs text-ink-400">
                 ใช้คำนวณกำหนดคืนอุปกรณ์ · กะข้ามเที่ยงคืนใส่ได้ตามจริง เช่น 18:00 ถึง 03:00
