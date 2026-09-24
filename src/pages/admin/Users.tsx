@@ -18,6 +18,8 @@ const MIN_PASSWORD = 8
 
 const RBAC: { action: string; staff: boolean; dispatcher: boolean; supervisor: boolean; admin: boolean }[] = [
   { action: 'เบิก / คืนวัสดุ', staff: true, dispatcher: true, supervisor: true, admin: true },
+  { action: 'ส่งบาร์โค้ดจาก BY', staff: true, dispatcher: true, supervisor: true, admin: true },
+  { action: 'เช็คอินเข้าประชุม', staff: true, dispatcher: true, supervisor: true, admin: true },
   { action: 'เปลี่ยนรหัสผ่านตัวเอง', staff: true, dispatcher: true, supervisor: true, admin: true },
   { action: 'ดูประวัติของตัวเอง', staff: true, dispatcher: true, supervisor: true, admin: true },
   { action: 'เห็นเครื่อง Asset ทุกแผนก', staff: false, dispatcher: true, supervisor: true, admin: true },
@@ -203,7 +205,7 @@ export default function Users() {
         <section className="panel overflow-x-auto p-2">
           {users.loading && <Loading />}
           {users.error && <ErrorBox message={users.error} onRetry={users.reload} />}
-          <table className="w-full min-w-[1080px] text-left text-sm">
+          <table className="w-full min-w-[1210px] text-left text-sm">
             <thead className="text-ink-500">
               <tr className="border-b border-line">
                 <th className="px-3 py-2 font-medium">ชื่อ</th>
@@ -211,6 +213,7 @@ export default function Users() {
                 <th className="w-[210px] px-3 py-2 font-medium">แผนก</th>
                 <th className="w-[250px] px-3 py-2 font-medium">กะ / แผนกย่อย</th>
                 <th className="w-[160px] px-3 py-2 font-medium">บทบาท</th>
+                <th className="w-[130px] px-3 py-2 font-medium">เบิก Asset</th>
                 <th className="w-[110px] px-3 py-2 font-medium">สถานะ</th>
                 <th className="w-[150px] px-3 py-2 font-medium">รหัสผ่าน</th>
               </tr>
@@ -292,6 +295,23 @@ export default function Users() {
                       {/* เจ้าของระบบเปลี่ยนบทบาทตัวเองในหน้านี้ไม่ได้ กันล็อกตัวเองออกจากระบบ */}
                       {u.role === 'admin' && <option value="admin">{ROLE_TH.admin}</option>}
                     </select>
+                  </td>
+                  {/* สลับได้ทีหลัง ไม่ใช่แค่ตอนสร้างบัญชี
+                      คนย้ายงานแล้วต้องเปลี่ยนสิทธิ์ ไม่ใช่ลบทิ้งแล้วสร้างใหม่ */}
+                  <td className="px-3 py-2 align-top">
+                    <button
+                      type="button"
+                      className={u.can_assets ? 'badge-ok' : 'badge-mute'}
+                      disabled={savingId === u.id}
+                      onClick={() => void patch(u.id, { can_assets: !u.can_assets })}
+                      title={
+                        u.can_assets
+                          ? 'เบิกเครื่องได้ · กดเพื่อปิด'
+                          : 'เห็นแต่สิ้นเปลืองกับ BY · กดเพื่อเปิด'
+                      }
+                    >
+                      {u.can_assets ? 'เบิกได้' : 'เฉพาะสิ้นเปลือง'}
+                    </button>
                   </td>
                   <td className="px-3 py-2 align-top">
                     <button
