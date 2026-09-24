@@ -90,6 +90,21 @@ function Guard({
   return <>{children}</>
 }
 
+/**
+ * หน้าแรกของฝั่งแอดมิน
+ *
+ * แดชบอร์ดเป็นของแอดมินขึ้นไป ผู้ตรวจสอบเปิดไม่ได้
+ * ถ้าปล่อยให้ตกมาที่นี่ เขาจะโดนเด้งกลับหน้าแอปทันทีที่กดเข้ามา
+ * ซึ่งดูเหมือน เข้าเว็บไม่ได้ ทั้งที่จริงแค่ไม่มีหน้าแรกให้ยืน
+ * จึงพาไปที่เมนูแรกที่เขาเปิดได้แทน
+ */
+function AdminHome() {
+  const { profile, can } = useAuth()
+  if (can(...MANAGER_ROLES)) return <Dashboard />
+  if (profile?.can_dispatch) return <Navigate to="/admin/meetings" replace />
+  return <Navigate to="/" replace />
+}
+
 function Fallback() {
   return (
     <div className="flex min-h-dvh items-center justify-center bg-canvas">
@@ -133,7 +148,7 @@ export default function App() {
           </Guard>
         }
       >
-        <Route index element={<Guard roles={MANAGER_ROLES}><Dashboard /></Guard>} />
+        <Route index element={<AdminHome />} />
         <Route path="approvals" element={<Guard roles={MANAGER_ROLES}><Approvals /></Guard>} />
         <Route path="stock" element={<Guard roles={MANAGER_ROLES}><Stock /></Guard>} />
         <Route path="outstanding" element={<Guard roles={MANAGER_ROLES} allowDispatch><Outstanding /></Guard>} />
