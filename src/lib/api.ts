@@ -1367,3 +1367,28 @@ export async function adminCancelAssetOut(outItemId: number) {
   if (error) throw new Error(readableError(error))
   return data as { asset_code: string; txn_removed: boolean }
 }
+
+/**
+ * แก้ชื่อหรือรหัสพนักงาน — เจ้าของระบบเท่านั้น
+ *
+ * รหัสพนักงานคืออีเมลที่ใช้ล็อกอิน จึงต้องแก้ทั้งฝั่ง auth และโปรไฟล์ให้ตรงกัน
+ * ถ้าแก้แค่ที่เดียวเจ้าตัวจะล็อกอินไม่ได้และหาสาเหตุไม่เจอ
+ * รหัสผ่านเดิมยังใช้ได้ เปลี่ยนแค่ชื่อผู้ใช้ที่พิมพ์ตอนเข้าระบบ
+ */
+export async function renameEmployee(args: {
+  userId: string
+  fullName?: string
+  employeeCode?: string
+}) {
+  return callFunction<{ ok: true; changed: string[] }>(
+    'admin-users',
+    JSON.stringify({
+      action: 'rename',
+      user_id: args.userId,
+      full_name: args.fullName ?? null,
+      employee_code: args.employeeCode ?? null,
+      email: args.employeeCode ? emailFromEmployeeCode(args.employeeCode) : null,
+    }),
+    { 'Content-Type': 'application/json' },
+  )
+}

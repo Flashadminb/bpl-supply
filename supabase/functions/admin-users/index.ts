@@ -12,7 +12,7 @@
 //       { action: 'reset',  user_id, password }
 // =====================================================================
 
-const VERSION = 'dispatch-v6'
+const VERSION = 'rename-v7'
 const MIN_PASSWORD = 8
 
 const cors = {
@@ -151,6 +151,56 @@ Deno.serve(async (req) => {
         body: JSON.stringify({ must_change_password: true }),
       })
       return json({ ok: true })
+    }
+
+    // -------------------------------------------- แก้ชื่อ / รหัสพนักงาน
+    //
+    // ชื่อแก้ตรง ๆ ที่ตาราง profiles ได้เลย
+    // แต่รหัสพนักงานคืออีเมลที่ใช้ล็อกอิน ต้องแก้ทั้งสองที่ให้ตรงกัน
+    // ถ้าแก้แค่ที่เดียว เจ้าตัวจะล็อกอินไม่ได้อีกเลยและหาสาเหตุไม่เจอ
+    //
+    // รหัสผ่านเดิมยังใช้ได้เหมือนเดิม เปลี่ยนแค่ชื่อผู้ใช้ที่พิมพ์ตอนเข้าระบบ
+    if (body.action === 'rename') {
+      const { user_id, full_name, employee_code, email } = body as Record<string, string>
+      if (!user_id) return json({ error: 'ไม่ได้ระบุผู้ใช้' }, 400)
+
+      const patch: Record<string, string> = {}
+
+      if (typeof full_name === 'string' && full_name.trim()) {
+        patch.full_name = full_name.trim()
+      }
+
+      if (typeof employee_code === 'string' && employee_code.trim()) {
+        const code = employee_code.trim()
+
+        // กันรหัสซ้ำก่อน ไม่งั้นจะได้ error ดิบ ๆ จากฐานข้อมูล
+        const dup = await db<{ id: string }[]>(
+          `profiles?employee_code=eq.${encodeURIComponent(code)}&select=id`,
+        )
+        if (dup.some((d) => d.id !== user_id)) {
+          return json({ error: `รหัสพนักงาน ${code} มีคนใช้อยู่แล้ว` }, 400)
+        }
+
+        if (!email) return json({ error: 'ไม่ได้ส่งอีเมลสำหรับล็อกอินมาด้วย' }, 400)
+
+        // แก้ฝั่ง auth ก่อน · ถ้าพลาดจะได้ยังไม่ไปแตะโปรไฟล์
+        await authAdmin(`users/${user_id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ email, email_confirm: true }),
+        })
+        patch.employee_code = code
+      }
+
+      if (Object.keys(patch).length === 0) {
+        return json({ error: 'ไม่มีอะไรให้แก้' }, 400)
+      }
+
+      await db(`profiles?id=eq.${user_id}`, {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify(patch),
+      })
+      return json({ ok: true, changed: Object.keys(patch) })
     }
 
     // ------------------------------------------------------ สร้างบัญชีใหม่

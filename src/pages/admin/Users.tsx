@@ -7,6 +7,7 @@ import {
   createEmployee,
   listDepartments,
   listProfiles,
+  renameEmployee,
   resetEmployeePassword,
   updateProfile,
 } from '../../lib/api'
@@ -65,6 +66,11 @@ export default function Users() {
   const [draft, setDraft] = useState<Draft | null>(null)
   const [extra, setExtra] = useState<Profile | null>(null)
   const [resetting, setResetting] = useState<Profile | null>(null)
+  // แก้ชื่อ/รหัสพนักงาน — แยกเป็นกล่อง ไม่แก้สดในตาราง
+  // เพราะรหัสพนักงานคืออีเมลที่ใช้ล็อกอิน พลาดแล้วเจ้าตัวเข้าระบบไม่ได้
+  const [editing, setEditing] = useState<Profile | null>(null)
+  const [edName, setEdName] = useState('')
+  const [edCode, setEdCode] = useState('')
   const [newPwd, setNewPwd] = useState('')
   const [busy, setBusy] = useState(false)
   const [modalError, setModalError] = useState<string | null>(null)
@@ -134,6 +140,36 @@ export default function Users() {
       })
       setQr({ code: draft.employee_code, name: draft.full_name, password: draft.password })
       setDraft(null)
+      users.reload()
+    } catch (e) {
+      setModalError(readableError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function saveEdit() {
+    if (!editing) return
+    setBusy(true)
+    setModalError(null)
+    try {
+      const nameChanged = edName.trim() && edName.trim() !== editing.full_name
+      const codeChanged = edCode.trim() && edCode.trim() !== editing.employee_code
+      if (!nameChanged && !codeChanged) {
+        setEditing(null)
+        return
+      }
+      await renameEmployee({
+        userId: editing.id,
+        fullName: nameChanged ? edName.trim() : undefined,
+        employeeCode: codeChanged ? edCode.trim() : undefined,
+      })
+      setDone(
+        codeChanged
+          ? `แก้เรียบร้อย · ${edName.trim() || editing.full_name} ต้องล็อกอินด้วยรหัสพนักงานใหม่ ${edCode.trim()} ตั้งแต่ครั้งหน้า (รหัสผ่านเดิมใช้ได้)`
+          : 'แก้ชื่อเรียบร้อย',
+      )
+      setEditing(null)
       users.reload()
     } catch (e) {
       setModalError(readableError(e))
@@ -222,7 +258,21 @@ export default function Users() {
             <tbody>
               {shown.map((u) => (
                 <tr key={u.id} className="border-b border-line last:border-0">
-                  <td className="px-3 py-2 align-top">{u.full_name}</td>
+                  <td className="px-3 py-2 align-top">
+                    <button
+                      type="button"
+                      className="text-left underline decoration-line-2 underline-offset-2"
+                      title="กดเพื่อแก้ชื่อหรือรหัสพนักงาน"
+                      onClick={() => {
+                        setEdName(u.full_name)
+                        setEdCode(u.employee_code)
+                        setModalError(null)
+                        setEditing(u)
+                      }}
+                    >
+                      {u.full_name}
+                    </button>
+                  </td>
                   <td className="px-3 py-2 align-top font-mono text-xs">{u.employee_code}</td>
                   <td className="px-3 py-2 align-top">
                     <select
@@ -583,6 +633,61 @@ export default function Users() {
             <div className="mt-4 flex justify-end">
               <button type="button" className="btn-ghost" onClick={() => setExtra(null)}>
                 ปิด
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {/* ------------------------------------------- แก้ชื่อ / รหัสพนักงาน */}
+      <Modal
+        open={Boolean(editing)}
+        onClose={() => setEditing(null)}
+        title="แก้ชื่อ / รหัสพนักงาน"
+      >
+        {editing && (
+          <>
+            <label className="label">ชื่อ-นามสกุล</label>
+            <input
+              className="input"
+              value={edName}
+              onChange={(e) => setEdName(e.target.value)}
+            />
+
+            <label className="label mt-3">รหัสพนักงาน</label>
+            <input
+              className="input font-mono"
+              value={edCode}
+              onChange={(e) => setEdCode(e.target.value)}
+            />
+
+            {edCode.trim() !== editing.employee_code && (
+              <p className="mt-2 rounded-btn bg-warn-bg px-3 py-2 text-sm text-warn-txt">
+                รหัสพนักงานคือชื่อผู้ใช้ที่พิมพ์ตอนล็อกอิน
+                <br />
+                เปลี่ยนแล้ว <b>{editing.full_name}</b> ต้องใช้รหัสใหม่ <b>{edCode.trim()}</b> ตั้งแต่ครั้งหน้า
+                <br />
+                <b>รหัสผ่านเดิมยังใช้ได้เหมือนเดิม</b> ไม่ต้องตั้งใหม่ · อย่าลืมบอกเจ้าตัว
+              </p>
+            )}
+
+            <p className="mt-2 text-xs text-ink-400">
+              ประวัติการเบิกและทุกอย่างที่ผูกกับคนนี้ยังอยู่ครบ ไม่หายไปไหน
+            </p>
+
+            {modalError && <div className="mt-3"><ErrorBox message={modalError} /></div>}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="btn-ghost" onClick={() => setEditing(null)}>
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={busy || !edName.trim() || !edCode.trim()}
+                onClick={() => void saveEdit()}
+              >
+                {busy ? <Spinner /> : null} บันทึก
               </button>
             </div>
           </>
