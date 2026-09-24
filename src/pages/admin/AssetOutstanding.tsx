@@ -1,11 +1,19 @@
 import { useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
-import { assetReturn, listAssetHoldings, listAssetPhotoSteps, listAssetTypes } from '../../lib/api'
+import {
+  adminCancelAssetOut,
+  adminReleaseAsset,
+  assetReturn,
+  listAssetHoldings,
+  listAssetPhotoSteps,
+  listAssetTypes,
+} from '../../lib/api'
+import { useAuth } from '../../lib/auth'
+import { MANAGER_ROLES } from '../../lib/roles'
 import { readableError } from '../../lib/supabase'
 import { PhotoSteps, shotsToPhotos, type Shot } from '../../components/PhotoSteps'
 import { stampLines } from '../../lib/image'
-import { useAuth } from '../../lib/auth'
-import { EmptyState, ErrorBox, Loading, Sheet, Spinner } from '../../components/ui'
+import { EmptyState, ErrorBox, Loading, Modal, Sheet, Spinner } from '../../components/ui'
 import { fmtDateTime, relativeAge } from '../../lib/format'
 import type { AssetHolding } from '../../lib/types'
 
@@ -27,7 +35,7 @@ const shift = (h: AssetHolding) =>
     : '—'
 
 export default function AssetOutstanding() {
-  const { profile } = useAuth()
+  const { profile, can } = useAuth()
   const feed = useAsync(() => listAssetHoldings(false), [])
   const types = useAsync(() => listAssetTypes(), [])
 
@@ -41,6 +49,13 @@ export default function AssetOutstanding() {
 
   // คืนแทนเจ้าตัว — เปิดจากปุ่มท้ายแถว แล้วติ๊กเครื่องของคนนั้นที่จะคืน
   const [giveBack, setGiveBack] = useState<AssetHolding | null>(null)
+  // ปิดรายการโดยไม่มีรูป · ใช้ตอนของกลับเข้าคลังแล้วแต่ลืมกดคืน
+  // และยกเลิกทิ้ง · ใช้ตอนเจ้าตัวกดเบิกผิด ของไม่เคยออกไปไหน
+  const [closing, setClosing] = useState<AssetHolding | null>(null)
+  const [closeNote, setCloseNote] = useState('')
+  const [closeBusy, setCloseBusy] = useState(false)
+  const [closeErr, setCloseErr] = useState<string | null>(null)
+  const mayCancel = can(...MANAGER_ROLES)
   const [picked, setPicked] = useState<string[]>([])
   const [shots, setShots] = useState<Shot[]>([])
   const [busy, setBusy] = useState(false)
@@ -293,13 +308,26 @@ export default function AssetOutstanding() {
                       </td>
                       <td className="p-2 font-mono text-xs">{h.ref_no}</td>
                       <td className="p-2 text-right">
-                        <button
-                          type="button"
-                          className="btn-soft h-tap px-3 text-sm"
-                          onClick={() => openReturn(h)}
-                        >
-                          คืนแทน
-                        </button>
+                        <div className="flex justify-end gap-1">
+                          <button
+                            type="button"
+                            className="btn-soft h-tap px-3 text-sm"
+                            onClick={() => openReturn(h)}
+                          >
+                            คืนแทน
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-ghost h-tap px-3 text-sm"
+                            onClick={() => {
+                              setCloseErr(null)
+                              setCloseNote('')
+                              setClosing(h)
+                            }}
+                          >
+                            ปิด/ยกเลิก
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -420,6 +448,100 @@ export default function AssetOutstanding() {
         <br />
         คนที่ยังไม่ได้ตั้งกะจะไม่มีกำหนดคืน ตั้งได้ที่หน้าผู้ใช้และสิทธิ์
       </p>
+
+      {/* ------------------------------------------- ปิดรายการโดยไม่มีรูป */}
+      <Modal
+        open={Boolean(closing)}
+        onClose={() => setClosing(null)}
+        title={closing ? `${closing.asset_code} · ${closing.holder_name}` : ''}
+      >
+        {closing && (
+          <>
+            <p className="text-sm text-ink-500">
+              {closing.type_name} · เบิกเมื่อ {fmtDateTime(closing.taken_at)}
+            </p>
+
+            {/* สองปุ่มนี้ต่างกันที่ประวัติ ไม่ใช่แค่คำ จึงต้องอธิบายให้ชัด */}
+            <div className="mt-3 rounded-card border border-line p-3">
+              <p className="font-display">ได้ของคืนแล้ว แต่เขาลืมกดในแอพ</p>
+              <p className="mt-1 text-sm text-ink-500">
+                บันทึกเป็นการคืนตามปกติ แต่ไม่มีรูปประกอบ · ประวัติจะขึ้นว่าคุณเป็นคนปิดให้
+              </p>
+            </div>
+
+            {mayCancel && (
+              <div className="mt-2 rounded-card border border-line p-3">
+                <p className="font-display">เขากดเบิกผิด ของไม่เคยออกไปไหน</p>
+                <p className="mt-1 text-sm text-ink-500">
+                  ลบรายการเบิกนี้ทิ้งเลย ไม่บันทึกว่าเคยคืน
+                  เพราะถ้าบันทึกจะกลายเป็นประวัติที่ไม่เคยเกิดขึ้นจริง
+                </p>
+              </div>
+            )}
+
+            <label className="label mt-3" htmlFor="ao-why">เหตุผล</label>
+            <input
+              id="ao-why"
+              className="input"
+              placeholder="เช่น เอาเครื่องมาคืนที่ห้องแล้ว"
+              value={closeNote}
+              onChange={(e) => setCloseNote(e.target.value)}
+            />
+
+            {closeErr && (
+              <p className="mt-3 rounded-btn bg-danger-bg px-3 py-2 text-sm text-danger-txt">
+                {closeErr}
+              </p>
+            )}
+
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button type="button" className="btn-ghost" onClick={() => setClosing(null)}>
+                ปิดหน้าต่าง
+              </button>
+              {mayCancel && (
+                <button
+                  type="button"
+                  className="h-tap rounded-btn bg-danger px-3 text-sm text-white"
+                  disabled={closeBusy}
+                  onClick={() => {
+                    const row = closing
+                    setCloseBusy(true)
+                    setCloseErr(null)
+                    void adminCancelAssetOut(row.out_item_id)
+                      .then(() => {
+                        setClosing(null)
+                        feed.reload()
+                      })
+                      .catch((e) => setCloseErr(readableError(e)))
+                      .finally(() => setCloseBusy(false))
+                  }}
+                >
+                  ยกเลิก — กดผิด
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={closeBusy}
+                onClick={() => {
+                  const row = closing
+                  setCloseBusy(true)
+                  setCloseErr(null)
+                  void adminReleaseAsset(row.out_item_id, closeNote)
+                    .then(() => {
+                      setClosing(null)
+                      feed.reload()
+                    })
+                    .catch((e) => setCloseErr(readableError(e)))
+                    .finally(() => setCloseBusy(false))
+                }}
+              >
+                {closeBusy ? <Spinner /> : null} ปิดรายการ — ได้ของคืนแล้ว
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
     </div>
   )
 }

@@ -47,8 +47,8 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
   {
     title: 'ยังไม่คืน',
     links: [
-      { to: '/admin/outstanding', label: 'ของค้างคืน', icon: 'clock' },
-      { to: '/admin/assets-out', label: 'Asset ที่ยังไม่คืน', icon: 'device-clock' },
+      { to: '/admin/outstanding', label: 'ของค้างคืน', icon: 'clock', audit: true },
+      { to: '/admin/assets-out', label: 'Asset ที่ยังไม่คืน', icon: 'device-clock', audit: true },
     ],
   },
   {

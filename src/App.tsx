@@ -136,9 +136,9 @@ export default function App() {
         <Route index element={<Guard roles={MANAGER_ROLES}><Dashboard /></Guard>} />
         <Route path="approvals" element={<Guard roles={MANAGER_ROLES}><Approvals /></Guard>} />
         <Route path="stock" element={<Guard roles={MANAGER_ROLES}><Stock /></Guard>} />
-        <Route path="outstanding" element={<Guard roles={MANAGER_ROLES}><Outstanding /></Guard>} />
+        <Route path="outstanding" element={<Guard roles={MANAGER_ROLES} allowDispatch><Outstanding /></Guard>} />
         <Route path="assets" element={<Guard roles={MANAGER_ROLES}><AssetRegistry /></Guard>} />
-        <Route path="assets-out" element={<Guard roles={MANAGER_ROLES}><AssetOutstanding /></Guard>} />
+        <Route path="assets-out" element={<Guard roles={MANAGER_ROLES} allowDispatch><AssetOutstanding /></Guard>} />
         <Route path="by" element={<Guard roles={MANAGER_ROLES}><ByInbox /></Guard>} />
         <Route path="report/supply" element={<Guard roles={MANAGER_ROLES}><SupplyReport /></Guard>} />
         <Route path="report/asset" element={<Guard roles={MANAGER_ROLES}><AssetReport /></Guard>} />

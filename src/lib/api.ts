@@ -1335,3 +1335,35 @@ export async function listMyHistory(limit = 100): Promise<Requisition[]> {
       .limit(limit),
   ) as unknown as Requisition[]
 }
+
+/* ------------------------------------------- ปิดรายการค้างจากหน้าเว็บ */
+
+/** ปิดของยืม-คืนที่ค้าง พร้อมคืนสต็อก — แอดมินและเจ้าของระบบ ไม่ต้องมีรูป */
+export async function adminCloseBorrow(lineId: number, qty?: number, note?: string) {
+  const { data, error } = await supabase.rpc('admin_close_borrow', {
+    p_line_id: lineId,
+    p_qty: qty ?? null,
+    p_note: note ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { id: number; qty: number; qty_after: number }
+}
+
+/** ปิดเครื่องที่ค้างคืน — ของกลับเข้าคลังแล้วแต่ลืมกดคืน */
+export async function adminReleaseAsset(outItemId: number, note?: string) {
+  const { data, error } = await supabase.rpc('admin_release_asset', {
+    p_out_item_id: outItemId,
+    p_note: note ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { ref_no: string; asset_code: string }
+}
+
+/** ยกเลิกการเบิกเครื่องที่กดผิด — ลบทิ้ง ไม่บันทึกว่าเคยคืน */
+export async function adminCancelAssetOut(outItemId: number) {
+  const { data, error } = await supabase.rpc('admin_cancel_asset_out', {
+    p_out_item_id: outItemId,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { asset_code: string; txn_removed: boolean }
+}

@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
-import { listOpenBorrowings } from '../../lib/api'
-import { EmptyState, ErrorBox, Loading } from '../../components/ui'
+import { readableError } from '../../lib/supabase'
+import { adminCloseBorrow, listOpenBorrowings } from '../../lib/api'
+import { EmptyState, ErrorBox, Loading, Modal, Spinner } from '../../components/ui'
 import { fmtDateTime, relativeAge } from '../../lib/format'
 import type { OpenBorrowing } from '../../lib/types'
 
@@ -18,6 +19,11 @@ export default function Outstanding() {
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortKey>('oldest')
   const [lateOnly, setLateOnly] = useState(false)
+  // ปิดรายการค้างแทนเจ้าตัว — ใช้ตอนเขากดผิดหรือคืนของแล้วแต่ลืมกด
+  const [closing, setClosing] = useState<OpenBorrowing | null>(null)
+  const [closeNote, setCloseNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
 
   const all = feed.data ?? []
 
@@ -127,6 +133,7 @@ export default function Outstanding() {
                   <th className="p-2 font-medium">ค้างมาแล้ว</th>
                   <th className="p-2 font-medium">เบิก / คืนแล้ว / ค้าง</th>
                   <th className="p-2 font-medium">เลขที่</th>
+                  <th className="p-2 font-medium" />
                 </tr>
               </thead>
               <tbody>
@@ -166,6 +173,19 @@ export default function Outstanding() {
                         <b className={isLate ? 'text-danger-txt' : 'text-warn-txt'}>{b.qty_open}</b> {b.unit}
                       </td>
                       <td className="p-2 font-mono text-xs">{b.ref_no}</td>
+                      <td className="p-2 text-right">
+                        <button
+                          type="button"
+                          className="btn-soft h-tap px-3 text-sm"
+                          onClick={() => {
+                            setErr(null)
+                            setCloseNote('')
+                            setClosing(b)
+                          }}
+                        >
+                          คืนแทน
+                        </button>
+                      </td>
                     </tr>
                   )
                 })}
@@ -185,6 +205,67 @@ export default function Outstanding() {
         <br />
         แถวสีแดงคือค้างเกิน {LATE_HOURS} ชั่วโมง (ประมาณ 2 กะ) — ควรตามถามเจ้าตัว
       </p>
+
+      {/* ---------------------------------------------- คืนแทนจากหน้าเว็บ */}
+      <Modal
+        open={Boolean(closing)}
+        onClose={() => setClosing(null)}
+        title={closing ? `คืนแทน ${closing.requester_name}` : ''}
+      >
+        {closing && (
+          <>
+            <p className="text-sm text-ink-500">
+              <b className="text-ink">{closing.item_name}</b> ค้างอยู่{' '}
+              <b className="text-ink">{closing.qty_open}</b> {closing.unit} · {closing.ref_no}
+            </p>
+            {/* ไม่บังคับรูป เพราะกรณีที่ใช้จริงคือของกลับเข้าคลังไปแล้วหรือกดผิด
+                จะให้ถ่ายรูปอะไรก็ไม่มีให้ถ่าย */}
+            <p className="mt-3 rounded-btn bg-brand-50 px-3 py-2 text-sm text-ink-700">
+              ระบบจะบันทึกเป็นการคืน {closing.qty_open} {closing.unit} และ<b>บวกสต็อกกลับให้</b>
+              <br />
+              บันทึกชื่อคุณไว้ว่าเป็นคนปิดให้ พร้อมเหตุผลด้านล่าง
+            </p>
+
+            <label className="label mt-3" htmlFor="ob-why">เหตุผล</label>
+            <input
+              id="ob-why"
+              className="input"
+              placeholder="เช่น เอาของมาคืนแล้วแต่ลืมกดในแอพ / กดเบิกผิด"
+              value={closeNote}
+              onChange={(e) => setCloseNote(e.target.value)}
+            />
+
+            {err && (
+              <p className="mt-3 rounded-btn bg-danger-bg px-3 py-2 text-sm text-danger-txt">{err}</p>
+            )}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="btn-ghost" onClick={() => setClosing(null)}>
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={busy}
+                onClick={() => {
+                  const row = closing
+                  setBusy(true)
+                  setErr(null)
+                  void adminCloseBorrow(row.requisition_item_id, row.qty_open, closeNote)
+                    .then(() => {
+                      setClosing(null)
+                      feed.reload()
+                    })
+                    .catch((e) => setErr(readableError(e)))
+                    .finally(() => setBusy(false))
+                }}
+              >
+                {busy ? <Spinner /> : null} ยืนยันคืนแทน
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
     </div>
   )
 }
