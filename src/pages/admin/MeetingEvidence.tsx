@@ -5,7 +5,6 @@ import {
   listMeetingDays,
   listMeetings,
   listProfiles,
-  setMeetingStatus,
 } from '../../lib/api'
 import { readableError } from '../../lib/supabase'
 import { EmptyState, ErrorBox, Loading, Modal, Spinner } from '../../components/ui'
@@ -13,7 +12,12 @@ import { fmtDateTime } from '../../lib/format'
 import type { MeetingStatus } from '../../lib/types'
 
 /**
- * หลักฐานการเข้าประชุม — ตารางรายชื่อ
+ * หลักฐานการเข้าประชุม — ตารางรายชื่อคนที่เข้าจริง
+ *
+ * เป็นที่เก็บหลักฐานล้วน ๆ ไม่ใช่ที่ตัดสิน
+ * การตัดสินว่านับหรือไม่นับจบไปแล้วที่หน้า "รายชื่อประชุม"
+ * พอกดยืนยันที่นั่น รายการจะไหลมาที่นี่เพื่อให้เปิดดูย้อนหลังได้
+ * ถ้าเอาปุ่มตัดสินมาไว้ที่นี่อีก จะมีสองที่ที่ทำเรื่องเดียวกันแล้วสับสนว่าใช้ที่ไหน
  *
  * คำถามที่หน้านี้ตอบคือ "รหัสนี้คนนี้เข้าประชุมวันนั้นไหม" ซึ่งเป็นคำถามแบบตาราง
  * ไม่ใช่คำถามแบบอัลบั้มรูป จึงไม่โหลดรูปมาแสดงเลย มีแค่ลิงก์ให้กดไปดูใน Drive
@@ -22,18 +26,6 @@ import type { MeetingStatus } from '../../lib/types'
  * ถ้าโชว์เป็นรูป เปิดดูทั้งเดือนทีเดียวกินหลายเมกะไบต์ต่อการเปิดหนึ่งครั้ง
  * แบบตารางคือไม่กินเลยจนกว่าจะมีคนกดดูจริง
  */
-
-const STATUS_TH: Record<MeetingStatus, string> = {
-  pending: 'รอตรวจ',
-  confirmed: 'เข้าร่วม',
-  rejected: 'ไม่นับ',
-}
-
-const STATUS_CLASS: Record<MeetingStatus, string> = {
-  pending: 'badge-mute',
-  confirmed: 'badge-ok',
-  rejected: 'badge-dang',
-}
 
 const todayTH = () =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(new Date())
@@ -78,12 +70,14 @@ export default function MeetingEvidence() {
   const [month, setMonth] = useState(todayTH().slice(0, 7))
   const [day, setDay] = useState('')
   const [who, setWho] = useState('')
-  const [status, setStatus] = useState<MeetingStatus | ''>('confirmed')
   const [search, setSearch] = useState('')
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+
+  // หน้านี้โชว์เฉพาะที่ตรวจผ่านแล้ว · ของที่ยังไม่ตรวจหรือถูกตีตกอยู่ในหน้าคิว
+  const status: MeetingStatus = 'confirmed'
 
   const range = useMemo(() => monthRange(month), [month])
   const months = useMemo(() => monthOptions(), [])
@@ -94,10 +88,10 @@ export default function MeetingEvidence() {
     () =>
       listMeetings(
         day
-          ? { fromDay: day, toDay: day, status: status || undefined }
-          : { fromDay: range.from, toDay: range.to, status: status || undefined },
+          ? { fromDay: day, toDay: day, status }
+          : { fromDay: range.from, toDay: range.to, status },
       ),
-    [day, range.from, range.to, status],
+    [day, range.from, range.to],
   )
 
   const all = rows.data ?? []
@@ -152,7 +146,7 @@ export default function MeetingEvidence() {
       <div className="mb-4">
         <h1 className="font-display text-lg">หลักฐานการเข้าประชุม</h1>
         <p className="text-sm text-ink-500">
-          ตารางรายชื่อว่ารหัสไหนเข้าประชุมวันไหน · อยากดูรูปกดลิงก์ Drive ท้ายแถว
+          รายชื่อคนที่เข้าประชุมจริง ตรวจแล้วทั้งหมด · อยากดูรูปกดลิงก์ Drive ท้ายแถว
         </p>
       </div>
 
@@ -212,24 +206,6 @@ export default function MeetingEvidence() {
           </select>
         </div>
 
-        <div>
-          <label className="label mb-1" htmlFor="me-status">สถานะ</label>
-          <select
-            id="me-status"
-            className="input h-tap max-w-[150px]"
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value as MeetingStatus | '')
-              setPicked(new Set())
-            }}
-          >
-            <option value="confirmed">เข้าร่วม</option>
-            <option value="rejected">ไม่นับ</option>
-            <option value="pending">รอตรวจ</option>
-            <option value="">ทุกสถานะ</option>
-          </select>
-        </div>
-
         <input
           className="input h-tap max-w-[240px]"
           type="search"
@@ -247,22 +223,6 @@ export default function MeetingEvidence() {
         <div className="sticky top-0 z-20 mb-3 flex flex-wrap items-center gap-2 rounded-card border border-ink bg-ink px-3 py-2 text-white">
           <span className="font-display">เลือกไว้ {picked.size} รายชื่อ</span>
           <span className="flex-1" />
-          <button
-            type="button"
-            className="btn-soft h-tap px-3 text-sm"
-            disabled={busy}
-            onClick={() => void run(() => setMeetingStatus([...picked], 'confirmed'))}
-          >
-            นับเข้าร่วม
-          </button>
-          <button
-            type="button"
-            className="btn-soft h-tap px-3 text-sm"
-            disabled={busy}
-            onClick={() => void run(() => setMeetingStatus([...picked], 'rejected'))}
-          >
-            ไม่นับ
-          </button>
           <button
             type="button"
             className="h-tap rounded-btn bg-danger px-3 text-sm text-white"
@@ -311,7 +271,6 @@ export default function MeetingEvidence() {
                 <th className="px-3 py-2 font-medium">ชื่อ</th>
                 <th className="w-[160px] px-3 py-2 font-medium">แผนก / กะ</th>
                 <th className="w-[150px] px-3 py-2 font-medium">วันเวลาเช็คอิน</th>
-                <th className="w-[110px] px-3 py-2 font-medium">สถานะ</th>
                 <th className="w-[190px] px-3 py-2 font-medium">ผู้ตรวจ</th>
                 <th className="w-[90px] px-3 py-2 font-medium">รูป</th>
               </tr>
@@ -344,9 +303,6 @@ export default function MeetingEvidence() {
                     )}
                   </td>
                   <td className="px-3 py-2 align-top text-ink-500">{fmtDateTime(m.created_at)}</td>
-                  <td className="px-3 py-2 align-top">
-                    <span className={STATUS_CLASS[m.status]}>{STATUS_TH[m.status]}</span>
-                  </td>
                   <td className="px-3 py-2 align-top text-xs text-ink-500">
                     {m.decided_by_name ? (
                       <>
@@ -384,7 +340,7 @@ export default function MeetingEvidence() {
         <p className="mt-2 text-sm text-ink-500">
           รูปใน Google Drive และแถวที่เคยส่งขึ้น Google Sheet ไปแล้วจะยังอยู่
           <br />
-          ถ้าอยากเก็บร่องรอยว่าใครตัดสินว่าไม่นับ ให้กด “ไม่นับ” แทนการลบ
+          ถ้าอยากเก็บร่องรอยไว้ ให้ไปกด “ตีตก” ที่หน้ารายชื่อประชุมแทนการลบ
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <button type="button" className="btn-ghost" onClick={() => setConfirmDelete(false)}>
