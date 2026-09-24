@@ -2,7 +2,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { useCart } from '../../lib/cart'
 import { useAsync } from '../../lib/useAsync'
-import { listAssetHoldings, listMyRequisitions, listOpenBorrowings } from '../../lib/api'
+import { listAssetHoldings, listMyHistory, listOpenBorrowings } from '../../lib/api'
 import { StaffPage } from '../../components/Shell'
 import { EmptyState, ErrorBox, Loading } from '../../components/ui'
 import { STATUS_TH, fmtDateTime, statusClass } from '../../lib/format'
@@ -19,7 +19,7 @@ export default function Home() {
   const cart = useCart()
   const nav = useNavigate()
 
-  const recent = useAsync(() => listMyRequisitions(3), [])
+  const recent = useAsync(() => listMyHistory(3), [])
   const borrow = useAsync(() => listOpenBorrowings(true, profile?.id), [profile?.id])
   const heldAssets = useAsync(() => listAssetHoldings(true, profile?.id), [profile?.id])
   const openCount = (borrow.data ?? []).reduce((n, b) => n + b.qty_open, 0)

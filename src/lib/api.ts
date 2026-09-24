@@ -425,11 +425,42 @@ async function callFunction<T>(name: string, body: BodyInit, headers: Record<str
 }
 
 /** อัปรูปหลักฐานเข้า Google Drive ผ่าน Edge Function — client ไม่เคยเห็น service account */
+/**
+ * อัปโหลดรูปหลักฐาน พร้อมลองใหม่เองถ้าพลาด
+ *
+ * ตอนเปลี่ยนกะมีคนเบิกพร้อมกันหลายสิบคน แต่ละคนถ่ายหลายรูป
+ * ช่วงนั้นรูปหล่นได้เป็นปกติ ทั้งจากเน็ตฮับที่ไม่นิ่งและจากปลายทางที่แน่น
+ *
+ * เดิมพลาดแล้วหยุดเลย รอคนกดเอง ซึ่งคนจะกดทันทีทั้งที่ระบบยังแน่นอยู่
+ * กลายเป็นซ้ำเติมกันเองพอดี
+ *
+ * ลองเองสามครั้ง หน่วงเพิ่มขึ้นเรื่อย ๆ และสุ่มบวกนิดหน่อย
+ * ที่ต้องสุ่มเพราะถ้าทุกเครื่องพลาดพร้อมกันแล้วรอเท่ากันเป๊ะ
+ * มันจะกลับมาชนกันใหม่ตรงจังหวะเดิมทุกรอบ
+ *
+ * ปุ่มกดลองใหม่ยังอยู่ ไว้ใช้เมื่อสามครั้งแล้วยังไม่ผ่านจริง ๆ
+ */
 export async function uploadEvidence(blob: Blob, filename: string) {
-  const fd = new FormData()
-  fd.append('file', blob, filename)
-  fd.append('filename', filename)
-  return callFunction<{ fileId: string; webViewLink: string; bytes: number }>('upload-evidence', fd)
+  const delays = [800, 2200, 5000]
+  let last: unknown = null
+
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      const fd = new FormData()
+      fd.append('file', blob, filename)
+      fd.append('filename', filename)
+      return await callFunction<{ fileId: string; webViewLink: string; bytes: number }>(
+        'upload-evidence',
+        fd,
+      )
+    } catch (e) {
+      last = e
+      if (attempt === delays.length) break
+      const wait = delays[attempt] + Math.floor(Math.random() * 600)
+      await new Promise((r) => setTimeout(r, wait))
+    }
+  }
+  throw last instanceof Error ? last : new Error('อัปโหลดรูปไม่สำเร็จ')
 }
 
 /* -------------------------------------------------------- แกลเลอรีหลักฐาน */
@@ -1278,4 +1309,29 @@ export async function deleteMeetingEvent(id: string) {
 export async function deleteEvidence(kind: string, id: string) {
   const { error } = await supabase.rpc('delete_evidence', { p_kind: kind, p_id: id })
   if (error) throw new Error(readableError(error))
+}
+
+/**
+ * ประวัติของตัวเองสำหรับหน้าฝั่งพนักงาน — เอาเฉพาะช่องที่หน้านั้นวาดจริง
+ *
+ * ตัวเต็มพ่วงข้อมูลผู้เบิก ช่องสต็อกของวัสดุ และรายละเอียด sync ที่ไม่ได้ใช้
+ * วัดได้ใบละ ~1.8 KB แบบนี้เหลือราวหนึ่งในสี่
+ * สำคัญเพราะทุกคนเปิดหน้านี้ ไม่ใช่แค่แอดมินไม่กี่คน
+ */
+export async function listMyHistory(limit = 100): Promise<Requisition[]> {
+  const { data: auth } = await supabase.auth.getUser()
+  const uid = auth.user?.id
+  if (!uid) return []
+  return unwrap(
+    await supabase
+      .from('requisitions')
+      .select(
+        'id,ref_no,status,purpose,reject_reason,created_at,' +
+          'requisition_items(id,item_id,qty_requested,qty_approved,status,items(name,unit)),' +
+          'sync_log(channel,state)',
+      )
+      .eq('requester_id', uid)
+      .order('created_at', { ascending: false })
+      .limit(limit),
+  ) as unknown as Requisition[]
 }

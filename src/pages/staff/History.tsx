@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { listAssetHistory, listMyRequisitions } from '../../lib/api'
+import { listAssetHistory, listMyHistory } from '../../lib/api'
 import { useAsync } from '../../lib/useAsync'
 import { StaffPage, TopBar } from '../../components/Shell'
 import { EmptyState, ErrorBox, Loading } from '../../components/ui'
@@ -22,7 +22,7 @@ const FILTERS: { key: Filter; label: string }[] = [
 export default function History() {
   const [filter, setFilter] = useState<Filter>('all')
   const { profile } = useAuth()
-  const all = useAsync(() => listMyRequisitions(100), [])
+  const all = useAsync(() => listMyHistory(100), [])
   // ประวัติเครื่องของตัวเอง — คืนไปแล้วก็ยังอยู่
   const assetHist = useAsync(
     () => listAssetHistory({ userId: profile?.id, limit: 200 }),

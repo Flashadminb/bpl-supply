@@ -13,7 +13,7 @@ import type { MeetingEvent } from '../lib/types'
  * ถ้าไปทำตารางตำแหน่งขึ้นมา ก็ต้องคอยตามอัปเดตทุกครั้งที่คนย้ายงาน
  * พิมพ์เป็นข้อความแล้วให้คนอ่านเอง ตรงกับที่ใช้จริงและไม่มีวันล้าสมัย
  *
- * แจ้งเตือนส่งหาทุกคน ไม่ได้เลือกส่งเฉพาะคนที่เกี่ยว
+ * แจ้งเตือนส่งหาทุกคนรอบเดียวตอนประกาศ ไม่ได้เลือกส่งเฉพาะคนที่เกี่ยว
  * เพราะระบบไม่รู้ว่าใครเป็น sup การเลือกส่งจึงแปลว่าจะพลาดคนที่ต้องมา
  * ส่งให้หมดแล้วเขียนให้ชัดว่าใครเกี่ยว ปลอดภัยกว่าเดาแล้วพลาด
  */
@@ -137,74 +137,66 @@ export function MeetingPlanner({ onChanged }: { onChanged?: () => void }) {
 
       {open && (
         <>
-          <label className="label" htmlFor="mp-title">เรื่องที่ประชุม</label>
-          <input
-            id="mp-title"
-            className="input"
-            placeholder="เช่น สรุปยอดประจำสัปดาห์"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-
-          <label className="label mt-3" htmlFor="mp-when">วันและเวลา</label>
-          <input
-            id="mp-when"
-            className="input"
-            type="datetime-local"
-            value={when}
-            onChange={(e) => setWhen(e.target.value)}
-          />
-
-          <label className="label mt-3" htmlFor="mp-aud">ใครต้องเข้า</label>
-          <input
-            id="mp-aud"
-            className="input"
-            placeholder="เช่น sup และ lead ทุกคน"
-            value={audience}
-            onChange={(e) => setAudience(e.target.value)}
-          />
-          <p className="mt-1 text-xs text-ink-400">
-            พิมพ์เป็นข้อความได้เลย ระบบจะประกาศให้ทุกคนอ่าน
-            คนที่ไม่ใช่ตำแหน่งนี้จะได้รู้ว่าไม่ต้องมา
-          </p>
-
-          <label className="label mt-3" htmlFor="mp-place">สถานที่ (ไม่บังคับ)</label>
-          <input
-            id="mp-place"
-            className="input"
-            placeholder="เช่น ห้องประชุมชั้น 2"
-            value={place}
-            onChange={(e) => setPlace(e.target.value)}
-          />
-
-          <label className="label mt-3" htmlFor="mp-note">หมายเหตุ (ไม่บังคับ)</label>
-          <input
-            id="mp-note"
-            className="input"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-          />
+          <div className="space-y-2">
+            <input
+              className="input"
+              aria-label="เรื่องที่ประชุม"
+              placeholder="เรื่องที่ประชุม"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+            <input
+              className="input"
+              aria-label="วันและเวลา"
+              type="datetime-local"
+              value={when}
+              onChange={(e) => setWhen(e.target.value)}
+            />
+            <input
+              className="input"
+              aria-label="ใครต้องเข้า"
+              placeholder="ใครต้องเข้า เช่น sup และ lead"
+              value={audience}
+              onChange={(e) => setAudience(e.target.value)}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                className="input"
+                aria-label="สถานที่"
+                placeholder="สถานที่"
+                value={place}
+                onChange={(e) => setPlace(e.target.value)}
+              />
+              <input
+                className="input"
+                aria-label="หมายเหตุ"
+                placeholder="หมายเหตุ"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
+            </div>
+          </div>
 
           {error && (
-            <p className="mt-3 rounded-btn bg-danger-bg px-3 py-2 text-sm text-danger-txt">{error}</p>
+            <p className="mt-2 rounded-btn bg-danger-bg px-3 py-2 text-sm text-danger-txt">{error}</p>
           )}
 
           <button
             type="button"
-            className="btn-primary mt-4 w-full py-3"
+            className="btn-primary mt-3 w-full py-3"
             disabled={busy || !title.trim() || !when}
             onClick={() => void save()}
           >
             {busy ? <Spinner /> : null} ประกาศและแจ้งเตือนทุกคน
           </button>
           <p className="mt-1 text-center text-xs text-ink-400">
-            แจ้งเตือนเด้งทันที และย้ำอีกครั้ง 30 นาทีก่อนถึงเวลา
+            ทุกคนจะได้รับแจ้งเตือนทันที · คนที่ไม่ใช่ตำแหน่งที่ระบุจะได้รู้ว่าไม่ต้องมา
           </p>
         </>
       )}
 
       {rows.length > 0 && (
-        <ul className="mt-3 space-y-2">
+        <ul className="mt-3 max-h-[180px] space-y-1 overflow-y-auto">
           {rows.map((e) => (
             <li
               key={e.id}
