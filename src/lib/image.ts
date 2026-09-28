@@ -117,6 +117,21 @@ export function stampLines(who: string, code: string, hub: string, note?: string
 
 async function loadBitmap(file: File | Blob): Promise<ImageBitmap | HTMLImageElement> {
   if ('createImageBitmap' in window) {
+    // ย่อ "ระหว่าง" ถอดรหัส ไม่ใช่ถอดเต็มแล้วค่อยย่อ
+    //
+    // นี่คือจุดที่ทำให้แอปเด้งตอนถ่ายรูปในมือถือ
+    // กล้องมือถือสมัยนี้ออกรูป 50-108 ล้านพิกเซล ถอดรหัสเต็มความละเอียด
+    // กินหน่วยความจำหลายร้อยเมกะไบต์ต่อรูปเดียว ทั้งที่สุดท้ายใช้แค่ 1024px
+    // แอนดรอยด์จะฆ่าแท็บทิ้งเมื่อหน่วยความจำไม่พอ ซึ่งผู้ใช้เห็นเป็น "แอปเด้ง"
+    // ยิ่งขั้นตอนไหนบังคับถ่ายหลายใบติดกัน (รถแดง 5 ใบ) ยิ่งเจอง่าย
+    //
+    // ใส่ resizeWidth ให้ตัวถอดรหัสย่อให้ตั้งแต่ต้นทาง ความสูงจะถูกย่อตามสัดส่วนเอง
+    // หน่วยความจำสูงสุดต่อรูปเหลือระดับไม่กี่เมกะไบต์
+    try {
+      return await createImageBitmap(file, { resizeWidth: MAX_EDGE, resizeQuality: 'high' })
+    } catch {
+      /* บางเบราว์เซอร์ไม่รับตัวเลือกย่อ — ลองแบบธรรมดา */
+    }
     try {
       return await createImageBitmap(file)
     } catch {

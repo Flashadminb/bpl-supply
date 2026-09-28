@@ -155,14 +155,23 @@ export function Modal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
       <button type="button" aria-label="ปิด" className="absolute inset-0 bg-ink/45" onClick={onClose} />
-      <div className={`relative w-full ${width} rounded-panel bg-surface p-5 shadow-pop`}>
-        <div className="mb-4 flex items-start justify-between gap-4">
+      {/*
+        สูงไม่เกินจอ และเลื่อนในตัวได้
+        เดิมกล่องสูงตามเนื้อหาโดยไม่มีเพดาน พอฟอร์มยาวขึ้น
+        ปุ่มบันทึกจะหลุดออกนอกจอแล้วกดไม่ได้ เลื่อนก็ไม่ได้ด้วย
+        หัวข้อกับปุ่มปิดตรึงไว้ ส่วนเนื้อในเลื่อน จะได้รู้ตลอดว่าอยู่กล่องไหน
+      */}
+      <div
+        className={`relative flex max-h-[calc(100dvh-2rem)] w-full ${width} flex-col rounded-panel bg-surface p-5 shadow-pop`}
+      >
+        <div className="mb-4 flex shrink-0 items-start justify-between gap-4">
           <h2 className="font-display text-lg">{title}</h2>
           <button type="button" className="h-tap w-tap text-xl text-ink-400" onClick={onClose} aria-label="ปิด">
             ×
           </button>
         </div>
-        {children}
+        {/* -mr/pr กันสกรอลล์บาร์ทับขอบขวาของช่องกรอก */}
+        <div className="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">{children}</div>
       </div>
     </div>
   )
