@@ -12,7 +12,7 @@
 //       { action: 'reset',  user_id, password }
 // =====================================================================
 
-const VERSION = 'rename-v7'
+const VERSION = 'admin-parity-v8'
 const MIN_PASSWORD = 8
 
 const cors = {
@@ -120,10 +120,25 @@ async function requireOwner(req: Request): Promise<string> {
     `profiles?id=eq.${user.id}&select=role,is_active`,
   )
   const me = rows[0]
-  if (!me || !me.is_active || me.role !== 'admin') {
-    throw new Error('เฉพาะเจ้าของระบบเท่านั้นที่เพิ่มบัญชีหรือรีเซ็ตรหัสผ่านได้')
+  if (!me || !me.is_active || (me.role !== 'admin' && me.role !== 'supervisor')) {
+    throw new Error('เฉพาะเจ้าของระบบและแอดมินเท่านั้นที่เพิ่มบัญชีหรือรีเซ็ตรหัสผ่านได้')
   }
-  return user.id
+  return { id: user.id, role: me.role }
+}
+
+/**
+ * แอดมินแตะบัญชีเจ้าของระบบไม่ได้
+ *
+ * เจ้าของเปิดสิทธิ์ให้แอดมินทำงานแทนได้ทุกอย่าง แต่ "ทุกอย่าง" ต้องไม่รวม
+ * การรีเซ็ตรหัสผ่านของเจ้าของเอง ไม่งั้นแอดมินคนเดียวยึดระบบได้ในสองคลิก
+ * คือตั้งรหัสใหม่ให้บัญชีเจ้าของ แล้วล็อกอินเป็นเจ้าของเลย
+ */
+async function guardTarget(caller: { role: string }, userId: string) {
+  if (caller.role === 'admin') return
+  const t = await db<{ role: string }[]>(`profiles?id=eq.${userId}&select=role`)
+  if (t[0]?.role === 'admin') {
+    throw new Error('บัญชีนี้เป็นเจ้าของระบบ แอดมินแก้ไม่ได้')
+  }
 }
 
 Deno.serve(async (req) => {
@@ -132,13 +147,14 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'ใช้ได้เฉพาะ POST' }, 405)
 
   try {
-    await requireOwner(req)
+    const caller = await requireOwner(req)
     const body = await req.json()
 
     // ---------------------------------------------------------- รีเซ็ตรหัส
     if (body.action === 'reset') {
       const { user_id, password } = body as { user_id?: string; password?: string }
       if (!user_id) return json({ error: 'ไม่ได้ระบุผู้ใช้' }, 400)
+      await guardTarget(caller, user_id)
       if (!password || password.length < MIN_PASSWORD) {
         return json({ error: `รหัสผ่านต้องยาวอย่างน้อย ${MIN_PASSWORD} ตัวอักษร` }, 400)
       }
@@ -163,6 +179,7 @@ Deno.serve(async (req) => {
     if (body.action === 'rename') {
       const { user_id, full_name, employee_code, email } = body as Record<string, string>
       if (!user_id) return json({ error: 'ไม่ได้ระบุผู้ใช้' }, 400)
+      await guardTarget(caller, user_id)
 
       const patch: Record<string, string> = {}
 

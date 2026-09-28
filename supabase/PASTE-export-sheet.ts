@@ -16,7 +16,7 @@
 // ไม่บังคับ: GSHEET_MEETING_ID (ไม่ตั้งก็ใช้ไฟล์ที่ฝังไว้ในโค้ด)
 // =====================================================================
 
-const VERSION = 'meeting-v7'
+const VERSION = 'asset-fk-v8'
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
 
 const HEADER = ['เลขที่คำขอ', 'วันเวลา', 'ผู้เบิก (ฮับ)', 'วัสดุ', 'จำนวน', 'หลักฐาน', 'Drive File ID']
@@ -554,7 +554,12 @@ Deno.serve(async (req) => {
         // เขียนแค่ assets(...) PostgREST จะไม่รู้ว่าหมายถึงทางไหน แล้วตอบ PGRST201
         'assets!asset_txn_items_asset_code_fkey(type_code,asset_types(name)),' +
         'asset_txns!inner(ref_no,kind,created_at,dept_code,shift_start,shift_end,due_at,' +
-        'profiles(full_name,employee_code,sub_dept),asset_txn_photos(file_id))'
+        // asset_txns ชี้ไป profiles สองทางตั้งแต่เพิ่มการเบิกแทน
+        // (user_id = คนที่ของไปอยู่ด้วย · acted_by = คนที่กดให้)
+        // เขียนแค่ profiles(...) PostgREST เลือกไม่ถูกแล้วตอบ PGRST201
+        // ชีตต้องการชื่อ "ผู้เบิก" จึงต้องระบุเส้น user_id ให้ชัด
+        'profiles!asset_txns_user_id_fkey(full_name,employee_code,sub_dept),' +
+        'asset_txn_photos(file_id))'
 
       const qs = new URLSearchParams({ select, order: 'id.asc' })
       if (payload.from) qs.append('asset_txns.created_at', `gte.${payload.from}`)

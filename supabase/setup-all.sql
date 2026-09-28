@@ -7144,3 +7144,3879 @@ begin
 end $fn$;
 
 grant execute on function create_meeting_event(text, timestamptz, text, text, text) to authenticated;
+-- =====================================================================
+-- BPL SUPPLY — ผู้ตรวจสอบต้องเห็นของที่ยังไม่คืน
+-- รันต่อจาก 038 · ปลอดภัยที่จะรันซ้ำ
+--
+-- อาการ: ผู้ตรวจสอบเปิดหน้า "Asset ที่ยังไม่คืน" แล้วว่างเปล่า
+--        ทั้งที่มีคนเบิกออกไปจริง และปุ่มโอนเครื่องก็เลยกดไม่ได้
+--
+-- สาเหตุ: 032 เปิดให้ผู้ตรวจสอบเห็น "ตัวเครื่อง" (assets) แล้ว
+--        แต่ลืมเปิด "รายการเบิก" (asset_txns / asset_txn_items)
+--        วิว asset_holdings เป็น security_invoker และต้อง join สองตารางนั้น
+--        พอ join ไม่ติดสักแถว วิวจึงคืนค่าว่างโดยไม่มี error ให้เห็น
+--
+-- ฝั่งวัสดุสิ้นเปลืองเป็นคนละอาการแต่รากเดียวกัน:
+--        open_borrowings อ่าน returns ผ่าน lateral เพื่อหักยอดที่คืนแล้ว
+--        ผู้ตรวจสอบอ่าน returns ไม่ได้ ผลรวมจึงเป็น 0 เสมอ
+--        แถวที่คืนครบแล้วจะยังโผล่ว่าค้างอยู่ — ผิดแบบเงียบ ๆ อันตรายกว่าว่างเปล่า
+-- =====================================================================
+
+-- ── Asset ─────────────────────────────────────────────────────────────
+-- อ่านได้อย่างเดียว การเขียนยังเป็นของ supervisor/admin เหมือนเดิม
+drop policy if exists read_asset_txns on asset_txns;
+create policy read_asset_txns on asset_txns for select to authenticated
+  using (user_id = auth.uid() or my_can_proxy());
+
+drop policy if exists read_asset_txn_items on asset_txn_items;
+create policy read_asset_txn_items on asset_txn_items for select to authenticated using (
+  my_can_proxy()
+  or exists (select 1 from asset_txns t where t.id = txn_id and t.user_id = auth.uid())
+);
+
+-- รูปสภาพเครื่อง — ผู้ตรวจสอบต้องเปิดดูได้ เพราะหน้าที่คือตรวจ
+-- หน้างานยังเปิดไม่ได้ ตามกติกาข้อ 4 ของโปรเจกต์
+drop policy if exists read_asset_photos on asset_txn_photos;
+create policy read_asset_photos on asset_txn_photos for select to authenticated
+  using (my_role() in ('supervisor', 'admin') or my_can_dispatch());
+
+-- ── วัสดุสิ้นเปลือง ───────────────────────────────────────────────────
+-- เพิ่มสิทธิ์อ่านอย่างเดียวซ้อนเข้าไป ไม่แตะ rw_returns เดิม
+-- เพราะ rw_returns เป็น for all การแก้ using จะพลอยเปิดสิทธิ์ลบให้ด้วย
+drop policy if exists read_returns_audit on returns;
+create policy read_returns_audit on returns for select to authenticated
+  using (my_can_dispatch());
+
+-- ใบแจ้งชำรุดของ Asset ผูกกับรายการเบิก ต้องตามดูได้ด้วย
+drop policy if exists read_asset_issues_audit on asset_issues;
+create policy read_asset_issues_audit on asset_issues for select to authenticated
+  using (true);
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล — รันด้วยบัญชีผู้ตรวจสอบแล้วต้องได้เลขเท่ากับที่แอดมินเห็น
+-- ---------------------------------------------------------------------
+select 'เครื่องที่ยังไม่คืน' as รายการ, count(*) as จำนวน from asset_holdings
+union all select 'วัสดุยืม-คืนที่ค้าง', count(*) from open_borrowings;
+-- =====================================================================
+-- BPL SUPPLY — คืนแทนและโอนทีละหลายเครื่อง ไม่จำกัดประเภท
+-- รันต่อจาก 039 · ปลอดภัยที่จะรันซ้ำ
+--
+-- สามข้อที่เจ้าของระบบสั่ง
+--   1. คืนแทนกี่เครื่องก็ได้ ไม่ต้องเป็นของคนเดียวกันหรือประเภทเดียวกัน
+--   2. โอนกี่เครื่องก็ได้ในครั้งเดียว
+--   3. คืนแทนไม่บังคับถ่ายรูป · จะถ่ายกี่ใบก็ได้ไม่จำกัด
+--      เพราะคนที่คืนแทนได้คือแอดมิน เจ้าของระบบ และผู้ตรวจสอบ ถือว่ามีอำนาจสูงพอ
+--
+-- ข้อ 3 ยกเว้นเฉพาะ "คืนแทน" เท่านั้น
+-- ถ้าคนคนนั้นคืนเครื่องของตัวเอง ยังต้องถ่ายครบตามขั้นตอนเหมือนทุกคน
+-- ไม่งั้นตำแหน่งจะกลายเป็นช่องทางเลี่ยงการถ่ายรูปของตัวเอง
+--
+-- เรื่องที่ต้องระวังตอนคืนหลายประเภทพร้อมกัน
+--   asset_txns เก็บ type_code ได้ช่องเดียว ของเดิมใช้ประเภทของเครื่องแรก
+--   พอปนประเภทกัน ใบคืนจะถูกนับเข้าประเภทที่ไม่เกี่ยวเลย รายงานจะเพี้ยน
+--   จึงแยกใบตามประเภท ปนกันมากี่ประเภทก็ออกมากี่ใบ
+--   รูปกับเหตุผลติดไปทุกใบ เพราะเป็นหลักฐานของการส่งมอบครั้งเดียวกัน
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- RPC: คืนเครื่อง — รับได้หลายคน หลายประเภท ในครั้งเดียว
+-- ---------------------------------------------------------------------
+create or replace function asset_return(
+  p_codes  text[],
+  p_photos jsonb default '[]'::jsonb,
+  p_issues jsonb default '[]'::jsonb,
+  p_note   text default null
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_me     profiles%rowtype;
+  v_proxy  boolean := false;
+  v_type   text;
+  v_txn    uuid;
+  v_ref    text;
+  v_code   text;
+  v_out    bigint;
+  v_owner  uuid;
+  v_min    int;
+  v_steps  int;
+  v_photos int := coalesce(jsonb_array_length(p_photos), 0);
+  v_refs   text[] := '{}';
+  v_first  uuid := null;
+  v_n      int := 0;
+  r        jsonb;
+begin
+  select * into v_me from profiles where id = auth.uid();
+  if v_me.id is null or not v_me.is_active then
+    raise exception 'บัญชีนี้ใช้งานไม่ได้';
+  end if;
+
+  if p_codes is null or array_length(p_codes, 1) is null then
+    raise exception 'ยังไม่ได้เลือกเครื่องที่จะคืน';
+  end if;
+
+  -- ── รอบแรก: ล็อกทุกแถว ตรวจว่าคืนได้จริง และดูว่าเป็นการคืนแทนหรือไม่ ──
+  -- ต้องรู้ให้ครบก่อนตัดสินเรื่องรูป ไม่งั้นจะไปรู้เอาตอนเขียนไปครึ่งทางแล้ว
+  foreach v_code in array p_codes loop
+    perform 1 from assets where code = v_code for update;
+
+    select a.held_item_id, t.user_id into v_out, v_owner
+      from assets a
+      join asset_txn_items ai on ai.id = a.held_item_id
+      join asset_txns t on t.id = ai.txn_id
+     where a.code = v_code;
+
+    if v_out is null then
+      raise exception 'เครื่อง % ไม่ได้อยู่ในรายการค้างคืน', v_code;
+    end if;
+
+    if v_owner <> v_me.id then
+      if not my_can_proxy() then
+        raise exception 'เครื่อง % ไม่ได้เบิกโดยคุณ', v_code;
+      end if;
+      v_proxy := true;
+    end if;
+  end loop;
+
+  -- ── รูป ── บังคับเฉพาะตอนคืนของตัวเอง
+  if not v_proxy then
+    select a.type_code into v_type from assets a where a.code = p_codes[1];
+    select count(*) into v_steps from asset_photo_steps where type_code = v_type;
+    select photo_min into v_min from asset_types where code = v_type;
+    if v_steps > 0 then v_min := v_steps; end if;
+    if v_photos < coalesce(v_min, 1) then
+      raise exception 'ต้องถ่ายรูปสภาพตอนคืนให้ครบ % ใบก่อน (ถ่ายมาแล้ว % ใบ)',
+        coalesce(v_min, 1), v_photos;
+    end if;
+  end if;
+
+  -- ── รอบสอง: ออกใบคืนทีละประเภท ──
+  for v_type in
+    select distinct a.type_code
+      from assets a
+     where a.code = any(p_codes)
+     order by 1
+  loop
+    v_ref := next_asset_ref('in');
+    insert into asset_txns (ref_no, kind, type_code, user_id, acted_by, dept_code,
+                            shift_start, shift_end, note)
+    values (v_ref, 'in', v_type, v_me.id,
+            case when v_proxy then v_me.id else null end,
+            v_me.dept_code, v_me.shift_start, v_me.shift_end, p_note)
+    returning id into v_txn;
+
+    v_refs := v_refs || v_ref;
+    if v_first is null then v_first := v_txn; end if;
+
+    for v_code in
+      select a.code from assets a where a.code = any(p_codes) and a.type_code = v_type
+    loop
+      insert into asset_txn_items (txn_id, asset_code, out_item_id)
+      select v_txn, v_code, a.held_item_id from assets a where a.code = v_code;
+
+      update assets set held_item_id = null, loan_dept = null where code = v_code;
+      v_n := v_n + 1;
+    end loop;
+
+    -- รูปเดียวกันติดทุกใบ เป็นหลักฐานของการส่งมอบครั้งเดียวกัน
+    -- ไม่ได้เปลืองที่เก็บ เพราะชี้ไปที่ไฟล์ใน Drive ใบเดิม
+    for r in select * from jsonb_array_elements(p_photos) loop
+      insert into asset_txn_photos (txn_id, seq, label, file_id, web_link, bytes)
+      values (v_txn,
+              coalesce((r->>'seq')::int, 1),
+              r->>'label',
+              r->>'file_id',
+              r->>'web_link',
+              (r->>'bytes')::int);
+    end loop;
+
+    -- อาการชำรุดเข้าใบของประเภทตัวเอง ไม่ใช่ใบแรกเสมอไป
+    for r in
+      select e.value
+        from jsonb_array_elements(p_issues) e
+        join assets a on a.code = e.value->>'asset_code'
+       where a.type_code = v_type
+    loop
+      insert into asset_issues (asset_code, txn_id, phase, symptom, reported_by, file_id, web_link)
+      values (r->>'asset_code', v_txn, 'in', r->>'symptom', v_me.id,
+              r->>'file_id', r->>'web_link');
+    end loop;
+  end loop;
+
+  return jsonb_build_object(
+    'id', v_first,
+    'ref_no', array_to_string(v_refs, ' · '),
+    'refs', to_jsonb(v_refs),
+    'count', v_n
+  );
+end $$;
+
+grant execute on function asset_return(text[], jsonb, jsonb, text) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- RPC: โอนหลายเครื่องให้แผนกเดียวกันในครั้งเดียว
+--
+-- เครื่องที่อยู่กับแผนกปลายทางอยู่แล้วจะถูกข้าม ไม่ทำให้ทั้งชุดล้ม
+-- เพราะคนกดเลือกมาสิบเครื่องแล้วล้มเพราะเครื่องเดียวคือการทำงานซ้ำฟรี ๆ
+-- แต่ถ้าพังด้วยเหตุอื่น ทั้งชุดต้องย้อนกลับ จะได้ไม่ค้างครึ่ง ๆ กลาง ๆ
+-- ---------------------------------------------------------------------
+create or replace function asset_transfer_many(
+  p_codes   text[],
+  p_to_dept text,
+  p_reason  text default null
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_code    text;
+  v_done    text[] := '{}';
+  v_skipped text[] := '{}';
+  v_here    text;
+begin
+  if not my_can_proxy() then
+    raise exception 'บัญชีนี้โอนเครื่องไม่ได้';
+  end if;
+
+  if p_codes is null or array_length(p_codes, 1) is null then
+    raise exception 'ยังไม่ได้เลือกเครื่องที่จะโอน';
+  end if;
+
+  foreach v_code in array p_codes loop
+    select coalesce(a.loan_dept, a.dept_code) into v_here from assets a where a.code = v_code;
+
+    if v_here is not distinct from p_to_dept then
+      v_skipped := v_skipped || v_code;
+    else
+      perform asset_transfer(v_code, p_to_dept, p_reason);
+      v_done := v_done || v_code;
+    end if;
+  end loop;
+
+  if array_length(v_done, 1) is null then
+    raise exception 'ทุกเครื่องที่เลือกอยู่กับแผนกนี้อยู่แล้ว';
+  end if;
+
+  return jsonb_build_object(
+    'to_dept', p_to_dept,
+    'moved', to_jsonb(v_done),
+    'skipped', to_jsonb(v_skipped),
+    'count', array_length(v_done, 1)
+  );
+end $$;
+
+grant execute on function asset_transfer_many(text[], text, text) to authenticated;
+-- ---------------------------------------------------------------------
+-- View: ประวัติรายเครื่อง — บอกให้ชัดว่าใครปิดรายการ และปิดด้วยวิธีไหน
+--
+-- ของเดิมอ่าน "คนคืน" จาก user_id ของใบคืน ซึ่งสองเส้นทางใส่ค่าไม่เหมือนกัน
+--   คืนแทนผ่าน asset_return      user_id = คนกดคืน  → ขึ้นชื่อแอดมิน ถูกต้อง
+--   ปิดรายการผ่าน admin_release  user_id = คนเบิก   → ขึ้นชื่อเจ้าตัว ทั้งที่เจ้าตัวไม่ได้กด
+--
+-- อย่างหลังคือประวัติที่โกหก และเป็นเคสที่ต้องตรวจสอบย้อนหลังบ่อยที่สุด
+-- จึงอ่านจาก acted_by ก่อนเสมอ แล้วค่อยตกไปที่ user_id
+-- พร้อมเปิดธงบอกวิธีปิด และข้อความเหตุผลที่คนกดพิมพ์ไว้
+-- ---------------------------------------------------------------------
+drop view if exists asset_history;
+create view asset_history
+with (security_invoker = true) as
+select
+  ai.id                                   as out_item_id,
+  ai.asset_code,
+  a.type_code,
+  ty.name                                 as type_name,
+  a.dept_code                             as asset_dept,
+  t.id                                    as txn_id,
+  t.ref_no,
+  t.user_id,
+  p.full_name                             as who,
+  p.employee_code,
+  t.dept_code                             as holder_dept,
+  p.sub_dept,
+  t.acted_by,
+  ap.full_name                            as acted_by_name,
+  t.shift_start,
+  t.shift_end,
+  t.due_at,
+  t.created_at                            as taken_at,
+  back.created_at                         as returned_at,
+  back.ref_no                             as return_ref,
+  -- คนที่กดปิดจริง ๆ ไม่ใช่คนที่ชื่ออยู่บนใบ
+  coalesce(backa.full_name, backp.full_name) as returned_by,
+  (back.acted_by is not null)             as returned_by_proxy,
+  coalesce(back.is_transfer, false)       as closed_by_transfer,
+  coalesce(back.is_forced, false)         as closed_forced,
+  back.note                               as return_note,
+  (back.id is null)                       as still_out,
+  coalesce((
+    select array_agg(ph.file_id order by ph.seq)
+    from asset_txn_photos ph where ph.txn_id = t.id
+  ), '{}')                                 as out_file_ids,
+  coalesce((
+    select array_agg(ph.file_id order by ph.seq)
+    from asset_txn_photos ph where ph.txn_id = back.id
+  ), '{}')                                 as in_file_ids,
+  case
+    when back.created_at is not null
+      then extract(epoch from (back.created_at - t.created_at)) / 3600
+  end::numeric(10, 2)                     as held_hours
+from asset_txn_items ai
+join asset_txns t   on t.id = ai.txn_id and t.kind = 'out'
+join assets a       on a.code = ai.asset_code
+join asset_types ty on ty.code = a.type_code
+join profiles p     on p.id = t.user_id
+left join profiles ap               on ap.id = t.acted_by
+left join asset_txn_items back_item on back_item.out_item_id = ai.id
+left join asset_txns back           on back.id = back_item.txn_id
+left join profiles backp            on backp.id = back.user_id
+left join profiles backa            on backa.id = back.acted_by;
+
+grant select on asset_history to authenticated;
+-- =====================================================================
+-- BPL SUPPLY — โอนเครื่องให้ "คน" ไม่ใช่ "แผนก"
+-- รันต่อจาก 040 · ปลอดภัยที่จะรันซ้ำ
+--
+-- เหตุผลจากเจ้าของระบบ: ยังไงเครื่องก็เข้าแผนกของคนนั้นอยู่แล้ว
+-- การให้เลือกแผนกจึงเป็นการถามซ้ำในสิ่งที่รู้อยู่แล้ว
+-- และเวลาโอนจริงหน้างาน คนกดคิดเป็นชื่อคนว่า "ให้พี่คนนั้นไปใช้ก่อน"
+-- ไม่ได้คิดเป็นรหัสแผนก
+--
+-- ผลพลอยได้ที่สำคัญกว่า: ของเดิมโอนให้แผนกแปลว่าทุกคนในแผนกนั้นเห็นและแย่งกดเบิกได้
+-- ตอนนี้เห็นคนเดียวคือคนที่ถูกระบุชื่อ ตรงกับเจตนา "ตัดไปให้คนนี้ใช้ชั่วคราว"
+--
+-- loan_dept ยังอยู่ในตารางแต่เลิกใช้แล้ว ไม่ลบทิ้งเพราะแถวเก่ายังอ้างถึง
+-- ของใหม่จะเซ็ตเป็นว่างเสมอ
+-- =====================================================================
+
+-- ── โครงสร้าง ─────────────────────────────────────────────────────────
+alter table assets add column if not exists loan_user uuid references profiles(id);
+
+comment on column assets.loan_user is
+  'คนที่ได้รับเครื่องมาใช้ชั่วคราวจากการโอน · ว่าง = ไม่ได้ถูกโอนอยู่';
+
+create index if not exists assets_loan_user_idx on assets (loan_user) where loan_user is not null;
+
+alter table asset_transfers add column if not exists to_user_id uuid references profiles(id);
+-- แถวเก่าโอนเป็นแผนก แถวใหม่โอนเป็นคน คอลัมน์เดิมจึงต้องยอมให้ว่างได้
+alter table asset_transfers alter column to_dept drop not null;
+
+create index if not exists asset_transfers_touser_idx
+  on asset_transfers (to_user_id) where claimed_at is null;
+
+
+-- ── ใครเห็นเครื่องไหน ─────────────────────────────────────────────────
+drop policy if exists read_assets on assets;
+create policy read_assets on assets for select to authenticated using (
+  my_role() in ('supervisor', 'admin')
+  or my_can_dispatch()
+  -- คนที่ถืออยู่ต้องเห็นเสมอ ไม่งั้นคืนไม่ได้
+  or exists (
+    select 1
+    from asset_txn_items ai
+    join asset_txns t on t.id = ai.txn_id
+    where ai.id = assets.held_item_id and t.user_id = auth.uid()
+  )
+  or (
+    my_can_assets()
+    and (
+      dept_code is null
+      or dept_code = 'ALL'
+      or 'ALL' = any(my_depts())
+      or dept_code = any(my_depts())
+      or share_depts && my_depts()
+      -- เครื่องที่ถูกโอนมาให้เราคนเดียว
+      or loan_user = auth.uid()
+    )
+  )
+);
+
+
+-- ---------------------------------------------------------------------
+-- รายชื่อคนที่รับโอนได้
+--
+-- ต่างจาก proxy_targets ตรงที่กรองคนที่เบิก Asset ไม่ได้ออก
+-- โอนไปให้คนที่กดเบิกไม่ได้ = เครื่องค้างเติ่งไม่มีใครรับ
+-- ---------------------------------------------------------------------
+create or replace function transfer_targets(p_q text default null)
+returns table (
+  id            uuid,
+  employee_code text,
+  full_name     text,
+  dept_code     text,
+  sub_dept      text
+)
+language sql stable security definer set search_path = public as $$
+  select p.id, p.employee_code, p.full_name, p.dept_code, p.sub_dept
+  from profiles p
+  where my_can_proxy()
+    and p.is_active
+    and (p.role in ('supervisor', 'admin') or p.can_assets)
+    and (
+      p_q is null or p_q = ''
+      or p.full_name     ilike '%' || p_q || '%'
+      or p.employee_code ilike '%' || p_q || '%'
+      or coalesce(p.dept_code, '') ilike '%' || p_q || '%'
+    )
+  order by p.full_name
+  limit 200;
+$$;
+
+grant execute on function transfer_targets(text) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- RPC: โอนเครื่องให้คน
+--
+-- ทิ้งตัวเก่าที่รับแผนกก่อน ไม่งั้นจะมีสองตัวชื่อเดียวกัน
+-- แล้ว PostgREST จะเลือกไม่ถูกว่าจะเรียกตัวไหน
+-- ---------------------------------------------------------------------
+drop function if exists asset_transfer_many(text[], text, text);
+drop function if exists asset_transfer(text, text, text);
+
+create or replace function asset_transfer(
+  p_code    text,
+  p_to_user uuid,
+  p_reason  text default null
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_me    uuid := auth.uid();
+  v_to    profiles%rowtype;
+  v_asset assets%rowtype;
+  v_out   bigint;
+  v_from  uuid;
+  v_fdept text;
+  v_txn   uuid;
+  v_ref   text;
+  v_id    bigint;
+begin
+  if not my_can_proxy() then
+    raise exception 'บัญชีนี้โอนเครื่องไม่ได้';
+  end if;
+
+  select * into v_to from profiles where id = p_to_user;
+  if v_to.id is null or not v_to.is_active then
+    raise exception 'ไม่พบผู้รับโอน หรือบัญชีถูกระงับ';
+  end if;
+  if v_to.role = 'staff' and not v_to.can_assets then
+    raise exception '% เบิก Asset ไม่ได้ โอนไปแล้วจะไม่มีใครรับ', v_to.full_name;
+  end if;
+
+  select * into v_asset from assets where code = p_code for update;
+  if v_asset.code is null then
+    raise exception 'ไม่พบเครื่อง %', p_code;
+  end if;
+
+  -- ── ตัดรายการค้างของคนเดิม เฉพาะเครื่องนี้เครื่องเดียว ──
+  v_out := v_asset.held_item_id;
+  if v_out is not null then
+    select t.user_id, t.dept_code into v_from, v_fdept
+      from asset_txn_items ai join asset_txns t on t.id = ai.txn_id
+     where ai.id = v_out;
+
+    if v_from = p_to_user then
+      raise exception 'เครื่อง % อยู่กับ %s อยู่แล้ว', p_code, v_to.full_name;
+    end if;
+
+    v_ref := next_asset_ref('in');
+    insert into asset_txns (ref_no, kind, type_code, user_id, acted_by, dept_code, is_transfer, note)
+    values (v_ref, 'in', v_asset.type_code, v_from, v_me, v_fdept, true,
+            'โอนให้ ' || v_to.full_name || coalesce(' · ' || p_reason, ''))
+    returning id into v_txn;
+
+    insert into asset_txn_items (txn_id, asset_code, out_item_id)
+    values (v_txn, p_code, v_out);
+
+    update assets set held_item_id = null where code = p_code;
+  elsif v_asset.loan_user = p_to_user then
+    raise exception 'เครื่อง % ถูกโอนให้ % อยู่แล้ว', p_code, v_to.full_name;
+  end if;
+
+  -- loan_dept เลิกใช้แล้ว ล้างทิ้งเผื่อแถวเก่ายังค้างค่าไว้
+  update assets set loan_user = p_to_user, loan_dept = null where code = p_code;
+
+  insert into asset_transfers (asset_code, out_item_id, from_user_id, from_dept,
+                               to_user_id, by_user_id, reason)
+  values (p_code, v_out, v_from, coalesce(v_fdept, v_asset.dept_code),
+          p_to_user, v_me, p_reason)
+  returning id into v_id;
+
+  return jsonb_build_object(
+    'id', v_id,
+    'asset_code', p_code,
+    'to_user', p_to_user,
+    'to_name', v_to.full_name,
+    'cut_from', v_from
+  );
+end $$;
+
+grant execute on function asset_transfer(text, uuid, text) to authenticated;
+
+
+create or replace function asset_transfer_many(
+  p_codes   text[],
+  p_to_user uuid,
+  p_reason  text default null
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_code    text;
+  v_done    text[] := '{}';
+  v_skipped text[] := '{}';
+  v_name    text;
+  v_holder  uuid;
+begin
+  if not my_can_proxy() then
+    raise exception 'บัญชีนี้โอนเครื่องไม่ได้';
+  end if;
+
+  if p_codes is null or array_length(p_codes, 1) is null then
+    raise exception 'ยังไม่ได้เลือกเครื่องที่จะโอน';
+  end if;
+
+  select full_name into v_name from profiles where id = p_to_user;
+
+  foreach v_code in array p_codes loop
+    -- เครื่องที่อยู่กับคนนั้นอยู่แล้วให้ข้าม ไม่ใช่ล้มทั้งชุด
+    select t.user_id into v_holder
+      from assets a
+      join asset_txn_items ai on ai.id = a.held_item_id
+      join asset_txns t on t.id = ai.txn_id
+     where a.code = v_code;
+
+    if v_holder = p_to_user
+       or exists (select 1 from assets a
+                   where a.code = v_code
+                     and a.held_item_id is null
+                     and a.loan_user = p_to_user) then
+      v_skipped := v_skipped || v_code;
+    else
+      perform asset_transfer(v_code, p_to_user, p_reason);
+      v_done := v_done || v_code;
+    end if;
+
+    v_holder := null;
+  end loop;
+
+  if array_length(v_done, 1) is null then
+    raise exception 'ทุกเครื่องที่เลือกอยู่กับ % อยู่แล้ว', coalesce(v_name, 'คนนี้');
+  end if;
+
+  return jsonb_build_object(
+    'to_user', p_to_user,
+    'to_name', v_name,
+    'moved', to_jsonb(v_done),
+    'skipped', to_jsonb(v_skipped),
+    'count', array_length(v_done, 1)
+  );
+end $$;
+
+grant execute on function asset_transfer_many(text[], uuid, text) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- ยกเลิกการโอนที่ปลายทางยังไม่ได้รับ
+-- ---------------------------------------------------------------------
+create or replace function asset_transfer_cancel(p_id bigint)
+returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_code text;
+begin
+  if not my_can_proxy() then
+    raise exception 'บัญชีนี้ยกเลิกการโอนไม่ได้';
+  end if;
+
+  select asset_code into v_code
+    from asset_transfers where id = p_id and claimed_at is null;
+  if v_code is null then
+    raise exception 'ไม่พบรายการโอนที่ยังไม่ถูกรับ';
+  end if;
+
+  update assets set loan_user = null, loan_dept = null where code = v_code;
+  delete from asset_transfers where id = p_id;
+end $$;
+
+grant execute on function asset_transfer_cancel(bigint) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- แถบเตือนการโอน — ฝั่งรับเหลือคนเดียว ไม่ใช่ทั้งแผนก
+-- ---------------------------------------------------------------------
+drop view if exists asset_transfer_notices;
+create view asset_transfer_notices
+with (security_invoker = true) as
+select
+  tr.id,
+  'in'::text            as side,
+  tr.asset_code,
+  ty.name               as type_name,
+  tp.full_name          as to_name,
+  tr.from_dept,
+  fp.full_name          as from_name,
+  bp.full_name          as by_name,
+  tr.reason,
+  tr.created_at
+from asset_transfers tr
+join assets a       on a.code = tr.asset_code
+join asset_types ty on ty.code = a.type_code
+left join profiles fp on fp.id = tr.from_user_id
+left join profiles tp on tp.id = tr.to_user_id
+join profiles bp      on bp.id = tr.by_user_id
+where tr.claimed_at is null
+  and tr.to_user_id = auth.uid()
+
+union all
+
+select
+  tr.id,
+  'out'::text,
+  tr.asset_code,
+  ty.name,
+  tp.full_name,
+  tr.from_dept,
+  fp.full_name,
+  bp.full_name,
+  tr.reason,
+  tr.created_at
+from asset_transfers tr
+join assets a       on a.code = tr.asset_code
+join asset_types ty on ty.code = a.type_code
+left join profiles fp on fp.id = tr.from_user_id
+left join profiles tp on tp.id = tr.to_user_id
+join profiles bp      on bp.id = tr.by_user_id
+where tr.ack_at is null
+  and tr.from_user_id = auth.uid();
+
+grant select on asset_transfer_notices to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- ของค้างคืน — โชว์ชื่อคนที่ถูกโอนให้ แทนรหัสแผนก
+-- ---------------------------------------------------------------------
+drop view if exists asset_holdings;
+create view asset_holdings
+with (security_invoker = true) as
+select
+  ai.id                as out_item_id,
+  a.code               as asset_code,
+  a.type_code,
+  ty.name              as type_name,
+  a.dept_code          as asset_dept,
+  a.share_depts        as asset_share_depts,
+  a.loan_user          as asset_loan_user,
+  lp.full_name         as asset_loan_name,
+  t.id                 as txn_id,
+  t.ref_no,
+  t.user_id,
+  p.full_name          as holder_name,
+  p.employee_code      as holder_code,
+  t.dept_code          as holder_dept,
+  p.sub_dept           as holder_sub_dept,
+  t.acted_by,
+  ap.full_name         as acted_by_name,
+  t.shift_start,
+  t.shift_end,
+  t.due_at,
+  t.created_at         as taken_at
+from assets a
+join asset_txn_items ai on ai.id = a.held_item_id
+join asset_txns t       on t.id = ai.txn_id
+join asset_types ty     on ty.code = a.type_code
+join profiles p         on p.id = t.user_id
+left join profiles ap   on ap.id = t.acted_by
+left join profiles lp   on lp.id = a.loan_user;
+
+grant select on asset_holdings to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- คืนเครื่อง — ล้าง loan_user ด้วย เครื่องกลับบ้านตัวเอง
+-- ---------------------------------------------------------------------
+create or replace function asset_return(
+  p_codes  text[],
+  p_photos jsonb default '[]'::jsonb,
+  p_issues jsonb default '[]'::jsonb,
+  p_note   text default null
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_me     profiles%rowtype;
+  v_proxy  boolean := false;
+  v_type   text;
+  v_txn    uuid;
+  v_ref    text;
+  v_code   text;
+  v_out    bigint;
+  v_owner  uuid;
+  v_min    int;
+  v_steps  int;
+  v_photos int := coalesce(jsonb_array_length(p_photos), 0);
+  v_refs   text[] := '{}';
+  v_first  uuid := null;
+  v_n      int := 0;
+  r        jsonb;
+begin
+  select * into v_me from profiles where id = auth.uid();
+  if v_me.id is null or not v_me.is_active then
+    raise exception 'บัญชีนี้ใช้งานไม่ได้';
+  end if;
+
+  if p_codes is null or array_length(p_codes, 1) is null then
+    raise exception 'ยังไม่ได้เลือกเครื่องที่จะคืน';
+  end if;
+
+  foreach v_code in array p_codes loop
+    perform 1 from assets where code = v_code for update;
+
+    select a.held_item_id, t.user_id into v_out, v_owner
+      from assets a
+      join asset_txn_items ai on ai.id = a.held_item_id
+      join asset_txns t on t.id = ai.txn_id
+     where a.code = v_code;
+
+    if v_out is null then
+      raise exception 'เครื่อง % ไม่ได้อยู่ในรายการค้างคืน', v_code;
+    end if;
+
+    if v_owner <> v_me.id then
+      if not my_can_proxy() then
+        raise exception 'เครื่อง % ไม่ได้เบิกโดยคุณ', v_code;
+      end if;
+      v_proxy := true;
+    end if;
+  end loop;
+
+  if not v_proxy then
+    select a.type_code into v_type from assets a where a.code = p_codes[1];
+    select count(*) into v_steps from asset_photo_steps where type_code = v_type;
+    select photo_min into v_min from asset_types where code = v_type;
+    if v_steps > 0 then v_min := v_steps; end if;
+    if v_photos < coalesce(v_min, 1) then
+      raise exception 'ต้องถ่ายรูปสภาพตอนคืนให้ครบ % ใบก่อน (ถ่ายมาแล้ว % ใบ)',
+        coalesce(v_min, 1), v_photos;
+    end if;
+  end if;
+
+  for v_type in
+    select distinct a.type_code
+      from assets a
+     where a.code = any(p_codes)
+     order by 1
+  loop
+    v_ref := next_asset_ref('in');
+    insert into asset_txns (ref_no, kind, type_code, user_id, acted_by, dept_code,
+                            shift_start, shift_end, note)
+    values (v_ref, 'in', v_type, v_me.id,
+            case when v_proxy then v_me.id else null end,
+            v_me.dept_code, v_me.shift_start, v_me.shift_end, p_note)
+    returning id into v_txn;
+
+    v_refs := v_refs || v_ref;
+    if v_first is null then v_first := v_txn; end if;
+
+    for v_code in
+      select a.code from assets a where a.code = any(p_codes) and a.type_code = v_type
+    loop
+      insert into asset_txn_items (txn_id, asset_code, out_item_id)
+      select v_txn, v_code, a.held_item_id from assets a where a.code = v_code;
+
+      update assets set held_item_id = null, loan_user = null, loan_dept = null
+       where code = v_code;
+      v_n := v_n + 1;
+    end loop;
+
+    for r in select * from jsonb_array_elements(p_photos) loop
+      insert into asset_txn_photos (txn_id, seq, label, file_id, web_link, bytes)
+      values (v_txn,
+              coalesce((r->>'seq')::int, 1),
+              r->>'label',
+              r->>'file_id',
+              r->>'web_link',
+              (r->>'bytes')::int);
+    end loop;
+
+    for r in
+      select e.value
+        from jsonb_array_elements(p_issues) e
+        join assets a on a.code = e.value->>'asset_code'
+       where a.type_code = v_type
+    loop
+      insert into asset_issues (asset_code, txn_id, phase, symptom, reported_by, file_id, web_link)
+      values (r->>'asset_code', v_txn, 'in', r->>'symptom', v_me.id,
+              r->>'file_id', r->>'web_link');
+    end loop;
+  end loop;
+
+  return jsonb_build_object(
+    'id', v_first,
+    'ref_no', array_to_string(v_refs, ' · '),
+    'refs', to_jsonb(v_refs),
+    'count', v_n
+  );
+end $$;
+
+grant execute on function asset_return(text[], jsonb, jsonb, text) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- ปิดรายการค้างโดยแอดมิน — ล้าง loan_user ด้วยเหตุผลเดียวกัน
+-- ---------------------------------------------------------------------
+create or replace function admin_release_asset(
+  p_out_item_id bigint,
+  p_note        text default null
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_actor profiles%rowtype;
+  v_code  text;
+  v_type  text;
+  v_owner uuid;
+  v_txn   uuid;
+  v_ref   text;
+begin
+  select * into v_actor from profiles where id = auth.uid();
+  if v_actor.id is null or not my_can_proxy() then
+    raise exception 'บัญชีนี้ปิดรายการค้างแทนคนอื่นไม่ได้';
+  end if;
+
+  select ai.asset_code, a.type_code, t.user_id
+    into v_code, v_type, v_owner
+    from asset_txn_items ai
+    join assets a     on a.code = ai.asset_code
+    join asset_txns t on t.id = ai.txn_id
+   where ai.id = p_out_item_id;
+
+  if v_code is null then
+    raise exception 'ไม่พบรายการเบิกนี้';
+  end if;
+  if not exists (select 1 from assets where code = v_code and held_item_id = p_out_item_id) then
+    raise exception 'เครื่อง % ถูกคืนไปแล้ว', v_code;
+  end if;
+
+  perform 1 from assets where code = v_code for update;
+
+  v_ref := next_asset_ref('in');
+  insert into asset_txns (ref_no, kind, type_code, user_id, acted_by, dept_code, is_forced, note)
+  values (v_ref, 'in', v_type, v_owner, v_actor.id, v_actor.dept_code, true,
+          coalesce(nullif(btrim(p_note), ''), 'ปิดโดยแอดมิน ไม่มีรูปประกอบ'))
+  returning id into v_txn;
+
+  insert into asset_txn_items (txn_id, asset_code, out_item_id)
+  values (v_txn, v_code, p_out_item_id);
+
+  update assets set held_item_id = null, loan_user = null, loan_dept = null
+   where code = v_code;
+
+  return jsonb_build_object('ref_no', v_ref, 'asset_code', v_code);
+end $$;
+
+grant execute on function admin_release_asset(bigint, text) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล
+-- ---------------------------------------------------------------------
+select 'ฟังก์ชันโอนให้คน'   as สิ่งที่ตรวจ,
+       count(*)::text        as ผล
+  from pg_proc where proname = 'asset_transfer'
+union all select 'ฟังก์ชันโอนหลายเครื่อง', count(*)::text
+  from pg_proc where proname = 'asset_transfer_many'
+union all select 'รายชื่อผู้รับโอน', count(*)::text
+  from pg_proc where proname = 'transfer_targets'
+union all select 'คอลัมน์ loan_user', count(*)::text
+  from information_schema.columns where table_name = 'assets' and column_name = 'loan_user'
+union all select 'คนที่รับโอนได้ตอนนี้', count(*)::text from transfer_targets();
+-- =====================================================================
+-- BPL SUPPLY — บาร์โค้ด BY หนึ่งใบ ตัดสต็อกได้หลายรายการ
+-- รันต่อจาก 041 · ปลอดภัยที่จะรันซ้ำ
+--
+-- ของเดิมผูกได้วัสดุเดียวต่อหนึ่งบาร์โค้ด (by_barcodes.item_id + qty)
+-- แต่หน้างานจริงบาร์โค้ดใบเดียวมีของหลายอย่าง คนจัดการจึงตัดได้แค่อย่างเดียว
+-- ที่เหลือต้องไปตัดมือที่หน้าสต็อก ซึ่งไม่มีร่องรอยว่าตัดเพราะใบไหน
+--
+-- เพิ่มตารางบรรทัดแยก หนึ่งใบมีได้หลายบรรทัด
+-- คอลัมน์ item_id/qty เดิมยังอยู่และยังถูกเติมด้วยบรรทัดแรกเสมอ
+-- ของเก่าที่อ่านสองคอลัมน์นั้นอยู่จึงไม่พัง
+-- =====================================================================
+
+create table if not exists by_barcode_lines (
+  id         bigserial primary key,
+  by_id      uuid    not null references by_barcodes(id) on delete cascade,
+  item_id    bigint  not null references items(id),
+  qty        integer not null check (qty > 0),
+  created_at timestamptz not null default now(),
+  -- วัสดุเดิมซ้ำในใบเดียวไม่ได้ ให้รวมจำนวนเป็นบรรทัดเดียว
+  unique (by_id, item_id)
+);
+
+create index if not exists by_lines_by_idx on by_barcode_lines (by_id);
+
+-- ย้ายของเดิมเข้าตารางใหม่ จะได้ไม่มีใบไหนตกหล่น
+insert into by_barcode_lines (by_id, item_id, qty)
+select b.id, b.item_id, b.qty
+  from by_barcodes b
+ where b.item_id is not null and coalesce(b.qty, 0) > 0
+on conflict (by_id, item_id) do nothing;
+
+alter table by_barcode_lines enable row level security;
+
+drop policy if exists read_by_lines on by_barcode_lines;
+create policy read_by_lines on by_barcode_lines for select to authenticated using (
+  my_role() in ('supervisor', 'admin')
+  or exists (select 1 from by_barcodes b where b.id = by_id and b.user_id = auth.uid())
+);
+
+drop policy if exists write_by_lines on by_barcode_lines;
+create policy write_by_lines on by_barcode_lines for all to authenticated
+  using (my_role() in ('supervisor', 'admin'))
+  with check (my_role() in ('supervisor', 'admin'));
+
+
+-- ---------------------------------------------------------------------
+-- RPC: ปิดงานบาร์โค้ด พร้อมตัดสต็อกหลายรายการในทีเดียว
+--
+-- ตัดสต็อกเฉพาะตอนที่ "เพิ่งเปลี่ยน" เป็น done เท่านั้น
+-- กดซ้ำบนใบที่ done อยู่แล้วจะไม่ตัดซ้ำ แต่ยังแก้รายการได้
+-- ---------------------------------------------------------------------
+create or replace function set_by_status_lines(
+  p_id        uuid,
+  p_status    by_status,
+  p_note      text    default null,
+  p_lines     jsonb   default '[]'::jsonb,
+  p_cut_stock boolean default false
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_was    by_status;
+  v_first  bigint := null;
+  v_fqty   integer := null;
+  v_cut    int := 0;
+  r        jsonb;
+  v_item   bigint;
+  v_qty    integer;
+begin
+  if my_role() not in ('supervisor', 'admin') then
+    raise exception 'ไม่มีสิทธิ์จัดการรายการบาร์โค้ด BY';
+  end if;
+
+  select status into v_was from by_barcodes where id = p_id;
+  if v_was is null then
+    raise exception 'ไม่พบรายการนี้';
+  end if;
+
+  -- เขียนบรรทัดใหม่ทับของเดิมทั้งชุด แก้ทีหลังได้โดยไม่ต้องไล่ลบเอง
+  if jsonb_array_length(coalesce(p_lines, '[]'::jsonb)) > 0 then
+    delete from by_barcode_lines where by_id = p_id;
+
+    for r in select * from jsonb_array_elements(p_lines) loop
+      v_item := (r->>'item_id')::bigint;
+      v_qty  := (r->>'qty')::integer;
+
+      if v_item is null or coalesce(v_qty, 0) <= 0 then
+        raise exception 'บรรทัดรายการไม่ครบ ต้องมีทั้งวัสดุและจำนวนที่มากกว่า 0';
+      end if;
+      if not exists (select 1 from items where id = v_item) then
+        raise exception 'ไม่พบวัสดุรหัส %', v_item;
+      end if;
+
+      insert into by_barcode_lines (by_id, item_id, qty)
+      values (p_id, v_item, v_qty)
+      on conflict (by_id, item_id) do update set qty = by_barcode_lines.qty + excluded.qty;
+
+      if v_first is null then
+        v_first := v_item;
+        v_fqty  := v_qty;
+      end if;
+    end loop;
+  end if;
+
+  update by_barcodes
+     set status       = p_status,
+         item_id      = coalesce(v_first, item_id),
+         qty          = coalesce(v_fqty, qty),
+         handled_by   = case when p_status = 'pending' then null else auth.uid() end,
+         handled_at   = case when p_status = 'pending' then null else now() end,
+         handled_note = nullif(btrim(coalesce(p_note, '')), '')
+   where id = p_id;
+
+  -- ตัดสต็อกทีละบรรทัด · adjust_stock ล็อกแถววัสดุให้อยู่แล้ว
+  if p_cut_stock and p_status = 'done' and v_was <> 'done' then
+    for v_item, v_qty in
+      select l.item_id, l.qty from by_barcode_lines l where l.by_id = p_id
+    loop
+      perform adjust_stock(v_item, -v_qty, 'บาร์โค้ด BY');
+      v_cut := v_cut + 1;
+    end loop;
+  end if;
+
+  return jsonb_build_object('ok', true, 'cut_lines', v_cut);
+end $$;
+
+grant execute on function set_by_status_lines(uuid, by_status, text, jsonb, boolean) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- by_feed — พ่วงบรรทัดรายการมาให้ครบ หน้าเว็บจะได้ไม่ต้องยิงถามทีละใบ
+-- ---------------------------------------------------------------------
+drop view if exists by_feed;
+create view by_feed
+with (security_invoker = true) as
+select
+  b.id,
+  b.ref_no,
+  b.created_at,
+  b.reason,
+  b.note,
+  b.status,
+  b.handled_at,
+  b.handled_note,
+  b.user_id,
+  p.full_name                            as who,
+  p.employee_code,
+  b.dept_code,
+  b.sub_dept,
+  b.shift_start,
+  b.shift_end,
+  h.full_name                            as handled_by_name,
+  b.item_id,
+  i.name                                 as item_name,
+  i.sku                                  as item_sku,
+  i.unit                                 as item_unit,
+  b.qty,
+  coalesce((
+    select jsonb_agg(jsonb_build_object(
+             'item_id', l.item_id,
+             'qty',     l.qty,
+             'name',    li.name,
+             'sku',     li.sku,
+             'unit',    li.unit
+           ) order by li.name)
+    from by_barcode_lines l
+    join items li on li.id = l.item_id
+    where l.by_id = b.id
+  ), '[]'::jsonb)                        as lines,
+  coalesce((
+    select count(*) from by_barcode_photos ph where ph.by_id = b.id
+  ), 0)::int                             as photo_count,
+  coalesce((
+    select array_agg(ph.file_id order by ph.sort_no)
+    from by_barcode_photos ph where ph.by_id = b.id
+  ), '{}')                               as file_ids
+from by_barcodes b
+join profiles p on p.id = b.user_id
+left join profiles h on h.id = b.handled_by
+left join items i   on i.id = b.item_id;
+
+grant select on by_feed to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- สถิติรายเดือน — นับจากบรรทัด ไม่ใช่จากคอลัมน์เดียวในหัวใบ
+--
+-- ของเดิมนับได้แค่วัสดุตัวแรก ใบที่มีหลายรายการจะหายไปจากรายงานทั้งหมด
+-- ---------------------------------------------------------------------
+drop view if exists by_stats_monthly;
+create view by_stats_monthly
+with (security_invoker = true) as
+select
+  to_char((b.created_at at time zone 'Asia/Bangkok'), 'YYYY-MM')  as ym,
+  b.dept_code,
+  b.reason,
+  l.item_id,
+  i.name                                                          as item_name,
+  count(distinct b.id)::int                                       as total,
+  count(distinct b.id) filter (where b.status = 'pending')::int    as pending,
+  count(distinct b.id) filter (where b.status = 'done')::int       as done,
+  count(distinct b.id) filter (where b.status = 'rejected')::int   as rejected,
+  coalesce(sum(l.qty) filter (where b.status = 'done'), 0)::int    as qty_done
+from by_barcodes b
+left join by_barcode_lines l on l.by_id = b.id
+left join items i           on i.id = l.item_id
+group by 1, 2, 3, 4, 5;
+
+grant select on by_stats_monthly to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล
+-- ---------------------------------------------------------------------
+select 'ตารางบรรทัดรายการ'  as สิ่งที่ตรวจ, count(*)::text as ผล
+  from information_schema.tables where table_name = 'by_barcode_lines'
+union all select 'ฟังก์ชันตัดหลายรายการ', count(*)::text
+  from pg_proc where proname = 'set_by_status_lines'
+union all select 'บรรทัดที่ย้ายมาจากของเดิม', count(*)::text from by_barcode_lines
+union all select 'บาร์โค้ด BY ทั้งหมด', count(*)::text from by_barcodes;
+-- =====================================================================
+-- BPL SUPPLY — คืนวัสดุยืม-คืนหลายรายการในครั้งเดียว
+-- รันต่อจาก 042 · ปลอดภัยที่จะรันซ้ำ
+--
+-- ตอนเลิกกะคนหนึ่งอาจค้างหลายรายการ ของเดิมต้องกดคืนทีละอัน
+-- ถ่ายรูปใหม่ทุกอัน ทั้งที่ของกองอยู่ตรงหน้าชุดเดียวกัน
+-- แถวยาว ๆ ตอนเปลี่ยนกะเกิดจากตรงนี้
+--
+-- ฟังก์ชันนี้วนเรียกตรรกะเดิมทีละบรรทัด ไม่ได้เขียนกฎใหม่
+-- กฎเดิมทุกข้อจึงยังอยู่ครบ: คืนเกินไม่ได้ · ต้องมีรูป · ของสภาพดีเข้าสต็อกคืน
+-- ถ้าบรรทัดไหนพัง ทั้งชุดย้อนกลับ ไม่เหลือคืนครึ่ง ๆ กลาง ๆ ให้ตามแก้
+-- =====================================================================
+
+create or replace function create_return_many(
+  p_lines     jsonb,
+  p_condition return_cond default 'ok',
+  p_photos    jsonb default '[]'::jsonb
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  r        jsonb;
+  v_line   bigint;
+  v_qty    integer;
+  v_n      integer := 0;
+  v_units  integer := 0;
+  v_main   text := p_photos->0->>'file_id';
+  v_link   text := p_photos->0->>'web_link';
+begin
+  if p_lines is null or jsonb_array_length(p_lines) = 0 then
+    raise exception 'ยังไม่ได้เลือกรายการที่จะคืน';
+  end if;
+  if v_main is null then
+    raise exception 'ต้องถ่ายรูปสภาพตอนคืนอย่างน้อย 1 ใบ';
+  end if;
+
+  for r in select * from jsonb_array_elements(p_lines) loop
+    v_line := (r->>'line_id')::bigint;
+    v_qty  := (r->>'qty')::integer;
+
+    if v_line is null or coalesce(v_qty, 0) <= 0 then
+      raise exception 'บรรทัดรายการไม่ครบ ต้องมีทั้งรายการและจำนวนที่มากกว่า 0';
+    end if;
+
+    -- ใช้ตรรกะเดิมทั้งหมด รูปชุดเดียวกันติดไปทุกบรรทัด
+    -- เพราะเป็นการส่งมอบครั้งเดียวกันจริง ๆ
+    perform create_return(v_line, v_qty, p_condition, v_main, v_link, p_photos);
+
+    v_n     := v_n + 1;
+    v_units := v_units + v_qty;
+  end loop;
+
+  return jsonb_build_object('lines', v_n, 'units', v_units);
+end $$;
+
+grant execute on function create_return_many(jsonb, return_cond, jsonb) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล
+-- ---------------------------------------------------------------------
+select 'ฟังก์ชันคืนหลายรายการ' as สิ่งที่ตรวจ, count(*)::text as ผล
+  from pg_proc where proname = 'create_return_many';
+-- =====================================================================
+-- BPL SUPPLY — ชุดเบิก-คืน หนึ่งบรรทัดเห็นครบทั้งวงจร
+-- รันต่อจาก 043 · ปลอดภัยที่จะรันซ้ำ
+--
+-- ปัญหาของเดิม: หน้าหลักฐานเรียงตาม "เหตุการณ์"
+-- ใบเบิกอยู่แถวหนึ่ง การคืนอยู่อีกแถวหนึ่ง คนละที่กัน
+-- จะรู้ว่าของกลับมาครบไหมต้องนั่งจับคู่เอง ยิ่งคืนทีละนิดยิ่งไล่ไม่ไหว
+--
+-- วิวนี้เรียงตาม "บรรทัดที่เบิก" แทน หนึ่งแถวคือหนึ่งรายการที่เบิกออกไป
+-- แล้วพ่วงการคืนทุกครั้งของบรรทัดนั้นมาไว้ในแถวเดียวกัน พร้อมรูปของแต่ละครั้ง
+-- คืน 2 วันนี้ อีก 3 พรุ่งนี้ ก็ยังเป็นแถวเดิม ยอดสะสมเดินขึ้นจนครบ
+--
+-- return_state บอกสถานะในคำเดียว
+--   consumed = ของใช้แล้วหมดไป ไม่ต้องคืน (ห้ามขึ้นว่าค้าง ไม่งั้นทั้งหน้าจะเป็นสีแดงถาวร)
+--   none     = ยังไม่ได้คืนสักชิ้น
+--   partial  = คืนมาบางส่วน ยังค้างอยู่
+--   full     = ครบแล้ว
+-- =====================================================================
+
+drop view if exists borrow_sets;
+create view borrow_sets
+with (security_invoker = true) as
+select
+  ri.id                                   as line_id,
+  r.id                                    as requisition_id,
+  r.ref_no,
+  r.created_at                            as taken_at,
+  r.hub_code,
+  r.requester_id,
+  p.full_name                             as who,
+  p.employee_code,
+  p.dept_code,
+  p.sub_dept,
+  p.shift_start,
+  p.shift_end,
+  i.id                                    as item_id,
+  i.sku,
+  i.name                                  as item_name,
+  i.unit,
+  i.is_returnable,
+  coalesce(ri.qty_approved, 0)            as qty_taken,
+  coalesce(rt.qty_returned, 0)::int       as qty_returned,
+  greatest(coalesce(ri.qty_approved, 0) - coalesce(rt.qty_returned, 0), 0)::int as qty_open,
+  case
+    when not i.is_returnable                                        then 'consumed'
+    when coalesce(rt.qty_returned, 0) = 0                           then 'none'
+    when coalesce(rt.qty_returned, 0) >= coalesce(ri.qty_approved, 0) then 'full'
+    else 'partial'
+  end                                     as return_state,
+
+  -- รูปตอนเบิก · ใบหลักมาก่อนเสมอ แล้วค่อยใบที่เหลือ
+  coalesce((
+    select array_agg(f order by ord)
+    from (
+      select r.evidence_file_id as f, 0 as ord where r.evidence_file_id is not null
+      union all
+      select ph.file_id, ph.sort_no + 1
+      from requisition_photos ph
+      where ph.requisition_id = r.id and ph.file_id <> coalesce(r.evidence_file_id, '')
+    ) q
+  ), '{}')                                as out_file_ids,
+
+  -- การคืนทุกครั้งของบรรทัดนี้ เรียงตามเวลา พร้อมรูปของครั้งนั้น ๆ
+  coalesce((
+    select jsonb_agg(jsonb_build_object(
+             'id',          rr.id,
+             'qty',         rr.qty,
+             'condition',   rr.condition,
+             'at',          rr.created_at,
+             'by',          bp.full_name,
+             'file_ids',    coalesce((
+                              select array_agg(rp.file_id order by rp.sort_no)
+                              from return_photos rp where rp.return_id = rr.id
+                            ), case when rr.evidence_file_id is not null
+                                    then array[rr.evidence_file_id] else '{}' end)
+           ) order by rr.created_at)
+    from returns rr
+    left join profiles bp on bp.id = rr.returned_by
+    where rr.requisition_item_id = ri.id
+  ), '[]'::jsonb)                         as returns
+
+from requisition_items ri
+join requisitions r on r.id = ri.requisition_id
+join items i        on i.id = ri.item_id
+join profiles p     on p.id = r.requester_id
+left join lateral (
+  select sum(qty)::int as qty_returned from returns where requisition_item_id = ri.id
+) rt on true
+where ri.status = 'approved';
+
+grant select on borrow_sets to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล
+-- ---------------------------------------------------------------------
+select 'บรรทัดเบิกทั้งหมด' as สิ่งที่ตรวจ, count(*)::text as ผล from borrow_sets
+union all select 'ของยืม-คืนที่ยังไม่ครบ', count(*)::text
+  from borrow_sets where return_state in ('none', 'partial')
+union all select 'คืนครบแล้ว', count(*)::text from borrow_sets where return_state = 'full';
+-- =====================================================================
+-- BPL SUPPLY — การ์ดชุดเบิก-คืน หนึ่งใบเบิกคือหนึ่งการ์ด
+-- รันต่อจาก 044 · ปลอดภัยที่จะรันซ้ำ
+--
+-- 044 แยกเป็นรายบรรทัด ซึ่งซอยย่อยเกินไป
+-- คนเดียวกดเบิกทีเดียวได้ 3 เครื่อง ต้องเป็นการ์ดเดียว ไม่ใช่ 3 แถว
+-- วิวนี้จึงจับกลุ่มที่ "ใบเบิก" แทน แล้วยัดรายการกับการคืนเข้าไปเป็น JSON
+--
+-- ⚠️ ไม่แตะการส่งออก Google Sheet
+-- ตัวส่งออกอ่าน asset_txn_items / requisitions โดยตรง ไม่ได้ผ่านวิวนี้
+-- รูปแบบคอลัมน์ในชีตจึงเหมือนเดิมทุกประการ
+--
+-- รวมสองฝั่งไว้ในวิวเดียว (kind = supply / asset) เพราะหน้าจอวาดการ์ดแบบเดียวกัน
+-- ถ้าแยกสองวิวจะต้องเขียนโค้ดวาดสองชุดแล้วมันจะเพี้ยนจากกันภายหลัง
+-- =====================================================================
+
+drop view if exists return_cards;
+create view return_cards
+with (security_invoker = true) as
+
+-- ── ฝั่งวัสดุสิ้นเปลือง · การ์ด = ใบเบิกหนึ่งใบ ───────────────────────
+select
+  'supply'::text                          as kind,
+  r.id::text                              as card_id,
+  r.ref_no,
+  r.created_at                            as taken_at,
+  r.requester_id                          as user_id,
+  p.full_name                             as who,
+  p.employee_code,
+  p.dept_code,
+  p.sub_dept,
+  p.shift_start,
+  p.shift_end,
+
+  coalesce((
+    select array_agg(f order by ord)
+    from (
+      select r.evidence_file_id as f, 0 as ord where r.evidence_file_id is not null
+      union all
+      select ph.file_id, ph.sort_no + 1
+      from requisition_photos ph
+      where ph.requisition_id = r.id and ph.file_id <> coalesce(r.evidence_file_id, '')
+    ) q
+  ), '{}')                                as out_file_ids,
+
+  -- รายการในใบ
+  coalesce((
+    select jsonb_agg(jsonb_build_object(
+             'label',    i.name,
+             'sub',      i.sku,
+             'unit',     i.unit,
+             'need',     case when i.is_returnable then coalesce(ri.qty_approved, 0) else 0 end,
+             'taken',    coalesce(ri.qty_approved, 0),
+             'returned', coalesce(rs.n, 0),
+             'state',    case
+                           when not i.is_returnable                     then 'consumed'
+                           when coalesce(rs.n, 0) = 0                   then 'open'
+                           when coalesce(rs.n, 0) >= coalesce(ri.qty_approved, 0) then 'returned'
+                           else 'partial'
+                         end,
+             'note',     null
+           ) order by i.name)
+    from requisition_items ri
+    join items i on i.id = ri.item_id
+    left join lateral (
+      select sum(qty)::int as n from returns where requisition_item_id = ri.id
+    ) rs on true
+    where ri.requisition_id = r.id and ri.status = 'approved'
+  ), '[]'::jsonb)                         as items,
+
+  -- การคืนแต่ละครั้ง · รวมบรรทัดที่คืนพร้อมกันเป็นครั้งเดียว
+  -- จับกลุ่มด้วยเวลาที่ตรงกันเป๊ะ + คนคืนคนเดียวกัน
+  -- ของที่คืนผ่าน create_return_many จะมีเวลาเดียวกันทั้งชุดเพราะอยู่ใน transaction เดียว
+  coalesce((
+    select jsonb_agg(ev order by (ev->>'at'))
+    from (
+      select jsonb_build_object(
+               'at',       rr.created_at,
+               'by',       max(bp.full_name),
+               'detail',   string_agg(i2.name || ' ' || rr.qty || ' ' || i2.unit, ' · '
+                             order by i2.name),
+               'cond',     max(rr.condition::text),
+               'file_ids', coalesce(max(ph.ids), '{}')
+             ) as ev
+      from returns rr
+      join requisition_items ri2 on ri2.id = rr.requisition_item_id
+      join items i2              on i2.id = ri2.item_id
+      left join profiles bp      on bp.id = rr.returned_by
+      left join lateral (
+        select array_agg(rp.file_id order by rp.sort_no) as ids
+        from return_photos rp where rp.return_id = rr.id
+      ) ph on true
+      where ri2.requisition_id = r.id
+      group by rr.created_at, rr.returned_by, rr.qty
+    ) g
+  ), '[]'::jsonb)                         as events
+
+from requisitions r
+join profiles p on p.id = r.requester_id
+
+union all
+
+-- ── ฝั่งอุปกรณ์ Asset · การ์ด = ใบเบิกหนึ่งใบ ─────────────────────────
+select
+  'asset'::text,
+  t.id::text,
+  t.ref_no,
+  t.created_at,
+  t.user_id,
+  p.full_name,
+  p.employee_code,
+  t.dept_code,
+  p.sub_dept,
+  t.shift_start,
+  t.shift_end,
+
+  coalesce((
+    select array_agg(ph.file_id order by ph.seq)
+    from asset_txn_photos ph where ph.txn_id = t.id
+  ), '{}'),
+
+  -- เครื่องในใบ · สถานะแยกว่าคืนแล้ว โดนโอน หรือยังค้าง
+  coalesce((
+    select jsonb_agg(jsonb_build_object(
+             'label',    ai.asset_code,
+             'sub',      ty.name,
+             'unit',     'เครื่อง',
+             'need',     case when coalesce(back.is_transfer, false) then 0 else 1 end,
+             'taken',    1,
+             'returned', case when back.id is not null and not coalesce(back.is_transfer, false)
+                              then 1 else 0 end,
+             'state',    case
+                           when back.id is null                          then 'open'
+                           when coalesce(back.is_transfer, false)        then 'transferred'
+                           when coalesce(back.is_forced, false)          then 'forced'
+                           else 'returned'
+                         end,
+             'note',     case
+                           when coalesce(back.is_transfer, false) then back.note
+                           when coalesce(back.is_forced, false)   then back.note
+                           else null
+                         end
+           ) order by ai.asset_code)
+    from asset_txn_items ai
+    join assets a       on a.code = ai.asset_code
+    join asset_types ty on ty.code = a.type_code
+    left join asset_txn_items bi on bi.out_item_id = ai.id
+    left join asset_txns back    on back.id = bi.txn_id
+    where ai.txn_id = t.id
+  ), '[]'::jsonb),
+
+  -- ใบคืนที่มาปิดเครื่องของใบนี้ · หนึ่งใบคืนคือหนึ่งครั้ง
+  coalesce((
+    select jsonb_agg(ev order by (ev->>'at'))
+    from (
+      select jsonb_build_object(
+               'at',       back.created_at,
+               'by',       coalesce(ba.full_name, bp.full_name),
+               'detail',   string_agg(bi.asset_code, ' · ' order by bi.asset_code),
+               'cond',     case
+                             when coalesce(back.is_transfer, false) then 'transfer'
+                             when coalesce(back.is_forced, false)   then 'forced'
+                             else 'ok'
+                           end,
+               'file_ids', coalesce((
+                             select array_agg(ph.file_id order by ph.seq)
+                             from asset_txn_photos ph where ph.txn_id = back.id
+                           ), '{}')
+             ) as ev
+      from asset_txn_items ai2
+      join asset_txn_items bi   on bi.out_item_id = ai2.id
+      join asset_txns back      on back.id = bi.txn_id
+      left join profiles bp     on bp.id = back.user_id
+      left join profiles ba     on ba.id = back.acted_by
+      where ai2.txn_id = t.id
+      group by back.id, back.created_at, back.is_transfer, back.is_forced,
+               ba.full_name, bp.full_name
+    ) g
+  ), '[]'::jsonb)
+
+from asset_txns t
+join profiles p on p.id = t.user_id
+where t.kind = 'out';
+
+grant select on return_cards to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล
+-- ---------------------------------------------------------------------
+select case when count(*) >= 0 then 'วิว return_cards ใช้งานได้ · มี ' || count(*) || ' ใบ'
+       end as ผลตรวจ
+  from return_cards;
+-- =====================================================================
+-- BPL SUPPLY — เบิกแบบตะกร้า หลายประเภทในรอบเดียว
+-- รันต่อจาก 045 · ปลอดภัยที่จะรันซ้ำ
+--
+-- หน้างานเลือกเครื่องข้ามประเภทในตะกร้าเดียว แล้วกดส่งทีเดียว
+-- เบื้องหลังยังออกใบแยกตามประเภทเหมือนเดิม เพราะจำนวนรูปบังคับไม่เท่ากัน
+-- (Power Pallet ห้าใบตามขั้นตอน ที่เหลือหนึ่งใบขึ้นไป)
+-- ถ้ายัดใบเดียวรูปจะผูกผิดประเภทแล้วหลักฐานใช้ไม่ได้
+--
+-- ฟังก์ชันนี้วนเรียก asset_checkout ของเดิมทีละประเภท ไม่ได้เขียนกฎใหม่
+-- กฎเดิมอยู่ครบทุกข้อ: สิทธิ์แผนก · เครื่องซ้ำ · จำนวนรูปขั้นต่ำ · เบิกแทน
+-- ถ้าประเภทไหนพัง ทั้งตะกร้าย้อนกลับ ไม่เหลือเบิกครึ่ง ๆ กลาง ๆ
+--
+-- แจ้งของหาย: เดิมต้องรอนาฬิกาเดินรอบถัดไป (ไม่เกิน 5 นาที) ถึงจะเด้ง
+-- ของหายรอไม่ได้ จึงเตะนาฬิกาทันทีเมื่อมีการแจ้งอาการใด ๆ ติดมากับใบ
+-- =====================================================================
+
+create or replace function asset_checkout_many(
+  p_groups   jsonb,
+  p_note     text default null,
+  p_for_user uuid default null
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  g        jsonb;
+  v_type   text;
+  v_codes  text[];
+  v_photos jsonb;
+  v_issues jsonb;
+  v_one    jsonb;
+  v_refs   text[] := '{}';
+  v_n      int := 0;
+  v_has_issue boolean := false;
+begin
+  if p_groups is null or jsonb_array_length(p_groups) = 0 then
+    raise exception 'ยังไม่ได้เลือกเครื่อง';
+  end if;
+
+  for g in select * from jsonb_array_elements(p_groups) loop
+    v_type := g->>'type_code';
+
+    select array_agg(value::text) into v_codes
+      from jsonb_array_elements_text(coalesce(g->'codes', '[]'::jsonb));
+
+    v_photos := coalesce(g->'photos', '[]'::jsonb);
+    v_issues := coalesce(g->'issues', '[]'::jsonb);
+
+    if v_type is null or v_codes is null or array_length(v_codes, 1) is null then
+      raise exception 'ข้อมูลประเภทไม่ครบ ต้องมีทั้งประเภทและรหัสเครื่อง';
+    end if;
+
+    if jsonb_array_length(v_issues) > 0 then
+      v_has_issue := true;
+    end if;
+
+    v_one := asset_checkout(v_type, v_codes, v_photos, v_issues, p_note, p_for_user);
+
+    v_refs := v_refs || (v_one->>'ref_no');
+    v_n := v_n + array_length(v_codes, 1);
+  end loop;
+
+  -- ของหายหรือของเสียต้องถึงมือแอดมินเดี๋ยวนั้น ไม่ใช่รออีกห้านาที
+  if v_has_issue then
+    begin
+      perform push_tick();
+    exception when others then
+      -- ส่งแจ้งเตือนไม่ได้ต้องไม่ทำให้การเบิกล้ม ของออกไปแล้วจริง ๆ
+      null;
+    end;
+  end if;
+
+  return jsonb_build_object(
+    'ok', true,
+    'count', v_n,
+    'groups', jsonb_array_length(p_groups),
+    'ref_no', array_to_string(v_refs, ' · '),
+    'refs', to_jsonb(v_refs)
+  );
+end $$;
+
+grant execute on function asset_checkout_many(jsonb, text, uuid) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- คืนเครื่อง — เตะนาฬิกาทันทีเช่นกันเมื่อมีการแจ้งอาการ
+--
+-- เขียนทับ asset_return ของ 041 โดยเพิ่มแค่ท่อนแจ้งเตือนท้ายฟังก์ชัน
+-- ตรรกะอื่นเหมือนเดิมทุกบรรทัด
+-- ---------------------------------------------------------------------
+create or replace function asset_return(
+  p_codes  text[],
+  p_photos jsonb default '[]'::jsonb,
+  p_issues jsonb default '[]'::jsonb,
+  p_note   text default null
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_me     profiles%rowtype;
+  v_proxy  boolean := false;
+  v_type   text;
+  v_txn    uuid;
+  v_ref    text;
+  v_code   text;
+  v_out    bigint;
+  v_owner  uuid;
+  v_min    int;
+  v_steps  int;
+  v_photos int := coalesce(jsonb_array_length(p_photos), 0);
+  v_refs   text[] := '{}';
+  v_first  uuid := null;
+  v_n      int := 0;
+  r        jsonb;
+begin
+  select * into v_me from profiles where id = auth.uid();
+  if v_me.id is null or not v_me.is_active then
+    raise exception 'บัญชีนี้ใช้งานไม่ได้';
+  end if;
+
+  if p_codes is null or array_length(p_codes, 1) is null then
+    raise exception 'ยังไม่ได้เลือกเครื่องที่จะคืน';
+  end if;
+
+  foreach v_code in array p_codes loop
+    perform 1 from assets where code = v_code for update;
+
+    select a.held_item_id, t.user_id into v_out, v_owner
+      from assets a
+      join asset_txn_items ai on ai.id = a.held_item_id
+      join asset_txns t on t.id = ai.txn_id
+     where a.code = v_code;
+
+    if v_out is null then
+      raise exception 'เครื่อง % ไม่ได้อยู่ในรายการค้างคืน', v_code;
+    end if;
+
+    if v_owner <> v_me.id then
+      if not my_can_proxy() then
+        raise exception 'เครื่อง % ไม่ได้เบิกโดยคุณ', v_code;
+      end if;
+      v_proxy := true;
+    end if;
+  end loop;
+
+  if not v_proxy then
+    select a.type_code into v_type from assets a where a.code = p_codes[1];
+    select count(*) into v_steps from asset_photo_steps where type_code = v_type;
+    select photo_min into v_min from asset_types where code = v_type;
+    if v_steps > 0 then v_min := v_steps; end if;
+    if v_photos < coalesce(v_min, 1) then
+      raise exception 'ต้องถ่ายรูปสภาพตอนคืนให้ครบ % ใบก่อน (ถ่ายมาแล้ว % ใบ)',
+        coalesce(v_min, 1), v_photos;
+    end if;
+  end if;
+
+  for v_type in
+    select distinct a.type_code
+      from assets a
+     where a.code = any(p_codes)
+     order by 1
+  loop
+    v_ref := next_asset_ref('in');
+    insert into asset_txns (ref_no, kind, type_code, user_id, acted_by, dept_code,
+                            shift_start, shift_end, note)
+    values (v_ref, 'in', v_type, v_me.id,
+            case when v_proxy then v_me.id else null end,
+            v_me.dept_code, v_me.shift_start, v_me.shift_end, p_note)
+    returning id into v_txn;
+
+    v_refs := v_refs || v_ref;
+    if v_first is null then v_first := v_txn; end if;
+
+    for v_code in
+      select a.code from assets a where a.code = any(p_codes) and a.type_code = v_type
+    loop
+      insert into asset_txn_items (txn_id, asset_code, out_item_id)
+      select v_txn, v_code, a.held_item_id from assets a where a.code = v_code;
+
+      update assets set held_item_id = null, loan_user = null, loan_dept = null
+       where code = v_code;
+      v_n := v_n + 1;
+    end loop;
+
+    for r in select * from jsonb_array_elements(p_photos) loop
+      insert into asset_txn_photos (txn_id, seq, label, file_id, web_link, bytes)
+      values (v_txn,
+              coalesce((r->>'seq')::int, 1),
+              r->>'label',
+              r->>'file_id',
+              r->>'web_link',
+              (r->>'bytes')::int);
+    end loop;
+
+    for r in
+      select e.value
+        from jsonb_array_elements(p_issues) e
+        join assets a on a.code = e.value->>'asset_code'
+       where a.type_code = v_type
+    loop
+      insert into asset_issues (asset_code, txn_id, phase, symptom, reported_by, file_id, web_link)
+      values (r->>'asset_code', v_txn, 'in', r->>'symptom', v_me.id,
+              r->>'file_id', r->>'web_link');
+    end loop;
+  end loop;
+
+  if coalesce(jsonb_array_length(p_issues), 0) > 0 then
+    begin
+      perform push_tick();
+    exception when others then
+      null;
+    end;
+  end if;
+
+  return jsonb_build_object(
+    'id', v_first,
+    'ref_no', array_to_string(v_refs, ' · '),
+    'refs', to_jsonb(v_refs),
+    'count', v_n
+  );
+end $$;
+
+grant execute on function asset_return(text[], jsonb, jsonb, text) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล
+-- ---------------------------------------------------------------------
+select 'ฟังก์ชันเบิกแบบตะกร้า' as สิ่งที่ตรวจ, count(*)::text as ผล
+  from pg_proc where proname = 'asset_checkout_many';
+-- =====================================================================
+-- BPL SUPPLY — ของพ่วงเบิกรวมกับประเภทแม่ได้จริง
+-- รันต่อจาก 046 · ปลอดภัยที่จะรันซ้ำ
+--
+-- เลเซอร์ลบ (LASER) ตั้งไว้เป็นของพ่วงใต้ไอดาต้า (IDATA) ตั้งแต่แรก
+-- เจตนาคือ "มันคือไอดาต้า แค่เป็นรุ่นเลเซอร์ลบ" เบิกไม่บ่อยเลยซ่อนไว้ใต้หัวข้อแม่
+-- แต่ asset_checkout ตรวจว่า type_code ต้องตรงกับประเภทที่ส่งมาแบบเป๊ะ ๆ
+-- พอเบิกจริงจึงตีกลับว่า "ไม่ใช่ประเภทที่เลือก" — ของพ่วงเลยเบิกไม่ได้เลยมาตลอด
+--
+-- นี่เป็นบั๊กที่มีมาตั้งแต่ทำฟีเจอร์ของพ่วง ไม่ใช่ของใหม่
+-- เพิ่งโผล่เพราะหน้าตะกร้าเอาของพ่วงมาแสดงให้กดได้เป็นครั้งแรก
+--
+-- แก้ให้รับได้ทั้งประเภทตรง ๆ และประเภทที่เป็นลูกของมัน
+-- ใบเบิกยังออกเป็นประเภทแม่ใบเดียว ตามที่เจ้าของระบบต้องการ
+-- (เบิกเลเซอร์ลบมาแล้วต้องขึ้นเป็นไอดาต้า)
+--
+-- ฝั่งคืนก็ต้องม้วนเข้าประเภทแม่เหมือนกัน ไม่งั้นเบิกเป็นไอดาต้าแต่คืนเป็นเลเซอร์ลบ
+-- แล้วรายงานจะไม่บาลานซ์
+-- =====================================================================
+
+create or replace function asset_checkout(
+  p_type     text,
+  p_codes    text[],
+  p_photos   jsonb default '[]'::jsonb,
+  p_issues   jsonb default '[]'::jsonb,
+  p_note     text default null,
+  p_for_user uuid default null
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_me     profiles%rowtype;
+  v_for    profiles%rowtype;
+  v_actor  uuid;
+  v_txn    uuid;
+  v_ref    text;
+  v_code   text;
+  v_taken  text;
+  v_item   bigint;
+  v_min    int;
+  v_steps  int;
+  v_photos int := coalesce(jsonb_array_length(p_photos), 0);
+  r        jsonb;
+begin
+  select * into v_me from profiles where id = auth.uid();
+  if v_me.id is null or not v_me.is_active then
+    raise exception 'บัญชีนี้ใช้งานไม่ได้';
+  end if;
+
+  if p_for_user is null or p_for_user = v_me.id then
+    v_for   := v_me;
+    v_actor := null;
+  else
+    if not my_can_proxy() then
+      raise exception 'บัญชีนี้เบิกแทนคนอื่นไม่ได้';
+    end if;
+    select * into v_for from profiles where id = p_for_user;
+    if v_for.id is null or not v_for.is_active then
+      raise exception 'ไม่พบผู้รับของ หรือบัญชีถูกระงับ';
+    end if;
+    v_actor := v_me.id;
+  end if;
+
+  perform assert_can_assets();
+
+  if p_codes is null or array_length(p_codes, 1) is null then
+    raise exception 'ยังไม่ได้เลือกเครื่อง';
+  end if;
+
+  if not exists (select 1 from asset_types where code = p_type and is_active) then
+    raise exception 'ไม่พบประเภท %', p_type;
+  end if;
+
+  select count(*) into v_steps from asset_photo_steps where type_code = p_type;
+  select photo_min into v_min from asset_types where code = p_type;
+  if v_steps > 0 then v_min := v_steps; end if;
+  if v_photos < coalesce(v_min, 1) then
+    raise exception 'ต้องถ่ายรูปให้ครบ % ใบก่อน (ถ่ายมาแล้ว % ใบ)', coalesce(v_min, 1), v_photos;
+  end if;
+
+  v_ref := next_asset_ref('out');
+  insert into asset_txns (ref_no, kind, type_code, user_id, acted_by, dept_code,
+                          shift_start, shift_end, due_at, note)
+  values (v_ref, 'out', p_type, v_for.id, v_actor, v_for.dept_code,
+          v_for.shift_start, v_for.shift_end,
+          shift_due_at(v_for.shift_start, v_for.shift_end), p_note)
+  returning id into v_txn;
+
+  foreach v_code in array p_codes loop
+    perform 1 from assets where code = v_code for update;
+
+    if not found then
+      raise exception 'ไม่พบเครื่อง %', v_code;
+    end if;
+    if not exists (select 1 from assets where code = v_code and is_enabled) then
+      raise exception 'เครื่อง % ถูกปิดไม่ให้เบิก', v_code;
+    end if;
+
+    -- ยอมรับประเภทตรง ๆ หรือของพ่วงที่อยู่ใต้ประเภทนั้น
+    if not exists (
+      select 1
+        from assets a
+        left join asset_types ty on ty.code = a.type_code
+       where a.code = v_code
+         and (a.type_code = p_type or ty.parent_code = p_type)
+    ) then
+      raise exception 'เครื่อง % ไม่ใช่ประเภทที่เลือก', v_code;
+    end if;
+
+    select h.holder_name into v_taken
+      from assets x join asset_holdings h on h.asset_code = x.code
+     where x.code = v_code and x.held_item_id is not null;
+    if v_taken is not null then
+      raise exception 'เครื่อง % ยังไม่ได้คืน อยู่กับ %', v_code, v_taken;
+    end if;
+
+    insert into asset_txn_items (txn_id, asset_code)
+    values (v_txn, v_code) returning id into v_item;
+
+    update assets set held_item_id = v_item where code = v_code;
+
+    update asset_transfers
+       set claimed_at = now(), claimed_by = v_for.id
+     where asset_code = v_code and claimed_at is null;
+  end loop;
+
+  for r in select * from jsonb_array_elements(p_photos) loop
+    insert into asset_txn_photos (txn_id, seq, label, file_id, web_link, bytes)
+    values (v_txn,
+            coalesce((r->>'seq')::int, 1),
+            r->>'label',
+            r->>'file_id',
+            r->>'web_link',
+            (r->>'bytes')::int);
+  end loop;
+
+  for r in select * from jsonb_array_elements(p_issues) loop
+    insert into asset_issues (asset_code, txn_id, phase, symptom, reported_by, file_id, web_link)
+    values (r->>'asset_code', v_txn, 'out', r->>'symptom', v_me.id, r->>'file_id', r->>'web_link');
+  end loop;
+
+  return jsonb_build_object(
+    'id', v_txn, 'ref_no', v_ref,
+    'count', array_length(p_codes, 1),
+    'for_name', case when v_actor is null then null else v_for.full_name end
+  );
+end $$;
+
+grant execute on function asset_checkout(text, text[], jsonb, jsonb, text, uuid) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- คืนเครื่อง — ม้วนของพ่วงเข้าประเภทแม่ ให้ตรงกับตอนเบิก
+-- ---------------------------------------------------------------------
+create or replace function asset_return(
+  p_codes  text[],
+  p_photos jsonb default '[]'::jsonb,
+  p_issues jsonb default '[]'::jsonb,
+  p_note   text default null
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_me     profiles%rowtype;
+  v_proxy  boolean := false;
+  v_type   text;
+  v_txn    uuid;
+  v_ref    text;
+  v_code   text;
+  v_out    bigint;
+  v_owner  uuid;
+  v_min    int;
+  v_steps  int;
+  v_photos int := coalesce(jsonb_array_length(p_photos), 0);
+  v_refs   text[] := '{}';
+  v_first  uuid := null;
+  v_n      int := 0;
+  r        jsonb;
+begin
+  select * into v_me from profiles where id = auth.uid();
+  if v_me.id is null or not v_me.is_active then
+    raise exception 'บัญชีนี้ใช้งานไม่ได้';
+  end if;
+
+  if p_codes is null or array_length(p_codes, 1) is null then
+    raise exception 'ยังไม่ได้เลือกเครื่องที่จะคืน';
+  end if;
+
+  foreach v_code in array p_codes loop
+    perform 1 from assets where code = v_code for update;
+
+    select a.held_item_id, t.user_id into v_out, v_owner
+      from assets a
+      join asset_txn_items ai on ai.id = a.held_item_id
+      join asset_txns t on t.id = ai.txn_id
+     where a.code = v_code;
+
+    if v_out is null then
+      raise exception 'เครื่อง % ไม่ได้อยู่ในรายการค้างคืน', v_code;
+    end if;
+
+    if v_owner <> v_me.id then
+      if not my_can_proxy() then
+        raise exception 'เครื่อง % ไม่ได้เบิกโดยคุณ', v_code;
+      end if;
+      v_proxy := true;
+    end if;
+  end loop;
+
+  if not v_proxy then
+    select coalesce(ty.parent_code, a.type_code) into v_type
+      from assets a
+      left join asset_types ty on ty.code = a.type_code
+     where a.code = p_codes[1];
+    select count(*) into v_steps from asset_photo_steps where type_code = v_type;
+    select photo_min into v_min from asset_types where code = v_type;
+    if v_steps > 0 then v_min := v_steps; end if;
+    if v_photos < coalesce(v_min, 1) then
+      raise exception 'ต้องถ่ายรูปสภาพตอนคืนให้ครบ % ใบก่อน (ถ่ายมาแล้ว % ใบ)',
+        coalesce(v_min, 1), v_photos;
+    end if;
+  end if;
+
+  for v_type in
+    select distinct coalesce(ty.parent_code, a.type_code)
+      from assets a
+      left join asset_types ty on ty.code = a.type_code
+     where a.code = any(p_codes)
+     order by 1
+  loop
+    v_ref := next_asset_ref('in');
+    insert into asset_txns (ref_no, kind, type_code, user_id, acted_by, dept_code,
+                            shift_start, shift_end, note)
+    values (v_ref, 'in', v_type, v_me.id,
+            case when v_proxy then v_me.id else null end,
+            v_me.dept_code, v_me.shift_start, v_me.shift_end, p_note)
+    returning id into v_txn;
+
+    v_refs := v_refs || v_ref;
+    if v_first is null then v_first := v_txn; end if;
+
+    for v_code in
+      select a.code
+        from assets a
+        left join asset_types ty on ty.code = a.type_code
+       where a.code = any(p_codes)
+         and coalesce(ty.parent_code, a.type_code) = v_type
+    loop
+      insert into asset_txn_items (txn_id, asset_code, out_item_id)
+      select v_txn, v_code, a.held_item_id from assets a where a.code = v_code;
+
+      update assets set held_item_id = null, loan_user = null, loan_dept = null
+       where code = v_code;
+      v_n := v_n + 1;
+    end loop;
+
+    for r in select * from jsonb_array_elements(p_photos) loop
+      insert into asset_txn_photos (txn_id, seq, label, file_id, web_link, bytes)
+      values (v_txn,
+              coalesce((r->>'seq')::int, 1),
+              r->>'label',
+              r->>'file_id',
+              r->>'web_link',
+              (r->>'bytes')::int);
+    end loop;
+
+    for r in
+      select e.value
+        from jsonb_array_elements(p_issues) e
+        join assets a on a.code = e.value->>'asset_code'
+        left join asset_types ty on ty.code = a.type_code
+       where coalesce(ty.parent_code, a.type_code) = v_type
+    loop
+      insert into asset_issues (asset_code, txn_id, phase, symptom, reported_by, file_id, web_link)
+      values (r->>'asset_code', v_txn, 'in', r->>'symptom', v_me.id,
+              r->>'file_id', r->>'web_link');
+    end loop;
+  end loop;
+
+  if coalesce(jsonb_array_length(p_issues), 0) > 0 then
+    begin
+      perform push_tick();
+    exception when others then
+      null;
+    end;
+  end if;
+
+  return jsonb_build_object(
+    'id', v_first,
+    'ref_no', array_to_string(v_refs, ' · '),
+    'refs', to_jsonb(v_refs),
+    'count', v_n
+  );
+end $$;
+
+grant execute on function asset_return(text[], jsonb, jsonb, text) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล — ของพ่วงต้องผ่านการตรวจประเภทของแม่ได้แล้ว
+-- ---------------------------------------------------------------------
+select a.code                              as เครื่อง,
+       a.type_code                         as ประเภทจริง,
+       coalesce(ty.parent_code, a.type_code) as นับเป็นประเภท
+  from assets a
+  left join asset_types ty on ty.code = a.type_code
+ where ty.parent_code is not null
+ order by a.code
+ limit 10;
+-- =====================================================================
+-- BPL SUPPLY — ลบใบเบิก Asset ที่คืนไปแล้วได้
+-- รันต่อจาก 047 · ปลอดภัยที่จะรันซ้ำ
+--
+-- อาการ: กดลบในหน้าหลักฐาน แล้วขึ้น
+--   violates foreign key constraint "asset_txn_items_out_item_id_fkey"
+--
+-- สาเหตุ: แถวตอนคืนชี้กลับไปหาแถวตอนเบิก (out_item_id)
+-- พอลบใบเบิก แถวของใบนั้นถูกลบตาม แต่แถวตอนคืนยังชี้อยู่ที่เดิม
+-- ฐานข้อมูลจึงไม่ยอมลบ เพราะจะเหลือตัวชี้ที่ชี้ไปหาของที่ไม่มีแล้ว
+--
+-- ตัวกันของเดิมดูแค่ "ยังมีเครื่องไม่ได้คืนไหม" ซึ่งไม่ครอบเคสนี้
+-- ใบที่คืนเรียบร้อยแล้วต่างหากที่มีตัวชี้ค้างอยู่ จึงลบไม่ได้มาตลอด
+--
+-- แก้โดยบอกฐานข้อมูลว่า ถ้าแถวตอนเบิกถูกลบ ให้ล้างตัวชี้เป็นว่าง
+-- ไม่ใช่ลบแถวตอนคืนตามไปด้วย เพราะการคืนเกิดขึ้นจริง ลบทิ้งคือโกหกประวัติ
+-- แถวคืนจะยังอยู่ แค่ไม่รู้แล้วว่าคู่กับการเบิกครั้งไหน — ซึ่งถูกต้อง
+-- เพราะคนสั่งลบการเบิกครั้งนั้นทิ้งไปเอง
+-- =====================================================================
+
+alter table asset_txn_items
+  drop constraint if exists asset_txn_items_out_item_id_fkey;
+
+alter table asset_txn_items
+  add constraint asset_txn_items_out_item_id_fkey
+  foreign key (out_item_id) references asset_txn_items(id) on delete set null;
+
+
+-- ---------------------------------------------------------------------
+-- ตัวกันตอนลบ — อธิบายให้ตรงกับสิ่งที่เกิดขึ้นจริง
+--
+-- ของเดิมห้ามลบเฉพาะตอนยังมีเครื่องค้างอยู่ ซึ่งถูกแล้ว
+-- เพิ่มคำอธิบายให้รู้ว่าลบใบเบิกแล้วประวัติการคืนที่คู่กันจะขาดคู่
+-- ---------------------------------------------------------------------
+create or replace function delete_evidence(p_kind text, p_id text)
+returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_txn uuid;
+begin
+  if my_role() <> 'admin' then
+    raise exception 'เฉพาะเจ้าของระบบเท่านั้นที่ลบหลักฐานได้';
+  end if;
+
+  if p_kind = 'requisition' then
+    delete from requisitions where id = p_id::uuid;
+
+  elsif p_kind = 'return' then
+    delete from returns where id = p_id::bigint;
+
+  elsif p_kind in ('asset_out', 'asset_in') then
+    v_txn := p_id::uuid;
+
+    -- เครื่องที่ยังไม่ได้คืนห้ามลบ ไม่งั้นมันจะหลุดจากรายการค้างโดยไม่มีใครรู้ว่าอยู่ไหน
+    if exists (
+      select 1
+      from asset_txn_items ai
+      join assets a on a.held_item_id = ai.id
+      where ai.txn_id = v_txn
+    ) then
+      raise exception 'ยังมีเครื่องในรายการนี้ที่ไม่ได้คืน กดคืนให้เรียบร้อยก่อนจึงจะลบได้';
+    end if;
+
+    delete from asset_txns where id = v_txn;
+
+  else
+    raise exception 'ไม่รู้จักประเภท %', p_kind;
+  end if;
+end $$;
+
+grant execute on function delete_evidence(text, text) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล — ต้องขึ้น SET NULL
+-- ---------------------------------------------------------------------
+select tc.constraint_name                  as ชื่อเงื่อนไข,
+       rc.delete_rule                      as เมื่อถูกลบให้ทำอะไร
+  from information_schema.table_constraints tc
+  join information_schema.referential_constraints rc
+    on rc.constraint_name = tc.constraint_name
+ where tc.table_name = 'asset_txn_items'
+   and tc.constraint_name = 'asset_txn_items_out_item_id_fkey';
+-- =====================================================================
+-- BPL SUPPLY — ลบใบเบิกที่เคยถูกโอนได้
+-- รันต่อจาก 048 · ปลอดภัยที่จะรันซ้ำ
+--
+-- 048 แก้ตัวชี้ระหว่างแถวเบิกกับแถวคืนไปแล้ว แต่ยังเหลืออีกตัวที่ชี้มาที่เดียวกัน
+--   asset_transfers.out_item_id → asset_txn_items
+-- ประวัติการโอนเครื่องจำไว้ว่า "ตัดของจากการเบิกแถวไหน"
+-- พอลบใบเบิกนั้น ตัวชี้ก็ค้าง ฐานข้อมูลเลยไม่ยอมลบเหมือนเดิม
+--
+-- ไล่ตรวจทั้งฐานข้อมูลแล้ว เหลือตัวนี้ตัวเดียวที่ขวางการลบใบเบิก
+-- อีกสองตัวที่ยังเป็น NO ACTION คือ asset_code ที่ชี้ไปตารางทะเบียนเครื่อง
+-- สองตัวนั้นตั้งใจให้ขวาง เพราะห้ามลบเครื่องออกจากทะเบียนทั้งที่มีประวัติใช้งานอยู่
+--
+-- ล้างตัวชี้เป็นว่างแทนการลบแถวโอนตาม เพราะการโอนเกิดขึ้นจริง
+-- ลบทิ้งคือลบหลักฐานว่าเครื่องเคยถูกย้ายมือ ซึ่งเป็นคนละเรื่องกับการลบใบเบิก
+-- =====================================================================
+
+alter table asset_transfers
+  drop constraint if exists asset_transfers_out_item_id_fkey;
+
+alter table asset_transfers
+  add constraint asset_transfers_out_item_id_fkey
+  foreign key (out_item_id) references asset_txn_items(id) on delete set null;
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล — ต้องไม่เหลือตัวไหนชี้มาที่ asset_txn_items แบบ NO ACTION
+-- ---------------------------------------------------------------------
+select tc.table_name || '.' || kcu.column_name || '  [' || rc.delete_rule || ']' as ผลตรวจ
+  from information_schema.table_constraints tc
+  join information_schema.key_column_usage kcu on kcu.constraint_name = tc.constraint_name
+  join information_schema.constraint_column_usage ccu on ccu.constraint_name = tc.constraint_name
+  join information_schema.referential_constraints rc on rc.constraint_name = tc.constraint_name
+ where tc.constraint_type = 'FOREIGN KEY'
+   and ccu.table_name = 'asset_txn_items'
+ order by 1;
+-- =====================================================================
+-- BPL SUPPLY — ลิงก์งาน
+-- รันต่อจาก 049 · ปลอดภัยที่จะรันซ้ำ
+--
+-- ปุ่มสายฟ้าบนหัวแอพ เก็บลิงก์งานที่ต้องเปิดบ่อย
+-- เจ้าของระบบเป็นคนใส่และแก้จากหน้าเว็บ ที่เหลือแค่กดเปิด
+--
+-- เห็นปุ่ม: แอดมิน เจ้าของระบบ และผู้ตรวจสอบ
+-- แก้ลิงก์: เจ้าของระบบคนเดียว
+--
+-- ทำไมต้องคุมสิทธิ์ที่ฐานข้อมูล ไม่ใช่แค่ซ่อนปุ่ม
+-- เพราะลิงก์บางอันอาจเป็นเอกสารภายในที่หน้างานไม่ควรเห็น
+-- ซ่อนปุ่มอย่างเดียวคือใครเปิดหน้าเว็บดูก็ยังอ่านได้
+-- =====================================================================
+
+create table if not exists work_links (
+  id         bigserial primary key,
+  title      text not null,
+  url        text not null,
+  note       text,
+  sort_no    integer not null default 0,
+  is_active  boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists work_links_order_idx on work_links (sort_no, id);
+
+alter table work_links enable row level security;
+
+-- อ่านได้: แอดมิน เจ้าของระบบ ผู้ตรวจสอบ
+drop policy if exists read_work_links on work_links;
+create policy read_work_links on work_links for select to authenticated
+  using (my_can_proxy());
+
+-- แก้ได้: เจ้าของระบบคนเดียว
+drop policy if exists write_work_links on work_links;
+create policy write_work_links on work_links for all to authenticated
+  using (my_role() = 'admin')
+  with check (my_role() = 'admin');
+
+
+-- ---------------------------------------------------------------------
+-- บันทึกเวลาแก้ล่าสุด ไว้ดูว่าลิงก์ไหนเก่าแล้ว
+-- ---------------------------------------------------------------------
+create or replace function touch_work_link() returns trigger
+language plpgsql as $$
+begin
+  new.updated_at := now();
+  return new;
+end $$;
+
+drop trigger if exists work_links_touch on work_links;
+create trigger work_links_touch before update on work_links
+  for each row execute function touch_work_link();
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล
+-- ---------------------------------------------------------------------
+select 'ตาราง work_links' as สิ่งที่ตรวจ, count(*)::text as ผล
+  from information_schema.tables where table_name = 'work_links'
+union all select 'จำนวนลิงก์ตอนนี้', count(*)::text from work_links;
+-- =====================================================================
+-- BPL SUPPLY — แก้ชื่อและลบเครื่องในทะเบียน
+-- รันต่อจาก 050 · ปลอดภัยที่จะรันซ้ำ
+--
+-- สองอย่างที่ทำไม่ได้มาตลอด
+--   1. แก้รหัสเครื่อง — รหัสเป็นกุญแจที่ตารางอื่นชี้มา พอแก้แล้วตัวชี้ค้าง
+--   2. ลบเครื่องที่เคยถูกเบิก — ประวัติชี้มาที่เครื่องนั้นอยู่
+--
+-- ข้อ 1 แก้ด้วย on update cascade · เปลี่ยนรหัสแล้วทุกที่ที่อ้างถึงเปลี่ยนตาม
+--        ประวัติไม่ขาด เพราะมันตามไปเอง
+--
+-- ข้อ 2 เจ้าของระบบเลือกให้ลบได้หมด รวมประวัติ โดยยืนยันสองชั้น
+--        จึงทำเป็น RPC ที่ไล่ลบลูกให้ครบก่อน ไม่ใช่เปิด cascade ทิ้งไว้
+--        เพราะ cascade จะทำให้ลบพลาดทีเดียวหายทั้งประวัติโดยไม่มีอะไรทัดทาน
+--
+-- กันไว้ข้อเดียว: เครื่องที่มีคนถืออยู่ตอนนี้ลบไม่ได้
+-- ไม่งั้นรายการค้างของเขาจะหายไปเฉย ๆ โดยไม่มีใครรู้ว่าเครื่องอยู่ไหน
+-- ให้กดคืนหรือปิดรายการก่อน แล้วค่อยลบ
+-- =====================================================================
+
+-- ── แก้รหัสเครื่องแล้วให้ทุกที่ตามไปด้วย ──────────────────────────────
+alter table asset_txn_items drop constraint if exists asset_txn_items_asset_code_fkey;
+alter table asset_txn_items
+  add constraint asset_txn_items_asset_code_fkey
+  foreign key (asset_code) references assets(code) on update cascade;
+
+alter table asset_transfers drop constraint if exists asset_transfers_asset_code_fkey;
+alter table asset_transfers
+  add constraint asset_transfers_asset_code_fkey
+  foreign key (asset_code) references assets(code) on update cascade;
+
+alter table asset_issues drop constraint if exists asset_issues_asset_code_fkey;
+alter table asset_issues
+  add constraint asset_issues_asset_code_fkey
+  foreign key (asset_code) references assets(code) on update cascade on delete cascade;
+
+
+-- ---------------------------------------------------------------------
+-- RPC: ลบเครื่องออกจากทะเบียน พร้อมประวัติทั้งหมด
+--
+-- คืนค่าจำนวนที่ลบไป เพื่อให้หน้าจอบอกได้ว่าหายไปเท่าไหร่จริง ๆ
+-- ---------------------------------------------------------------------
+create or replace function delete_asset(p_code text)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_holder text;
+  v_txn    int := 0;
+  v_iss    int := 0;
+  v_trf    int := 0;
+begin
+  if my_role() not in ('supervisor', 'admin') then
+    raise exception 'เฉพาะแอดมินและเจ้าของระบบเท่านั้นที่ลบเครื่องได้';
+  end if;
+
+  if not exists (select 1 from assets where code = p_code) then
+    raise exception 'ไม่พบเครื่อง %', p_code;
+  end if;
+
+  -- เครื่องที่ยังอยู่ในมือใครลบไม่ได้ · รายการค้างจะหายเงียบ ๆ
+  select h.holder_name into v_holder
+    from asset_holdings h where h.asset_code = p_code;
+  if v_holder is not null then
+    raise exception 'เครื่อง % ยังอยู่กับ % · กดคืนหรือปิดรายการก่อนจึงจะลบได้', p_code, v_holder;
+  end if;
+
+  select count(*) into v_txn from asset_txn_items where asset_code = p_code;
+  select count(*) into v_iss from asset_issues   where asset_code = p_code;
+  select count(*) into v_trf from asset_transfers where asset_code = p_code;
+
+  -- ตัดสายที่ชี้หากันเองก่อน ไม่งั้นลบไม่ได้เพราะติดกันเป็นลูกโซ่
+  update asset_txn_items set out_item_id = null
+   where out_item_id in (select id from asset_txn_items where asset_code = p_code);
+
+  update assets set held_item_id = null, loan_user = null, loan_dept = null
+   where code = p_code;
+
+  delete from asset_transfers where asset_code = p_code;
+  delete from asset_txn_items  where asset_code = p_code;
+  delete from asset_issues     where asset_code = p_code;
+
+  -- ใบไหนไม่เหลือเครื่องแล้วก็ลบทิ้ง จะได้ไม่มีใบเปล่าค้างในรายงาน
+  delete from asset_txns t
+   where not exists (select 1 from asset_txn_items i where i.txn_id = t.id);
+
+  delete from assets where code = p_code;
+
+  return jsonb_build_object(
+    'code', p_code,
+    'txn_items', v_txn,
+    'issues', v_iss,
+    'transfers', v_trf
+  );
+end $$;
+
+grant execute on function delete_asset(text) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล
+-- ---------------------------------------------------------------------
+select 'ฟังก์ชันลบเครื่อง' as สิ่งที่ตรวจ, count(*)::text as ผล
+  from pg_proc where proname = 'delete_asset'
+union all
+select tc.table_name || ' แก้รหัสตามได้', rc.update_rule
+  from information_schema.table_constraints tc
+  join information_schema.constraint_column_usage ccu on ccu.constraint_name = tc.constraint_name
+  join information_schema.referential_constraints rc on rc.constraint_name = tc.constraint_name
+ where tc.constraint_type = 'FOREIGN KEY'
+   and ccu.table_name = 'assets' and ccu.column_name = 'code'
+ order by 1;
+-- =====================================================================
+-- BPL SUPPLY — ปรับกติกาการถ่ายรูปตามที่หน้างานใช้จริง
+-- รันต่อจาก 051 · ปลอดภัยที่จะรันซ้ำ
+--
+-- Power Pallet
+--   เดิม 5 ขั้น กุญแจ/หน้า/หลัง/ซ้าย/ขวา ซึ่งหน้างานต้องกดเปิดกล้อง 5 รอบ
+--   จริง ๆ เขาเดินถ่ายรอบคันรวดเดียวแล้วค่อยเลือกทีหลัง
+--   จึงเหลือ กุญแจ 1 ใบ แล้วรอบคันอีก 4 ใบ เลือกพร้อมกันได้
+--   ยังบังคับ 5 ใบเท่าเดิม แค่เปลี่ยนวิธีเก็บให้ตรงกับที่เขาทำ
+--
+-- ไอดาต้าและเลเซอร์ลบ
+--   บังคับอย่างน้อย 2 ใบ ด้านหน้าและด้านหลัง
+--   แต่ไม่จำกัดจำนวนสูงสุด เผื่อใครอยากถ่ายเพิ่มให้ชัด
+--   ไม่ใช้ระบบขั้นตอน เพราะจะไปล็อกจำนวนสูงสุดไว้เท่าจำนวนขั้น
+-- =====================================================================
+
+-- ── Power Pallet ─────────────────────────────────────────────────────
+delete from asset_photo_steps where type_code = 'PP';
+
+insert into asset_photo_steps (type_code, seq, label, hint) values
+  ('PP', 1, 'กุญแจ',          'ถ่ายกุญแจที่ได้รับมา'),
+  ('PP', 2, 'รอบคัน ใบที่ 1', 'ด้านหน้า'),
+  ('PP', 3, 'รอบคัน ใบที่ 2', 'ด้านหลัง'),
+  ('PP', 4, 'รอบคัน ใบที่ 3', 'ด้านซ้าย'),
+  ('PP', 5, 'รอบคัน ใบที่ 4', 'ด้านขวา');
+
+update asset_types set photo_min = 5, photo_max = 8 where code = 'PP';
+
+-- ── ไอดาต้า และเลเซอร์ลบ ─────────────────────────────────────────────
+-- ไม่มีขั้นตอนบังคับ ใช้จำนวนขั้นต่ำแทน จะได้ถ่ายเพิ่มได้ไม่จำกัด
+delete from asset_photo_steps where type_code in ('IDATA', 'LASER');
+
+update asset_types set photo_min = 2, photo_max = 10 where code = 'IDATA';
+
+-- เลเซอร์ลบเป็นของพ่วง ถ่ายรวมกับไอดาต้าในใบเดียวกัน
+-- จึงไม่บังคับรูปของตัวเอง ไม่งั้นจะโดนขอรูปสองรอบ
+update asset_types set photo_min = 0, photo_max = 10 where code = 'LASER';
+
+-- ── วิทยุ ────────────────────────────────────────────────────────────
+update asset_types set photo_max = greatest(photo_max, 5) where code = 'RADIO';
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล
+-- ---------------------------------------------------------------------
+select t.name || '  ·  ขั้นต่ำ ' || t.photo_min || ' ใบ  ·  สูงสุด ' || t.photo_max ||
+       ' ใบ  ·  ขั้นตอนบังคับ ' || coalesce(st.n, 0) || ' ขั้น' as ผลตรวจ
+  from asset_types t
+  left join lateral (
+    select count(*) as n from asset_photo_steps s where s.type_code = t.code
+  ) st on true
+ where t.is_active
+ order by t.sort_no;
+-- =====================================================================
+-- BPL SUPPLY — ลิงก์งาน เลือกได้ว่าใครเห็น
+-- รันต่อจาก 052 · ปลอดภัยที่จะรันซ้ำ
+--
+-- เดิมลิงก์งานเห็นได้เฉพาะแอดมินกับผู้ตรวจสอบ ปุ่มสายฟ้าจึงซ่อนจากหน้างาน
+-- ตอนนี้เปิดปุ่มให้ทุกคนเห็น แต่ "เห็นลิงก์ไหน" ต้องคุมเป็นรายลิงก์
+-- ไม่งั้นเอกสารภายในจะหลุดไปถึงหน้างานทันทีที่เปิดปุ่ม
+--
+-- สามโหมดต่อหนึ่งลิงก์
+--   all      ทุกคนในระบบเห็น
+--   managers แอดมิน เจ้าของระบบ ผู้ตรวจสอบ (เหมือนเดิม — เป็นค่าตั้งต้น)
+--   custom   เลือกเองว่าแผนกไหนบ้าง และ/หรือ ใครบ้างเป็นรายคน
+--
+-- ทำไมใช้ตารางเชื่อมแทน array ของรหัสแผนก
+--   เจ้าของระบบเปลี่ยนชื่อแผนกได้อิสระ ถ้าเก็บเป็น array รหัสจะค้างเป็นของเก่า
+--   แล้วสิทธิ์จะเพี้ยนเงียบ ๆ โดยไม่มีอะไรฟ้อง
+--   ตารางเชื่อมมี foreign key + on update cascade รหัสจึงตามไปเอง
+-- =====================================================================
+
+-- ── โหมดผู้ชมของแต่ละลิงก์ ───────────────────────────────────────────
+alter table work_links
+  add column if not exists audience text not null default 'managers';
+
+-- ของเดิมทั้งหมดเป็น managers อยู่แล้วจากค่าตั้งต้น พฤติกรรมเก่าจึงไม่เปลี่ยน
+alter table work_links drop constraint if exists work_links_audience_chk;
+alter table work_links add constraint work_links_audience_chk
+  check (audience in ('all', 'managers', 'custom'));
+
+
+-- ── แผนกที่เห็นลิงก์นี้ ──────────────────────────────────────────────
+create table if not exists work_link_depts (
+  link_id   bigint not null references work_links (id) on delete cascade,
+  dept_code text   not null references departments (code) on update cascade on delete cascade,
+  primary key (link_id, dept_code)
+);
+
+-- ── คนที่เห็นลิงก์นี้เป็นรายคน ───────────────────────────────────────
+create table if not exists work_link_users (
+  link_id bigint not null references work_links (id) on delete cascade,
+  user_id uuid   not null references profiles (id) on delete cascade,
+  primary key (link_id, user_id)
+);
+
+create index if not exists work_link_users_user_idx on work_link_users (user_id);
+
+
+-- ---------------------------------------------------------------------
+-- ตัวตัดสินว่าเห็นไหมในโหมด custom
+--
+-- ต้องเป็น security definer เพราะถูกเรียกจาก policy ของ work_links
+-- ถ้าอ่านตารางเชื่อมตรง ๆ ใน policy มันจะไปติด RLS ของตารางเชื่อมอีกชั้น
+-- แล้วหน้างานจะไม่เห็นอะไรเลยทั้งที่ตั้งสิทธิ์ให้แล้ว
+-- ---------------------------------------------------------------------
+create or replace function my_sees_work_link(p_id bigint) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1
+      from work_link_depts d
+     where d.link_id = p_id
+       and (
+            d.dept_code = 'ALL'          -- ตั้งไว้ว่าทุกแผนก
+         or 'ALL' = any(my_depts())      -- คนที่สังกัด "ทุกแผนก"
+         or d.dept_code = any(my_depts())
+       )
+  )
+  or exists (
+    select 1 from work_link_users u
+     where u.link_id = p_id and u.user_id = auth.uid()
+  );
+$$;
+
+grant execute on function my_sees_work_link(bigint) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- สิทธิ์อ่าน
+--
+-- เจ้าของระบบเห็นทุกอันรวมที่ปิดอยู่ เพราะต้องจัดการในหน้าเว็บ
+-- ที่เหลือเห็นเฉพาะที่เปิดใช้และตรงกับโหมดผู้ชม
+-- ---------------------------------------------------------------------
+drop policy if exists read_work_links on work_links;
+create policy read_work_links on work_links for select to authenticated
+  using (
+    my_role() = 'admin'
+    or (
+      is_active
+      and (
+           audience = 'all'
+        or (audience = 'managers' and my_can_proxy())
+        or (audience = 'custom' and my_sees_work_link(id))
+      )
+    )
+  );
+
+-- ตารางเชื่อมเปิดให้เจ้าของระบบอย่างเดียว คนอื่นไม่ต้องอ่านเอง
+-- เพราะการกรองเกิดที่ policy ของ work_links ไปแล้ว
+alter table work_link_depts enable row level security;
+alter table work_link_users enable row level security;
+
+drop policy if exists manage_work_link_depts on work_link_depts;
+create policy manage_work_link_depts on work_link_depts for all to authenticated
+  using (my_role() = 'admin') with check (my_role() = 'admin');
+
+drop policy if exists manage_work_link_users on work_link_users;
+create policy manage_work_link_users on work_link_users for all to authenticated
+  using (my_role() = 'admin') with check (my_role() = 'admin');
+
+
+-- ---------------------------------------------------------------------
+-- บันทึกลิงก์พร้อมผู้ชมในครั้งเดียว
+--
+-- ถ้าแยกเป็นหลายคำสั่งจากฝั่งหน้าเว็บ เน็ตหลุดกลางคันจะได้ลิงก์ที่
+-- ตั้งโหมด custom ไว้แต่ไม่มีใครอยู่ในรายชื่อ = ไม่มีใครเห็นเลย
+-- ---------------------------------------------------------------------
+create or replace function save_work_link(
+  p_id        bigint,
+  p_title     text,
+  p_url       text,
+  p_note      text,
+  p_sort_no   integer,
+  p_is_active boolean,
+  p_audience  text,
+  p_depts     text[],
+  p_users     uuid[]
+) returns bigint
+language plpgsql security definer set search_path = public as $$
+declare v_id bigint;
+begin
+  if my_role() <> 'admin' then
+    raise exception 'เฉพาะเจ้าของระบบเท่านั้นที่แก้ลิงก์งานได้';
+  end if;
+
+  if coalesce(btrim(p_title), '') = '' or coalesce(btrim(p_url), '') = '' then
+    raise exception 'ต้องใส่ทั้งชื่อและลิงก์';
+  end if;
+
+  if p_audience not in ('all', 'managers', 'custom') then
+    raise exception 'โหมดผู้ชมไม่ถูกต้อง';
+  end if;
+
+  -- เลือกเองแต่ไม่ได้เลือกใครเลย = ลิงก์ที่ไม่มีใครเห็น ซึ่งไม่ใช่สิ่งที่ตั้งใจแน่ ๆ
+  if p_audience = 'custom'
+     and coalesce(array_length(p_depts, 1), 0) = 0
+     and coalesce(array_length(p_users, 1), 0) = 0 then
+    raise exception 'เลือกเองต้องเลือกอย่างน้อยหนึ่งแผนกหรือหนึ่งคน';
+  end if;
+
+  if p_id is null then
+    insert into work_links (title, url, note, sort_no, is_active, audience)
+    values (btrim(p_title), btrim(p_url), nullif(btrim(coalesce(p_note, '')), ''),
+            coalesce(p_sort_no, 0), coalesce(p_is_active, true), p_audience)
+    returning id into v_id;
+  else
+    update work_links
+       set title     = btrim(p_title),
+           url       = btrim(p_url),
+           note      = nullif(btrim(coalesce(p_note, '')), ''),
+           sort_no   = coalesce(p_sort_no, 0),
+           is_active = coalesce(p_is_active, true),
+           audience  = p_audience
+     where id = p_id
+    returning id into v_id;
+
+    if v_id is null then
+      raise exception 'ไม่พบลิงก์ที่จะแก้';
+    end if;
+  end if;
+
+  -- เขียนทับรายชื่อทั้งชุด ง่ายกว่าไล่เทียบว่าอันไหนเพิ่มอันไหนลบ
+  delete from work_link_depts where link_id = v_id;
+  delete from work_link_users where link_id = v_id;
+
+  if p_audience = 'custom' then
+    insert into work_link_depts (link_id, dept_code)
+    select v_id, d from unnest(coalesce(p_depts, '{}')) as d
+     where exists (select 1 from departments x where x.code = d)
+    on conflict do nothing;
+
+    insert into work_link_users (link_id, user_id)
+    select v_id, u from unnest(coalesce(p_users, '{}')) as u
+     where exists (select 1 from profiles x where x.id = u)
+    on conflict do nothing;
+  end if;
+
+  return v_id;
+end $$;
+
+grant execute on function save_work_link(bigint, text, text, text, integer, boolean, text, text[], uuid[])
+  to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล
+-- ---------------------------------------------------------------------
+select 'คอลัมน์ audience' as สิ่งที่ตรวจ,
+       count(*)::text as ผล
+  from information_schema.columns
+ where table_name = 'work_links' and column_name = 'audience'
+union all
+select 'ตาราง work_link_depts', count(*)::text
+  from information_schema.tables where table_name = 'work_link_depts'
+union all
+select 'ตาราง work_link_users', count(*)::text
+  from information_schema.tables where table_name = 'work_link_users'
+union all
+select 'ฟังก์ชัน save_work_link', count(*)::text
+  from pg_proc where proname = 'save_work_link'
+union all
+select 'ลิงก์ที่เป็นโหมด managers อยู่', count(*)::text
+  from work_links where audience = 'managers';
+-- =====================================================================
+-- BPL SUPPLY — ลิงก์งาน เลือกตามตำแหน่งได้ด้วย
+-- รันต่อจาก 053 · ปลอดภัยที่จะรันซ้ำ
+--
+-- 053 เลือกได้แค่ "แผนกไหน" กับ "ใครบ้าง" ซึ่งยังไม่พอ
+-- ของจริงคือบางลิงก์ให้เห็นแค่แอดมิน บางอันแค่ผู้ตรวจสอบ
+-- บางอันแค่หน้างาน และบางอันแค่เจ้าของระบบคนเดียว
+--
+-- ผู้ตรวจสอบไม่ใช่ role ในฐานข้อมูล เป็นธงที่ปักบนคนที่ role เป็นอะไรก็ได้
+-- จึงเก็บเป็น "คีย์ตำแหน่ง" 4 ค่าแทนที่จะอ้าง enum user_role ตรง ๆ
+--   staff      หน้างาน
+--   supervisor แอดมิน
+--   admin      เจ้าของระบบ
+--   dispatch   ผู้ตรวจสอบ (มาจากธง can_dispatch)
+--
+-- เจ้าของระบบยังเห็นทุกลิงก์เสมอไม่ว่าตั้งอะไรไว้ เพราะต้องเข้าไปแก้ได้
+-- =====================================================================
+
+create table if not exists work_link_roles (
+  link_id  bigint not null references work_links (id) on delete cascade,
+  role_key text   not null,
+  primary key (link_id, role_key)
+);
+
+alter table work_link_roles drop constraint if exists work_link_roles_key_chk;
+alter table work_link_roles add constraint work_link_roles_key_chk
+  check (role_key in ('staff', 'supervisor', 'admin', 'dispatch'));
+
+alter table work_link_roles enable row level security;
+
+drop policy if exists manage_work_link_roles on work_link_roles;
+create policy manage_work_link_roles on work_link_roles for all to authenticated
+  using (my_role() = 'admin') with check (my_role() = 'admin');
+
+
+-- ---------------------------------------------------------------------
+-- ย้ายลิงก์โหมด managers เดิมมาเป็นการเลือกตำแหน่ง
+--
+-- ความหมายเท่าเดิมเป๊ะ (แอดมิน + เจ้าของระบบ + ผู้ตรวจสอบ)
+-- แต่พอเป็นตำแหน่งแล้วเจ้าของระบบแก้ทีหลังได้ เช่นตัดผู้ตรวจสอบออก
+-- ---------------------------------------------------------------------
+insert into work_link_roles (link_id, role_key)
+select l.id, r.k
+  from work_links l
+ cross join (values ('supervisor'), ('admin'), ('dispatch')) as r(k)
+ where l.audience = 'managers'
+on conflict do nothing;
+
+update work_links set audience = 'custom' where audience = 'managers';
+
+
+-- ---------------------------------------------------------------------
+-- ตัวตัดสินว่าเห็นไหมในโหมด custom — เพิ่มเงื่อนไขตำแหน่ง
+--
+-- สามเงื่อนไขเป็น "หรือ" กัน ใครเข้าข้อใดข้อหนึ่งก็เห็น
+-- ตั้งตำแหน่งกับแผนกพร้อมกันจึงหมายถึง "ตำแหน่งนี้ หรือ แผนกนี้"
+-- ไม่ใช่ "ตำแหน่งนี้ที่อยู่แผนกนี้" — ถ้าอยากเจาะขนาดนั้นให้เลือกรายคนแทน
+-- ---------------------------------------------------------------------
+create or replace function my_sees_work_link(p_id bigint) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1
+      from work_link_roles r
+     where r.link_id = p_id
+       and (
+            r.role_key = my_role()::text
+         or (r.role_key = 'dispatch' and my_can_dispatch())
+       )
+  )
+  or exists (
+    select 1
+      from work_link_depts d
+     where d.link_id = p_id
+       and (
+            d.dept_code = 'ALL'
+         or 'ALL' = any(my_depts())
+         or d.dept_code = any(my_depts())
+       )
+  )
+  or exists (
+    select 1 from work_link_users u
+     where u.link_id = p_id and u.user_id = auth.uid()
+  );
+$$;
+
+grant execute on function my_sees_work_link(bigint) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- บันทึกลิงก์ — รับรายการตำแหน่งเพิ่มเข้ามา
+--
+-- ต้องทิ้งตัวเดิมก่อน ไม่งั้นจะมีฟังก์ชันชื่อซ้ำสองตัวคนละจำนวนพารามิเตอร์
+-- แล้ว PostgREST จะเลือกไม่ถูกและตอบ 300 กลับมา
+-- ---------------------------------------------------------------------
+drop function if exists save_work_link(bigint, text, text, text, integer, boolean, text, text[], uuid[]);
+
+create or replace function save_work_link(
+  p_id        bigint,
+  p_title     text,
+  p_url       text,
+  p_note      text,
+  p_sort_no   integer,
+  p_is_active boolean,
+  p_audience  text,
+  p_roles     text[],
+  p_depts     text[],
+  p_users     uuid[]
+) returns bigint
+language plpgsql security definer set search_path = public as $$
+declare
+  v_id bigint;
+  v_n  integer;
+begin
+  if my_role() <> 'admin' then
+    raise exception 'เฉพาะเจ้าของระบบเท่านั้นที่แก้ลิงก์งานได้';
+  end if;
+
+  if coalesce(btrim(p_title), '') = '' or coalesce(btrim(p_url), '') = '' then
+    raise exception 'ต้องใส่ทั้งชื่อและลิงก์';
+  end if;
+
+  if p_audience not in ('all', 'custom') then
+    raise exception 'โหมดผู้ชมไม่ถูกต้อง';
+  end if;
+
+  v_n := coalesce(array_length(p_roles, 1), 0)
+       + coalesce(array_length(p_depts, 1), 0)
+       + coalesce(array_length(p_users, 1), 0);
+
+  -- เลือกเองแต่ไม่ได้เลือกใครเลย = ลิงก์ที่ไม่มีใครเห็น ซึ่งไม่ใช่สิ่งที่ตั้งใจแน่ ๆ
+  if p_audience = 'custom' and v_n = 0 then
+    raise exception 'เลือกเองต้องเลือกอย่างน้อยหนึ่งอย่าง — ตำแหน่ง แผนก หรือรายคน';
+  end if;
+
+  if p_id is null then
+    insert into work_links (title, url, note, sort_no, is_active, audience)
+    values (btrim(p_title), btrim(p_url), nullif(btrim(coalesce(p_note, '')), ''),
+            coalesce(p_sort_no, 0), coalesce(p_is_active, true), p_audience)
+    returning id into v_id;
+  else
+    update work_links
+       set title     = btrim(p_title),
+           url       = btrim(p_url),
+           note      = nullif(btrim(coalesce(p_note, '')), ''),
+           sort_no   = coalesce(p_sort_no, 0),
+           is_active = coalesce(p_is_active, true),
+           audience  = p_audience
+     where id = p_id
+    returning id into v_id;
+
+    if v_id is null then
+      raise exception 'ไม่พบลิงก์ที่จะแก้';
+    end if;
+  end if;
+
+  -- เขียนทับทั้งชุด ง่ายกว่าไล่เทียบว่าอันไหนเพิ่มอันไหนลบ
+  delete from work_link_roles where link_id = v_id;
+  delete from work_link_depts where link_id = v_id;
+  delete from work_link_users where link_id = v_id;
+
+  if p_audience = 'custom' then
+    insert into work_link_roles (link_id, role_key)
+    select v_id, r from unnest(coalesce(p_roles, '{}')) as r
+     where r in ('staff', 'supervisor', 'admin', 'dispatch')
+    on conflict do nothing;
+
+    insert into work_link_depts (link_id, dept_code)
+    select v_id, d from unnest(coalesce(p_depts, '{}')) as d
+     where exists (select 1 from departments x where x.code = d)
+    on conflict do nothing;
+
+    insert into work_link_users (link_id, user_id)
+    select v_id, u from unnest(coalesce(p_users, '{}')) as u
+     where exists (select 1 from profiles x where x.id = u)
+    on conflict do nothing;
+  end if;
+
+  return v_id;
+end $$;
+
+grant execute on function
+  save_work_link(bigint, text, text, text, integer, boolean, text, text[], text[], uuid[])
+  to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล
+-- ---------------------------------------------------------------------
+select
+  (select count(*) from information_schema.tables
+    where table_name = 'work_link_roles')                            as ตาราง_roles,
+  (select count(*) from pg_proc where proname = 'save_work_link')    as จำนวนฟังก์ชันบันทึก,
+  (select count(*) from work_links where audience = 'managers')      as ลิงก์ที่ยังค้างโหมดเก่า,
+  (select count(*) from work_links where audience = 'all')           as ลิงก์ทุกคนเห็น,
+  (select count(*) from work_links where audience = 'custom')        as ลิงก์เลือกเอง,
+  (select count(*) from work_link_roles)                             as แถวตำแหน่งทั้งหมด;
+-- =====================================================================
+-- BPL SUPPLY — สถานะระบบ ดูว่าใกล้เต็มแผนฟรีหรือยัง
+-- รันต่อจาก 054 · ปลอดภัยที่จะรันซ้ำ
+--
+-- เจ้าของระบบต้องรู้ได้เองว่าเหลือที่เท่าไหร่ ไม่ต้องรอให้ระบบล่มก่อน
+-- แล้วค่อยมาถาม
+--
+-- ตัวเลขแบ่งเป็นสองชั้น ต้องแยกให้ชัดว่าอันไหนเป็นอันไหน
+--   วัดจริง    ขนาดฐานข้อมูล จำนวนแถว จำนวนคนที่ล็อกอิน — ถามจาก Postgres ตรง ๆ
+--   ประมาณการ  egress กับจำนวนครั้งที่เรียก Edge Function
+--
+-- ทำไม egress ถึงได้แค่ประมาณ
+--   Supabase นับ egress ที่ชั้นเครือข่าย ไม่ได้เก็บไว้ในฐานข้อมูลของเรา
+--   เราจึงคำนวณย้อนจากขนาดรูปที่บันทึกไว้ในคอลัมน์ bytes
+--   ซึ่งครอบคลุมส่วนที่กินเยอะสุดจริง แต่ไม่รวมพวก JSON ปลีกย่อย
+--   ตัวเลขทางการยังต้องดูที่หน้า Usage ของ Supabase หน้าจอจึงลิงก์ไปให้ด้วย
+-- =====================================================================
+
+create or replace function system_health() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_db        bigint;
+  v_photo_n   bigint;
+  v_photo_b   bigint;
+  v_push      bigint;
+  v_mau       bigint;
+  v_first     timestamptz;
+  v_days      numeric;
+begin
+  if not my_can_proxy() then
+    raise exception 'ดูสถานะระบบได้เฉพาะแอดมินและผู้ตรวจสอบ';
+  end if;
+
+  v_db := pg_database_size(current_database());
+
+  -- รูปในรอบ 30 วัน — รวมทั้งสามทาง เบิก คืน และ asset
+  select count(*), coalesce(sum(bytes), 0) into v_photo_n, v_photo_b
+    from (
+      select p.bytes
+        from asset_txn_photos p
+        join asset_txns t on t.id = p.txn_id
+       where t.created_at > now() - interval '30 days'
+      union all
+      select bytes from requisition_photos where created_at > now() - interval '30 days'
+      union all
+      select bytes from return_photos      where created_at > now() - interval '30 days'
+    ) x;
+
+  select count(*) into v_push
+    from notification_log where sent_at > now() - interval '30 days';
+
+  -- คนที่ล็อกอินหรือต่ออายุโทเคนใน 30 วัน = นิยาม MAU ของ Supabase
+  select count(*) into v_mau
+    from auth.users where last_sign_in_at > now() - interval '30 days';
+
+  -- อัตราการโตของฐานข้อมูล คิดจากอายุข้อมูลจริงที่มีอยู่
+  select min(created_at) into v_first from requisitions;
+  v_first := least(v_first, (select min(created_at) from asset_txns));
+  v_days  := greatest(extract(epoch from (now() - coalesce(v_first, now() - interval '1 day'))) / 86400, 1);
+
+  return jsonb_build_object(
+    'measured_at', now(),
+
+    'db', jsonb_build_object(
+      'bytes', v_db,
+      'limit_bytes', 500 * 1024 * 1024,
+      'per_day_bytes', round(v_db / v_days),
+      'days_of_data', round(v_days)
+    ),
+
+    'tables', (
+      select jsonb_agg(jsonb_build_object('name', t, 'bytes', b, 'rows', r) order by b desc)
+        from (
+          select c.relname as t,
+                 pg_total_relation_size(c.oid) as b,
+                 coalesce(s.n_live_tup, 0) as r
+            from pg_class c
+            join pg_namespace ns on ns.oid = c.relnamespace
+            left join pg_stat_user_tables s on s.relid = c.oid
+           where ns.nspname = 'public' and c.relkind = 'r'
+           order by pg_total_relation_size(c.oid) desc
+           limit 6
+        ) y
+    ),
+
+    -- คูณสอง เพราะรูปหนึ่งใบวิ่งผ่าน Edge Function สองรอบ
+    -- ขามาตอนอัปขึ้น Drive และขากลับตอนแอดมินเปิดดู
+    'egress', jsonb_build_object(
+      'est_bytes', v_photo_b * 2,
+      'limit_bytes', 5::bigint * 1024 * 1024 * 1024,
+      'photo_count', v_photo_n,
+      'photo_bytes', v_photo_b
+    ),
+
+    'edge', jsonb_build_object(
+      'est_calls', v_photo_n * 2 + v_push,
+      'limit_calls', 500000,
+      'uploads', v_photo_n,
+      'pushes', v_push
+    ),
+
+    'mau', jsonb_build_object(
+      'used', v_mau,
+      'limit', 50000,
+      'active_profiles', (select count(*) from profiles where is_active)
+    ),
+
+    'storage', jsonb_build_object(
+      'note', 'รูปเก็บที่ Google Drive ไม่กินโควตา Supabase'
+    )
+  );
+end $$;
+
+grant execute on function system_health() to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล
+-- ---------------------------------------------------------------------
+select jsonb_pretty(system_health()) as ผลตรวจ;
+-- =====================================================================
+-- BPL SUPPLY — เก็บสถิติขนาดฐานข้อมูลรายวัน
+-- รันต่อจาก 055 · ปลอดภัยที่จะรันซ้ำ
+--
+-- 055 คำนวณอัตราการโตด้วยวิธีที่ผิด คือเอาขนาดฐานข้อมูลทั้งก้อน
+-- หารด้วยอายุของข้อมูลที่เก่าที่สุด
+--
+-- ปัญหาคือขนาดฐานข้อมูลส่วนใหญ่เป็นของที่มีมาตั้งแต่วันแรก
+-- ทั้ง Postgres เอง ส่วนขยาย และระบบ auth ของ Supabase ซึ่งไม่โตตามการใช้งาน
+-- พอเพิ่งล้างข้อมูลเทสไป อายุข้อมูลเหลือ 1 วัน สูตรเลยอ่านว่า
+-- "โตวันละ 15.6 MB จะเต็มใน 31 วัน" ทั้งที่ความจริงโตวันละไม่กี่สิบ KB
+--
+-- ตัวเลขที่ผิดแบบน่าตกใจแย่กว่าไม่มีตัวเลข เพราะทำให้คนเลิกเชื่อทั้งหน้า
+--
+-- วิธีที่ถูกคือวัดของจริง จดขนาดไว้วันละครั้ง แล้วเทียบระหว่างวัน
+-- ส่วนต่างที่ได้คือการโตจริง ไม่ปนกับฐานที่มีมาแต่แรก
+-- ระหว่างที่ยังจดไม่ครบสัปดาห์ ให้บอกตรง ๆ ว่ายังบอกไม่ได้
+-- =====================================================================
+
+create table if not exists db_size_log (
+  day   date   primary key,
+  bytes bigint not null
+);
+
+alter table db_size_log enable row level security;
+
+drop policy if exists read_db_size_log on db_size_log;
+create policy read_db_size_log on db_size_log for select to authenticated
+  using (my_can_proxy());
+
+
+create or replace function system_health() returns jsonb
+language plpgsql volatile security definer set search_path = public as $$
+declare
+  v_db        bigint;
+  v_photo_n   bigint;
+  v_photo_b   bigint;
+  v_push      bigint;
+  v_mau       bigint;
+  v_first     date;
+  v_first_b   bigint;
+  v_span      integer;
+  v_per_day   bigint := null;
+  v_days_left integer := null;
+begin
+  if not my_can_proxy() then
+    raise exception 'ดูสถานะระบบได้เฉพาะแอดมินและผู้ตรวจสอบ';
+  end if;
+
+  v_db := pg_database_size(current_database());
+
+  -- จดขนาดของวันนี้ไว้ เรียกกี่ครั้งก็ได้ เก็บแค่ค่าล่าสุดของวัน
+  insert into db_size_log (day, bytes) values (current_date, v_db)
+  on conflict (day) do update set bytes = excluded.bytes;
+
+  -- เทียบกับวันที่เก่าที่สุดที่จดไว้ ต้องมีอย่างน้อย 7 วันถึงจะเชื่อได้
+  select day, bytes into v_first, v_first_b
+    from db_size_log order by day limit 1;
+
+  v_span := current_date - v_first;
+
+  if v_span >= 7 and v_db > v_first_b then
+    v_per_day := (v_db - v_first_b) / v_span;
+    if v_per_day > 0 then
+      v_days_left := greatest((500 * 1024 * 1024 - v_db) / v_per_day, 0);
+    end if;
+  end if;
+
+  select count(*), coalesce(sum(bytes), 0) into v_photo_n, v_photo_b
+    from (
+      select p.bytes
+        from asset_txn_photos p
+        join asset_txns t on t.id = p.txn_id
+       where t.created_at > now() - interval '30 days'
+      union all
+      select bytes from requisition_photos where created_at > now() - interval '30 days'
+      union all
+      select bytes from return_photos      where created_at > now() - interval '30 days'
+    ) x;
+
+  select count(*) into v_push
+    from notification_log where sent_at > now() - interval '30 days';
+
+  select count(*) into v_mau
+    from auth.users where last_sign_in_at > now() - interval '30 days';
+
+  return jsonb_build_object(
+    'measured_at', now(),
+
+    'db', jsonb_build_object(
+      'bytes', v_db,
+      'limit_bytes', 500 * 1024 * 1024,
+      -- null = ยังจดสถิติไม่ครบ 7 วัน หน้าจอต้องเขียนว่ายังบอกไม่ได้ ห้ามเดา
+      'per_day_bytes', v_per_day,
+      'days_left', v_days_left,
+      'tracked_days', v_span
+    ),
+
+    'tables', (
+      select jsonb_agg(jsonb_build_object('name', t, 'bytes', b, 'rows', r) order by b desc)
+        from (
+          select c.relname as t,
+                 pg_total_relation_size(c.oid) as b,
+                 coalesce(s.n_live_tup, 0) as r
+            from pg_class c
+            join pg_namespace ns on ns.oid = c.relnamespace
+            left join pg_stat_user_tables s on s.relid = c.oid
+           where ns.nspname = 'public' and c.relkind = 'r'
+           order by pg_total_relation_size(c.oid) desc
+           limit 6
+        ) y
+    ),
+
+    -- คูณสอง เพราะรูปหนึ่งใบวิ่งผ่าน Edge Function สองรอบ
+    -- ขามาตอนอัปขึ้น Drive และขากลับตอนแอดมินเปิดดู
+    'egress', jsonb_build_object(
+      'est_bytes', v_photo_b * 2,
+      'limit_bytes', 5::bigint * 1024 * 1024 * 1024,
+      'photo_count', v_photo_n,
+      'photo_bytes', v_photo_b
+    ),
+
+    'edge', jsonb_build_object(
+      'est_calls', v_photo_n * 2 + v_push,
+      'limit_calls', 500000,
+      'uploads', v_photo_n,
+      'pushes', v_push
+    ),
+
+    'mau', jsonb_build_object(
+      'used', v_mau,
+      'limit', 50000,
+      'active_profiles', (select count(*) from profiles where is_active)
+    )
+  );
+end $$;
+
+grant execute on function system_health() to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล
+-- ---------------------------------------------------------------------
+select jsonb_pretty(system_health() -> 'db') as ผลตรวจ_ส่วนฐานข้อมูล;
+-- =====================================================================
+-- BPL SUPPLY — สถานะวัสดุ "ดูอย่างเดียว"
+-- รันต่อจาก 056 · ปลอดภัยที่จะรันซ้ำ
+--
+-- ของบางอย่างต้องเบิกผ่านระบบ BY ไม่ใช่แอพนี้
+-- แต่หน้างานยังเข้ามากดเบิกในแอพอยู่เรื่อย ๆ เพราะไม่รู้
+-- เลยกลายเป็นสต็อกในแอพถูกตัดทั้งที่ของจริงไม่ได้ออกจากชั้น
+--
+-- ทางแก้คือให้ของชิ้นนั้นยังเห็นสต็อกได้ แต่กดเบิกไม่ได้
+-- พร้อมบอกเหตุผลไว้ตรงนั้นเลยว่าต้องไปเบิกที่ไหนแทน
+-- ถ้าแค่ซ่อนของทิ้ง หน้างานจะนึกว่าของหมดแล้วเดินไปหยิบเองที่ชั้น
+--
+-- กระทบของที่ใช้อยู่ไหม — ไม่
+--   คอลัมน์ใหม่มีค่าตั้งต้นเป็น false ทุกแถวเดิมจึงยังเบิกได้เหมือนเดิม
+--   ด่านในฟังก์ชันเบิกจะเงียบสนิทจนกว่าจะมีคนกดสวิตช์เป็นรายตัว
+--   ตัวฟังก์ชันคัดลอกมาจากของจริงที่ใช้อยู่ (035) เติมเฉพาะด่านนี้ ไม่แตะอย่างอื่น
+-- =====================================================================
+
+alter table items
+  add column if not exists view_only      boolean not null default false,
+  add column if not exists view_only_note text;
+
+comment on column items.view_only is
+  'true = โชว์สต็อกได้แต่กดเบิกในแอพไม่ได้ เช่นของที่ต้องเบิกผ่านระบบ BY';
+comment on column items.view_only_note is
+  'เหตุผลที่เบิกไม่ได้ · แสดงให้หน้างานเห็นตรงหน้ารายการ';
+
+
+-- ---------------------------------------------------------------------
+-- ฟังก์ชันเบิก — เหมือนเดิมทุกบรรทัด เพิ่มแค่ด่านตรวจ view_only
+-- ---------------------------------------------------------------------
+create or replace function create_requisition(
+  p_lines            jsonb,
+  p_purpose          text default null,
+  p_note             text default null,
+  p_evidence_file_id text default null,
+  p_evidence_link    text default null,
+  p_evidence_bytes   integer default null
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_profile    profiles%rowtype;
+  v_req_id     uuid;
+  v_ref        text;
+  v_line       jsonb;
+  v_item       items%rowtype;
+  v_qty        integer;
+  v_auto       boolean;
+  v_all_auto   boolean := true;
+  v_status     req_status;
+begin
+  select * into v_profile from profiles where id = auth.uid();
+  if not found or not v_profile.is_active then
+    raise exception 'ไม่พบผู้ใช้หรือบัญชีถูกระงับ';
+  end if;
+
+  if jsonb_array_length(p_lines) = 0 then
+    raise exception 'ตะกร้าว่าง';
+  end if;
+
+  -- กันกดซ้ำ · เน็ตฮับหลุดกลางคันบ่อย คนกดยืนยันแล้วจอค้างมักกดซ้ำ
+  -- ทั้งที่รอบแรกเข้าไปแล้วและตัดสต็อกไปแล้ว รอบสองจะตัดซ้ำอีกชุด
+  -- ถ้าคนเดิมส่งรายการชุดเดิมเป๊ะ ๆ ภายในสองนาที ถือว่าเป็นใบเดิม
+  -- ไม่ใช่ error เพราะสิ่งที่ผู้ใช้ต้องการคือ 'เบิกแล้ว' ซึ่งเป็นจริง
+  select r.id, r.ref_no, r.status into v_req_id, v_ref, v_status
+    from requisitions r
+   where r.requester_id = v_profile.id
+     and r.created_at > now() - interval '2 minutes'
+     and (
+       select coalesce(jsonb_agg(jsonb_build_object('item_id', li.item_id, 'qty', li.qty_requested)
+                                 order by li.item_id), '[]'::jsonb)
+       from requisition_items li where li.requisition_id = r.id
+     ) = (
+       select coalesce(jsonb_agg(jsonb_build_object('item_id', (x->>'item_id')::bigint,
+                                                    'qty', (x->>'qty')::int)
+                                 order by (x->>'item_id')::bigint), '[]'::jsonb)
+       from jsonb_array_elements(p_lines) x
+     )
+   order by r.created_at desc
+   limit 1;
+
+  if v_req_id is not null then
+    return jsonb_build_object('ref_no', v_ref, 'id', v_req_id,
+                              'status', v_status, 'duplicate', true);
+  end if;
+
+  select (value)::boolean into v_auto from app_settings where key = 'auto_approve_consumables';
+  v_auto := coalesce(v_auto, false);
+
+  for v_line in select * from jsonb_array_elements(p_lines) loop
+    v_qty := (v_line->>'qty')::int;
+    if v_qty is null or v_qty <= 0 then
+      raise exception 'จำนวนไม่ถูกต้อง';
+    end if;
+
+    select * into v_item from items
+      where id = (v_line->>'item_id')::bigint and is_active
+      for update;
+
+    if not found then
+      raise exception 'ไม่พบวัสดุรหัส %', v_line->>'item_id';
+    end if;
+
+    -- ด่านของ "ดูอย่างเดียว"
+    -- ของบางอย่างต้องไปเบิกในระบบ BY แต่หน้างานยังเผลอมากดเบิกในแอพนี้
+    -- ซ่อนปุ่มอย่างเดียวไม่พอ เพราะยิง API ตรงก็ยังเบิกได้อยู่ดี
+    -- ทุกแถวตอนนี้ view_only = false ด่านนี้จึงยังไม่ทำงานกับใครเลย
+    -- จนกว่าเจ้าของระบบจะกดสวิตช์เป็นรายตัวเอง
+    if v_item.view_only then
+      raise exception '% เบิกในแอพนี้ไม่ได้ · %',
+        v_item.name,
+        coalesce(nullif(btrim(v_item.view_only_note), ''), 'ดูสต็อกได้อย่างเดียว');
+    end if;
+    if v_item.qty_on_hand < v_qty then
+      raise exception 'สต็อกไม่พอ: % เหลือ % ขอ %', v_item.name, v_item.qty_on_hand, v_qty;
+    end if;
+
+    -- ติ๊กไว้รายตัว = รออนุมัติเสมอ ชนะทุกกฎ
+    if v_item.requires_approval then
+      v_all_auto := false;
+    elsif not exists (
+      select 1 from categories c
+      where c.id = v_item.category_id
+        and c.auto_approvable
+        and (v_item.qty_on_hand - v_qty) >= v_item.min_qty
+    ) then
+      v_all_auto := false;
+    end if;
+  end loop;
+
+  v_status := case when v_auto and v_all_auto then 'approved'::req_status
+                   else 'pending'::req_status end;
+  v_ref := next_ref_no();
+
+  insert into requisitions (ref_no, requester_id, hub_code, purpose, note, status,
+                            evidence_file_id, evidence_web_link, evidence_bytes,
+                            decided_at, decided_by)
+  values (v_ref, v_profile.id, v_profile.hub_code, p_purpose, p_note, v_status,
+          p_evidence_file_id, p_evidence_link, p_evidence_bytes,
+          case when v_status = 'approved' then now() end,
+          case when v_status = 'approved' then v_profile.id end)
+  returning id into v_req_id;
+
+  for v_line in select * from jsonb_array_elements(p_lines) loop
+    v_qty := (v_line->>'qty')::int;
+    select * into v_item from items where id = (v_line->>'item_id')::bigint;
+
+    insert into requisition_items (requisition_id, item_id, qty_requested,
+                                   qty_approved, status, qty_before, qty_after)
+    values (v_req_id, v_item.id, v_qty,
+            case when v_status = 'approved' then v_qty end,
+            case when v_status = 'approved' then 'approved'::line_status
+                 else 'pending'::line_status end,
+            v_item.qty_on_hand,
+            case when v_status = 'approved' then v_item.qty_on_hand - v_qty end);
+
+    if v_status = 'approved' then
+      update items set qty_on_hand = qty_on_hand - v_qty, updated_at = now()
+        where id = v_item.id;
+      insert into stock_movements (item_id, delta, qty_after, reason, ref_type, ref_id, actor_id)
+        values (v_item.id, -v_qty, v_item.qty_on_hand - v_qty, 'requisition',
+                'requisition', v_req_id::text, v_profile.id);
+    end if;
+  end loop;
+
+  insert into sync_log (requisition_id, channel, state) values
+    (v_req_id, 'SPB'::sync_channel, 'done'::sync_state),
+    (v_req_id, 'GDV'::sync_channel,
+      case when p_evidence_file_id is null then 'pending'::sync_state else 'done'::sync_state end),
+    (v_req_id, 'GSH'::sync_channel, 'pending'::sync_state)
+  on conflict do nothing;
+
+  return jsonb_build_object('ref_no', v_ref, 'id', v_req_id, 'status', v_status);
+end $$;
+
+grant execute on function create_requisition(jsonb, text, text, text, text, integer) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล
+-- ---------------------------------------------------------------------
+select
+  (select count(*) from information_schema.columns
+    where table_name = 'items' and column_name = 'view_only')      as มีคอลัมน์สถานะ,
+  (select count(*) from information_schema.columns
+    where table_name = 'items' and column_name = 'view_only_note') as มีคอลัมน์เหตุผล,
+  (select count(*) from items where view_only)                     as ของที่ตั้งเป็นดูอย่างเดียว,
+  (select count(*) from items where is_active)                     as ของที่เปิดใช้ทั้งหมด;
+-- =====================================================================
+-- BPL SUPPLY — เปิดสิทธิ์แอดมินให้ทำงานแทนเจ้าของระบบได้
+-- รันต่อจาก 057 · ปลอดภัยที่จะรันซ้ำ
+--
+-- เจ้าของระบบจะให้แอดมิน (role = supervisor) ทำงานแทนได้ทุกอย่าง
+-- ที่เหลือไว้เฉพาะเจ้าของมีสองกลุ่มเท่านั้น
+--
+--   ① ลิงก์งานที่ตั้งให้เห็นเฉพาะเจ้าของ
+--      แอดมินยังเห็นเฉพาะลิงก์ที่ตัวเองมีสิทธิ์เหมือนเดิม
+--      และแก้ได้เฉพาะอันที่ตัวเองเห็น — อันที่มองไม่เห็นก็แตะไม่ได้ด้วย
+--
+--   ② การแต่งตั้งเจ้าของระบบ
+--      แอดมินแก้บัญชีคนอื่นได้หมด แต่แตะบัญชีที่เป็นเจ้าของระบบไม่ได้
+--      และตั้งใครเป็นเจ้าของระบบไม่ได้ รวมถึงตั้งตัวเองด้วย
+--      ถ้าไม่กันข้อนี้ คำว่า "เท่ากัน" จะกลายเป็น "ใครก็ยึดระบบได้"
+--      ซึ่งไม่ใช่สิ่งที่เจ้าของขอ
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- ① จัดการผู้ใช้ — แอดมินทำได้ ยกเว้นแตะบัญชีเจ้าของระบบ
+--
+-- using      = แถวเดิมที่จะไปยุ่งด้วย ต้องไม่ใช่เจ้าของระบบ
+-- with check = แถวหลังแก้ ต้องไม่กลายเป็นเจ้าของระบบ
+-- สองอันคู่กันจึงกันได้ทั้ง "ไปลดขั้นเจ้าของ" และ "เลื่อนขั้นตัวเอง"
+-- ---------------------------------------------------------------------
+drop policy if exists write_profiles on profiles;
+create policy write_profiles on profiles for all to authenticated
+  using (
+    my_role() = 'admin'
+    or (my_role() = 'supervisor' and role <> 'admin')
+  )
+  with check (
+    my_role() = 'admin'
+    or (my_role() = 'supervisor' and role <> 'admin')
+  );
+
+
+-- ---------------------------------------------------------------------
+-- ② ลิงก์งาน — แอดมินจัดการได้เฉพาะอันที่ตัวเองมองเห็น
+--
+-- นโยบายอ่านไม่แตะเลย แอดมินจึงยังเห็นเท่าเดิมเป๊ะ
+-- ส่วนการเขียน ผูกกับ "มองเห็นไหม" เพื่อไม่ให้ลบหรือแก้อันที่ไม่เคยเห็น
+-- ด้วยการเดาเลข id เอา
+-- ---------------------------------------------------------------------
+drop policy if exists write_work_links on work_links;
+create policy write_work_links on work_links for all to authenticated
+  using (
+    my_role() = 'admin'
+    or (my_role() = 'supervisor' and (audience = 'all' or my_sees_work_link(id)))
+  )
+  with check (
+    my_role() = 'admin' or my_role() = 'supervisor'
+  );
+
+-- ตารางผู้ชม — เปิดให้แอดมินเฉพาะแถวของลิงก์ที่ตัวเองเห็น
+-- ตัว exists ข้างในวิ่งผ่าน RLS ของ work_links อีกชั้น จึงกรองให้เองอัตโนมัติ
+drop policy if exists manage_work_link_roles on work_link_roles;
+create policy manage_work_link_roles on work_link_roles for all to authenticated
+  using (
+    my_role() = 'admin'
+    or (my_role() = 'supervisor'
+        and exists (select 1 from work_links l where l.id = link_id))
+  )
+  with check (my_role() in ('admin', 'supervisor'));
+
+drop policy if exists manage_work_link_depts on work_link_depts;
+create policy manage_work_link_depts on work_link_depts for all to authenticated
+  using (
+    my_role() = 'admin'
+    or (my_role() = 'supervisor'
+        and exists (select 1 from work_links l where l.id = link_id))
+  )
+  with check (my_role() in ('admin', 'supervisor'));
+
+drop policy if exists manage_work_link_users on work_link_users;
+create policy manage_work_link_users on work_link_users for all to authenticated
+  using (
+    my_role() = 'admin'
+    or (my_role() = 'supervisor'
+        and exists (select 1 from work_links l where l.id = link_id))
+  )
+  with check (my_role() in ('admin', 'supervisor'));
+
+
+-- ---------------------------------------------------------------------
+-- ฟังก์ชันบันทึกลิงก์ — เปิดให้แอดมิน แต่แก้ได้เฉพาะอันที่ตัวเองเห็น
+--
+-- ฟังก์ชันนี้เป็น security definer จึงข้าม RLS ไปเลย
+-- ต้องเช็คเองในตัวฟังก์ชัน ไม่งั้นแอดมินจะยิงแก้ลิงก์ของเจ้าของได้ตรง ๆ
+-- ---------------------------------------------------------------------
+create or replace function save_work_link(
+  p_id        bigint,
+  p_title     text,
+  p_url       text,
+  p_note      text,
+  p_sort_no   integer,
+  p_is_active boolean,
+  p_audience  text,
+  p_roles     text[],
+  p_depts     text[],
+  p_users     uuid[]
+) returns bigint
+language plpgsql security definer set search_path = public as $$
+declare
+  v_id bigint;
+  v_n  integer;
+begin
+  if my_role() not in ('admin', 'supervisor') then
+    raise exception 'เฉพาะเจ้าของระบบและแอดมินเท่านั้นที่แก้ลิงก์งานได้';
+  end if;
+
+  -- แอดมินแก้ได้เฉพาะลิงก์ที่ตัวเองมองเห็น
+  if p_id is not null and my_role() = 'supervisor' then
+    if not exists (
+      select 1 from work_links
+       where id = p_id and (audience = 'all' or my_sees_work_link(id))
+    ) then
+      raise exception 'ลิงก์นี้ตั้งไว้ให้เห็นเฉพาะบางคน คุณจึงแก้ไม่ได้';
+    end if;
+  end if;
+
+  if coalesce(btrim(p_title), '') = '' or coalesce(btrim(p_url), '') = '' then
+    raise exception 'ต้องใส่ทั้งชื่อและลิงก์';
+  end if;
+
+  if p_audience not in ('all', 'custom') then
+    raise exception 'โหมดผู้ชมไม่ถูกต้อง';
+  end if;
+
+  v_n := coalesce(array_length(p_roles, 1), 0)
+       + coalesce(array_length(p_depts, 1), 0)
+       + coalesce(array_length(p_users, 1), 0);
+
+  if p_audience = 'custom' and v_n = 0 then
+    raise exception 'เลือกเองต้องเลือกอย่างน้อยหนึ่งอย่าง — ตำแหน่ง แผนก หรือรายคน';
+  end if;
+
+  if p_id is null then
+    insert into work_links (title, url, note, sort_no, is_active, audience)
+    values (btrim(p_title), btrim(p_url), nullif(btrim(coalesce(p_note, '')), ''),
+            coalesce(p_sort_no, 0), coalesce(p_is_active, true), p_audience)
+    returning id into v_id;
+  else
+    update work_links
+       set title     = btrim(p_title),
+           url       = btrim(p_url),
+           note      = nullif(btrim(coalesce(p_note, '')), ''),
+           sort_no   = coalesce(p_sort_no, 0),
+           is_active = coalesce(p_is_active, true),
+           audience  = p_audience
+     where id = p_id
+    returning id into v_id;
+
+    if v_id is null then
+      raise exception 'ไม่พบลิงก์ที่จะแก้';
+    end if;
+  end if;
+
+  delete from work_link_roles where link_id = v_id;
+  delete from work_link_depts where link_id = v_id;
+  delete from work_link_users where link_id = v_id;
+
+  if p_audience = 'custom' then
+    insert into work_link_roles (link_id, role_key)
+    select v_id, r from unnest(coalesce(p_roles, '{}')) as r
+     where r in ('staff', 'supervisor', 'admin', 'dispatch')
+    on conflict do nothing;
+
+    insert into work_link_depts (link_id, dept_code)
+    select v_id, d from unnest(coalesce(p_depts, '{}')) as d
+     where exists (select 1 from departments x where x.code = d)
+    on conflict do nothing;
+
+    insert into work_link_users (link_id, user_id)
+    select v_id, u from unnest(coalesce(p_users, '{}')) as u
+     where exists (select 1 from profiles x where x.id = u)
+    on conflict do nothing;
+  end if;
+
+  return v_id;
+end $$;
+
+grant execute on function
+  save_work_link(bigint, text, text, text, integer, boolean, text, text[], text[], uuid[])
+  to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล
+-- ---------------------------------------------------------------------
+select
+  (select count(*) from pg_policies
+    where tablename = 'profiles' and policyname = 'write_profiles')      as นโยบายผู้ใช้,
+  (select count(*) from pg_policies
+    where tablename = 'work_links' and policyname = 'write_work_links')  as นโยบายลิงก์,
+  (select count(*) from profiles where role = 'admin'  and is_active)    as เจ้าของระบบ,
+  (select count(*) from profiles where role = 'supervisor' and is_active) as แอดมิน,
+  (select count(*) from profiles where can_dispatch and is_active)       as ผู้ตรวจสอบ;
+-- =====================================================================
+-- BPL SUPPLY — หน้าต่างเวลาเช็คชื่อประชุม และป้ายประกาศ
+-- รันต่อจาก 058 · ปลอดภัยที่จะรันซ้ำ
+--
+-- ① หน้าต่างเวลาเช็คชื่อ
+--    เดิมประกาศนัดแล้วเช็คอินได้ทันทีตลอดเวลา ไม่มีคำว่าสาย
+--    ตอนนี้แบ่งเป็นสามช่วง เปิดก่อนกี่นาที และสายหลังกี่นาที
+--
+--    เวลาทั้งหมดคิดจากนาฬิกาของฐานข้อมูล ไม่ใช่นาฬิกาในมือถือ
+--    ถ้าเชื่อเครื่องผู้ใช้ ใครหมุนเวลาถอยหลังก็เช็คอินไม่สายได้ตลอด
+--    หน้าจอจึงได้รับ "เหลืออีกกี่วินาที" มาจากเซิร์ฟเวอร์แล้วนับถอยหลังเอง
+--
+-- ② ป้ายประกาศ
+--    ที่เดียวกันกับที่คนเปิดมาเช็คอิน จึงเป็นที่ที่คนมองอยู่แล้ว
+--    บังคับวันหมดอายุเสมอ เพราะป้ายที่ค้างสิบอันคือป้ายที่ไม่มีใครอ่าน
+--
+-- กระทบของที่ใช้อยู่ไหม — ไม่
+--    คอลัมน์ใหม่มีค่าตั้งต้น นัดเก่าที่ยังไม่ถึงเวลาจึงได้กติกาเดียวกันอัตโนมัติ
+--    ตารางประกาศเป็นของใหม่ทั้งตาราง ไม่มีอะไรเดิมพึ่งพามัน
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- ① กติกาเวลาของการประชุม
+-- ---------------------------------------------------------------------
+alter table meeting_events
+  add column if not exists open_before_min integer not null default 15,
+  add column if not exists late_after_min  integer not null default 10;
+
+alter table meeting_events drop constraint if exists meeting_events_window_chk;
+alter table meeting_events add constraint meeting_events_window_chk
+  check (open_before_min between 0 and 240 and late_after_min between 0 and 240);
+
+comment on column meeting_events.open_before_min is
+  'เปิดให้เช็คชื่อก่อนเวลานัดกี่นาที';
+comment on column meeting_events.late_after_min is
+  'เลยเวลานัดเกินกี่นาทีถือว่าสาย';
+
+-- ค่าตั้งต้นกลาง ใช้ตอนสร้างนัดใหม่ ปรับรายนัดทีหลังได้
+insert into app_settings (key, value) values
+  ('meeting_open_before_min', '15'::jsonb),
+  ('meeting_late_after_min',  '10'::jsonb)
+on conflict (key) do nothing;
+
+-- เช็คอินผูกกับนัด และจำไว้ว่าสายไหม
+alter table meeting_checkins
+  add column if not exists event_id uuid references meeting_events (id) on delete set null,
+  add column if not exists is_late  boolean not null default false,
+  add column if not exists late_min integer;
+
+create index if not exists meeting_checkins_event_idx on meeting_checkins (event_id);
+
+
+-- ---------------------------------------------------------------------
+-- นัดที่กำลังเปิดให้เช็คชื่อ พร้อมตัวเลขนับถอยหลัง
+--
+-- คืนค่าเป็น "อีกกี่วินาที" ไม่ใช่เวลาเป้าหมาย
+-- เพราะถ้าส่งเวลาเป้าหมายไป หน้าจอจะเอาไปลบกับนาฬิกาเครื่องตัวเอง
+-- ซึ่งเป็นสิ่งที่เราตั้งใจไม่เชื่อตั้งแต่แรก
+-- ---------------------------------------------------------------------
+create or replace function meeting_now()
+returns table (
+  id            uuid,
+  title         text,
+  meet_at       timestamptz,
+  place         text,
+  audience      text,
+  note          text,
+  phase         text,      -- soon | open | late
+  opens_in_sec  integer,   -- > 0 = ยังไม่ถึงเวลาเปิด
+  closes_in_sec integer,   -- > 0 = เหลือเวลาก่อนถือว่าสาย
+  late_by_sec   integer,   -- > 0 = เลยมาแล้วกี่วินาที
+  checked_in    boolean
+)
+language sql stable security definer set search_path = public as $$
+  with e as (
+    select *
+      from meeting_events
+     where cancelled_at is null
+       and now() < meet_at + (late_after_min || ' minutes')::interval + interval '6 hours'
+       and now() > meet_at - interval '1 day'
+     order by meet_at
+     limit 1
+  )
+  select
+    e.id, e.title, e.meet_at, e.place, e.audience, e.note,
+    case
+      when now() < e.meet_at - (e.open_before_min || ' minutes')::interval then 'soon'
+      when now() <= e.meet_at + (e.late_after_min  || ' minutes')::interval then 'open'
+      else 'late'
+    end,
+    greatest(ceil(extract(epoch from
+      (e.meet_at - (e.open_before_min || ' minutes')::interval) - now()))::int, 0),
+    greatest(ceil(extract(epoch from
+      (e.meet_at + (e.late_after_min || ' minutes')::interval) - now()))::int, 0),
+    greatest(floor(extract(epoch from
+      now() - (e.meet_at + (e.late_after_min || ' minutes')::interval)))::int, 0),
+    exists (
+      select 1 from meeting_checkins c
+       where c.event_id = e.id and c.user_id = auth.uid()
+    )
+  from e;
+$$;
+
+grant execute on function meeting_now() to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- เช็คอิน — ผูกกับนัดและตัดสินว่าสายไหมที่ฝั่งนี้
+--
+-- ห้ามให้หน้าจอส่งคำว่า "สาย" มาเอง ต้องคำนวณจากนาฬิกาฐานข้อมูลเท่านั้น
+-- ไม่งั้นแก้ค่าใน DevTools แล้วไม่สายได้ทุกครั้ง
+-- ---------------------------------------------------------------------
+create or replace function meeting_checkin(
+  p_file_id  text,
+  p_web_link text default null,
+  p_bytes    integer default null,
+  p_note     text default null
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_me    profiles%rowtype;
+  v_dup   meeting_checkins%rowtype;
+  v_ref   text;
+  v_id    uuid;
+  v_ev    meeting_events%rowtype;
+  v_late  boolean := false;
+  v_lmin  integer := null;
+begin
+  select * into v_me from profiles where id = auth.uid();
+  if v_me.id is null or not v_me.is_active then
+    raise exception 'บัญชีนี้ใช้งานไม่ได้';
+  end if;
+
+  if p_file_id is null or btrim(p_file_id) = '' then
+    raise exception 'ต้องมีรูปเซลฟี่ก่อนถึงจะเช็คอินได้';
+  end if;
+
+  -- หานัดที่ใกล้ที่สุดที่ยังอยู่ในกรอบเวลา
+  select * into v_ev
+    from meeting_events
+   where cancelled_at is null
+     and now() >= meet_at - (open_before_min || ' minutes')::interval
+     and now() <  meet_at + (late_after_min  || ' minutes')::interval + interval '6 hours'
+   order by meet_at
+   limit 1;
+
+  -- มีนัดอยู่ แต่ยังไม่ถึงเวลาเปิด = ห้ามเช็คอิน
+  if v_ev.id is null then
+    if exists (
+      select 1 from meeting_events
+       where cancelled_at is null
+         and now() < meet_at - (open_before_min || ' minutes')::interval
+         and meet_at < now() + interval '1 day'
+    ) then
+      raise exception 'ยังไม่ถึงเวลาเช็คชื่อ รอให้ถึงเวลาที่ประกาศไว้ก่อน';
+    end if;
+  else
+    if now() > v_ev.meet_at + (v_ev.late_after_min || ' minutes')::interval then
+      v_late := true;
+      v_lmin := floor(extract(epoch from
+        now() - (v_ev.meet_at + (v_ev.late_after_min || ' minutes')::interval)) / 60)::int;
+    end if;
+  end if;
+
+  select * into v_dup
+    from meeting_checkins
+   where user_id = v_me.id
+     and created_at > now() - interval '10 minutes'
+   order by created_at desc
+   limit 1;
+
+  if v_dup.id is not null then
+    return jsonb_build_object(
+      'id', v_dup.id, 'ref_no', v_dup.ref_no,
+      'created_at', v_dup.created_at, 'duplicate', true,
+      'is_late', v_dup.is_late, 'late_min', v_dup.late_min
+    );
+  end if;
+
+  v_ref := next_meeting_ref();
+  insert into meeting_checkins (ref_no, user_id, hub_code, dept_code, sub_dept,
+                                shift_start, shift_end, note, file_id, web_link, bytes,
+                                event_id, is_late, late_min)
+  values (v_ref, v_me.id, coalesce(v_me.hub_code, 'BPL'), v_me.dept_code, v_me.sub_dept,
+          v_me.shift_start, v_me.shift_end, nullif(btrim(p_note), ''),
+          p_file_id, p_web_link, p_bytes,
+          v_ev.id, v_late, v_lmin)
+  returning id into v_id;
+
+  return jsonb_build_object(
+    'id', v_id, 'ref_no', v_ref, 'created_at', now(), 'duplicate', false,
+    'is_late', v_late, 'late_min', v_lmin
+  );
+end $$;
+
+grant execute on function meeting_checkin(text, text, integer, text) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- สร้างนัด — รับกติกาเวลาเข้ามาด้วย
+-- ---------------------------------------------------------------------
+drop function if exists create_meeting_event(text, timestamptz, text, text, text);
+
+create or replace function create_meeting_event(
+  p_title       text,
+  p_meet_at     timestamptz,
+  p_audience    text default null,
+  p_place       text default null,
+  p_note        text default null,
+  p_open_before integer default null,
+  p_late_after  integer default null
+) returns jsonb
+language plpgsql security definer set search_path = public as $fn$
+declare
+  v_id   uuid;
+  v_open integer;
+  v_late integer;
+begin
+  if not my_can_audit() then
+    raise exception 'บัญชีนี้นัดประชุมไม่ได้';
+  end if;
+  if p_title is null or btrim(p_title) = '' then
+    raise exception 'ต้องใส่เรื่องที่จะประชุม';
+  end if;
+  if p_meet_at is null then
+    raise exception 'ต้องเลือกวันและเวลา';
+  end if;
+
+  v_open := coalesce(p_open_before,
+    (select (value)::int from app_settings where key = 'meeting_open_before_min'), 15);
+  v_late := coalesce(p_late_after,
+    (select (value)::int from app_settings where key = 'meeting_late_after_min'), 10);
+
+  insert into meeting_events (title, meet_at, audience, place, note, created_by,
+                              open_before_min, late_after_min)
+  values (btrim(p_title), p_meet_at, nullif(btrim(p_audience), ''),
+          nullif(btrim(p_place), ''), nullif(btrim(p_note), ''), auth.uid(),
+          v_open, v_late)
+  returning id into v_id;
+
+  begin
+    perform push_tick();
+  exception when others then
+    raise notice 'ประกาศแล้วแต่เตะแจ้งเตือนไม่สำเร็จ (%) เดี๋ยวรอบถัดไปจะส่งให้เอง', sqlerrm;
+  end;
+
+  return jsonb_build_object('id', v_id);
+end $fn$;
+
+grant execute on function
+  create_meeting_event(text, timestamptz, text, text, text, integer, integer)
+  to authenticated;
+
+
+-- =====================================================================
+-- ② ป้ายประกาศ
+-- =====================================================================
+create table if not exists announcements (
+  id         uuid primary key default gen_random_uuid(),
+  title      text not null,
+  body       text,
+  level      text not null default 'info',
+  /** หมดอายุแล้วหายจากหน้าแอพเอง ไม่ต้องมีใครมาตามลบ */
+  expires_at timestamptz not null,
+  notify     boolean not null default true,
+  created_by uuid not null references profiles (id),
+  created_at timestamptz not null default now(),
+  cancelled_at timestamptz
+);
+
+alter table announcements drop constraint if exists announcements_level_chk;
+alter table announcements add constraint announcements_level_chk
+  check (level in ('urgent', 'warn', 'info'));
+
+create index if not exists announcements_live_idx
+  on announcements (expires_at desc) where cancelled_at is null;
+
+alter table announcements enable row level security;
+
+-- ทุกคนอ่านได้เฉพาะที่ยังไม่หมดอายุ ส่วนคนคุมเห็นหมดรวมที่หมดแล้ว
+drop policy if exists read_announcements on announcements;
+create policy read_announcements on announcements for select to authenticated
+  using (my_can_audit() or (cancelled_at is null and expires_at > now()));
+
+-- เขียนได้: เจ้าของระบบ แอดมิน ผู้ตรวจสอบ
+drop policy if exists write_announcements on announcements;
+create policy write_announcements on announcements for all to authenticated
+  using (my_can_audit()) with check (my_can_audit());
+
+
+-- ---------------------------------------------------------------------
+-- ประกาศแล้วแจ้งเตือนออกทันที ไม่ต้องรอรอบนาฬิกา
+-- ---------------------------------------------------------------------
+create or replace function create_announcement(
+  p_title   text,
+  p_body    text default null,
+  p_level   text default 'info',
+  p_days    integer default 3,
+  p_notify  boolean default true
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_id uuid;
+begin
+  if not my_can_audit() then
+    raise exception 'บัญชีนี้ประกาศไม่ได้';
+  end if;
+  if p_title is null or btrim(p_title) = '' then
+    raise exception 'ต้องใส่หัวข้อประกาศ';
+  end if;
+  if p_level not in ('urgent', 'warn', 'info') then
+    raise exception 'ระดับความสำคัญไม่ถูกต้อง';
+  end if;
+
+  insert into announcements (title, body, level, expires_at, notify, created_by)
+  values (btrim(p_title), nullif(btrim(coalesce(p_body, '')), ''), p_level,
+          now() + (greatest(coalesce(p_days, 3), 1) || ' days')::interval,
+          coalesce(p_notify, true), auth.uid())
+  returning id into v_id;
+
+  if coalesce(p_notify, true) then
+    begin
+      perform push_tick();
+    exception when others then
+      raise notice 'ประกาศแล้วแต่เตะแจ้งเตือนไม่สำเร็จ (%)', sqlerrm;
+    end;
+  end if;
+
+  return jsonb_build_object('id', v_id);
+end $$;
+
+grant execute on function create_announcement(text, text, text, integer, boolean) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- งานแจ้งเตือนของประกาศ — ต่อท้ายของประชุมที่มีอยู่แล้ว
+--
+-- ยิงรอบเดียวต่อคนต่อประกาศ เหมือนที่นัดประชุมทำ
+-- คนประกาศได้รับด้วย เพราะเจ้าของระบบขอให้เตือนตัวเองด้วย
+-- ---------------------------------------------------------------------
+create or replace function push_announcement_jobs()
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+begin
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'kind',    'announce_new',
+      'subject', a.id::text,
+      'user_id', m.id,
+      'title',   case a.level when 'urgent' then 'ด่วน · ' when 'warn' then 'แจ้งเตือน · '
+                              else 'ประกาศ · ' end || a.title,
+      'body',    coalesce(a.body, 'เปิดแอพเพื่อดูรายละเอียด'),
+      'url',     '/'
+    ))
+    from announcements a
+    cross join (select id from profiles where is_active) m
+    where a.cancelled_at is null
+      and a.notify
+      and a.expires_at > now()
+      and a.created_at > now() - interval '1 day'
+      and not exists (
+        select 1 from notification_log n
+        where n.kind = 'announce_new' and n.subject = a.id::text and n.user_id = m.id
+      )
+  ), '[]'::jsonb);
+end $$;
+
+grant execute on function push_announcement_jobs() to authenticated, service_role;
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล
+-- ---------------------------------------------------------------------
+select
+  (select count(*) from information_schema.columns
+    where table_name = 'meeting_events' and column_name = 'open_before_min')  as กติกาเวลา,
+  (select count(*) from information_schema.columns
+    where table_name = 'meeting_checkins' and column_name = 'is_late')        as ช่องบันทึกสาย,
+  (select count(*) from information_schema.tables
+    where table_name = 'announcements')                                       as ตารางประกาศ,
+  (select count(*) from pg_proc where proname = 'meeting_now')                as ฟังก์ชันนับถอยหลัง,
+  (select count(*) from pg_proc where proname = 'create_meeting_event')       as ฟังก์ชันนัดประชุม,
+  (select count(*) from meeting_events where cancelled_at is null)            as นัดที่ยังอยู่;
+
+
+-- ---------------------------------------------------------------------
+-- ต่อประกาศเข้ากับคิวแจ้งเตือนเดิม
+--
+-- ต้องมาหลังจากประกาศฟังก์ชันงานประกาศแล้ว ไม่งั้นตัวห่อจะอ้างถึงของที่ยังไม่มี
+-- ---------------------------------------------------------------------
+create or replace function push_due_jobs()
+returns jsonb
+language sql security definer set search_path = public as $$
+  select push_core_jobs() || push_meeting_jobs() || push_announcement_jobs();
+$$;
+
+grant execute on function push_due_jobs() to authenticated, service_role;
+
+select 'คิวแจ้งเตือนรวมประกาศแล้ว' as ผลตรวจ,
+       jsonb_array_length(push_due_jobs())::text as งานที่รออยู่ตอนนี้;
+-- =====================================================================
+-- BPL SUPPLY — เด้งเตือนตอนหน้าต่างเช็คชื่อเปิด
+-- รันต่อจาก 059 · ปลอดภัยที่จะรันซ้ำ
+--
+-- เดิมมีแจ้งเตือนรอบเดียวคือตอนประกาศนัด ซึ่งอาจเป็นเมื่อวาน
+-- พอถึงวันจริงคนลืม ต้องมานั่งกดดูเองว่าเปิดให้เช็คชื่อหรือยัง
+--
+-- เพิ่มรอบที่สอง ยิงตอนหน้าต่างเปิดพอดี บอกว่าเช็คชื่อได้แล้ว
+-- และบอกด้วยว่ามีเวลากี่นาทีก่อนจะถือว่าสาย
+--
+-- ข้อจำกัดที่ต้องรู้ไว้
+--   นาฬิกาของระบบเดินทุก 5 นาที แจ้งเตือนจึงออกช้าได้ถึง 5 นาที
+--   ถ้าตั้ง "เปิดก่อน 0 นาที" กับ "สายหลัง 0 นาที" พร้อมกัน
+--   แจ้งเตือนอาจมาถึงตอนที่สายไปแล้ว ซึ่งไม่มีประโยชน์
+--   จึงยิงเฉพาะตอนที่ยังมีเวลาเหลือให้เช็คจริง ๆ
+-- =====================================================================
+
+create or replace function push_meeting_open_jobs()
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+begin
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'kind',    'meeting_open',
+      'subject', e.id::text,
+      'user_id', m.id,
+      'title',   'เช็คชื่อได้แล้ว · ' || e.title,
+      'body',    case
+                   when e.late_after_min = 0
+                     then 'ต้องเช็คภายใน ' ||
+                          to_char(e.meet_at at time zone 'Asia/Bangkok', 'HH24:MI') ||
+                          ' พอดี เลยจากนั้นถือว่าสาย'
+                   else 'เช็คได้ถึง ' ||
+                        to_char((e.meet_at + (e.late_after_min || ' minutes')::interval)
+                                at time zone 'Asia/Bangkok', 'HH24:MI') ||
+                        ' หลังจากนั้นจะบันทึกว่าสาย'
+                 end,
+      'url',     '/'
+    ))
+    from meeting_events e
+    cross join (select id from profiles where is_active) m
+    where e.cancelled_at is null
+      -- หน้าต่างเปิดแล้ว
+      and now() >= e.meet_at - (e.open_before_min || ' minutes')::interval
+      -- และยังไม่สาย — ส่งตอนสายไปแล้วไม่มีประโยชน์
+      and now() <= e.meet_at + (e.late_after_min || ' minutes')::interval
+      and not exists (
+        select 1 from notification_log n
+        where n.kind = 'meeting_open' and n.subject = e.id::text and n.user_id = m.id
+      )
+      -- คนที่เช็คไปแล้วไม่ต้องกวน
+      and not exists (
+        select 1 from meeting_checkins c
+        where c.event_id = e.id and c.user_id = m.id
+      )
+  ), '[]'::jsonb);
+end $$;
+
+grant execute on function push_meeting_open_jobs() to authenticated, service_role;
+
+
+create or replace function push_due_jobs()
+returns jsonb
+language sql security definer set search_path = public as $$
+  select push_core_jobs()
+      || push_meeting_jobs()
+      || push_meeting_open_jobs()
+      || push_announcement_jobs();
+$$;
+
+grant execute on function push_due_jobs() to authenticated, service_role;
+
+
+-- ---------------------------------------------------------------------
+-- ตรวจผล
+-- ---------------------------------------------------------------------
+select
+  (select count(*) from pg_proc where proname = 'push_meeting_open_jobs') as ฟังก์ชันเตือนเปิดเช็คชื่อ,
+  jsonb_array_length(push_meeting_open_jobs())                            as งานรอส่งตอนนี้,
+  jsonb_array_length(push_due_jobs())                                     as งานรวมทุกชนิด;
