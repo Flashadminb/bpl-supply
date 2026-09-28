@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
+import { WorkLinks } from '../../components/WorkLinks'
 import { useAuth } from '../../lib/auth'
 import { usePendingApprovals } from '../../lib/usePendingApprovals'
 import { usePendingExports } from '../../lib/usePendingExports'
@@ -33,6 +34,7 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
     links: [
       { to: '/admin', label: 'หน้าแรก', icon: 'home', end: true },
       { to: '/admin/evidence', label: 'หลักฐานการเบิก-คืน', icon: 'photo' },
+      { to: '/admin/return-status', label: 'สถานะเบิก-คืน', icon: 'clipboard', audit: true },
     ],
   },
   {
@@ -75,7 +77,10 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
     links: [
       { to: '/admin/qr', label: 'พิมพ์ QR', icon: 'qr' },
       { to: '/admin/export', label: 'ส่งออก Google Sheet', icon: 'sheet', badge: 'exports' },
-      { to: '/admin/users', label: 'ผู้ใช้และสิทธิ์', icon: 'users', adminOnly: true },
+      { to: '/admin/users', label: 'ผู้ใช้และสิทธิ์', icon: 'users' },
+      { to: '/admin/links', label: 'ลิงก์งาน', icon: 'sheet' },
+      { to: '/admin/notices', label: 'ประกาศและแจ้งเตือน', icon: 'clipboard' },
+      { to: '/admin/health', label: 'สถานะระบบ', icon: 'chart' },
     ],
   },
 ]
@@ -148,6 +153,11 @@ export default function AdminLayout() {
         <div className="min-h-0 flex-1 overflow-y-auto px-4">{nav}</div>
 
         <div className="shrink-0 border-t border-dark-3 px-4 pb-4 pt-3 text-sm text-dark-muted">
+          {/* ลิงก์งาน — เดิมมีแต่ในแอพ เปิดหน้าเว็บบนคอมแล้วหาไม่เจอ */}
+          <div className="mb-3 flex items-center gap-2">
+            <WorkLinks tone="onDark" />
+            <span className="text-dark-text">ลิงก์งาน</span>
+          </div>
           <p className="mb-2 text-[10px] tracking-wide text-dark-muted/60">
             Created by Thanawat Phuttarit
           </p>
@@ -170,6 +180,7 @@ export default function AdminLayout() {
           ☰
         </button>
         <span className="flex-1 font-display text-md">BPL SUPPLY · แอดมิน</span>
+        <WorkLinks tone="onDark" />
         <Link to="/" className="min-h-tap px-2 py-2 text-sm underline">
           หน้าพนักงาน
         </Link>

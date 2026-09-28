@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import { Suspense, lazy, type ReactNode } from 'react'
+import { Suspense, lazy, useEffect, type ReactNode } from 'react'
 import { useAuth } from './lib/auth'
 import type { UserRole } from './lib/types'
 import { MANAGER_ROLES } from './lib/roles'
@@ -22,9 +22,9 @@ import { Privacy, Terms } from './pages/Legal'
 const Scan = lazy(() => import('./pages/staff/Scan'))
 const Returns = lazy(() => import('./pages/staff/Returns'))
 const AssetPick = lazy(() => import('./pages/staff/AssetPick'))
-const AssetTypes = lazy(() =>
-  import('./pages/staff/AssetPick').then((m) => ({ default: m.AssetTypes })),
-)
+// หน้าเลือกประเภทเดิมถูกแทนด้วยตะกร้า ซึ่งเลือกข้ามประเภทได้ในรอบเดียว
+// เส้นทางเดิม /assets/:typeCode ยังอยู่ เผื่อมีลิงก์เก่าค้างในแจ้งเตือนหรือที่คนบุ๊กมาร์กไว้
+const AssetBasket = lazy(() => import('./pages/staff/AssetBasket'))
 const AssetDone = lazy(() => import('./pages/staff/AssetDone'))
 const BySend = lazy(() => import('./pages/staff/BySend'))
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'))
@@ -34,6 +34,10 @@ const Approvals = lazy(() => import('./pages/admin/Approvals'))
 const Users = lazy(() => import('./pages/admin/Users'))
 const ExportSheet = lazy(() => import('./pages/admin/ExportSheet'))
 const AdminEvidence = lazy(() => import('./pages/admin/Evidence'))
+const ReturnStatus = lazy(() => import('./pages/admin/ReturnStatus'))
+const WorkLinksAdmin = lazy(() => import('./pages/admin/WorkLinksAdmin'))
+const SystemHealth = lazy(() => import('./pages/admin/SystemHealth'))
+const Notices = lazy(() => import('./pages/admin/Notices'))
 const QrLabels = lazy(() => import('./pages/admin/QrLabels'))
 const Outstanding = lazy(() => import('./pages/admin/Outstanding'))
 const AssetRegistry = lazy(() => import('./pages/admin/AssetRegistry'))
@@ -113,9 +117,30 @@ function Fallback() {
   )
 }
 
+/**
+ * เด้งขึ้นบนสุดทุกครั้งที่เปลี่ยนหน้า
+ *
+ * เบราว์เซอร์จำตำแหน่งสกรอลล์ของหน้าเดิมไว้ พอหน้าใหม่สั้นกว่า
+ * หัวข้อจะจมอยู่ใต้แถบสถานะของมือถือ หน้างานเห็นแต่ครึ่งบรรทัด
+ * เห็นชัดที่สุดตอนกดส่งจากท้ายหน้าเบิกแล้วเด้งไปใบสรุป
+ *
+ * ไม่ใช้ ScrollRestoration ของ react-router เพราะมันคืนตำแหน่งเก่า
+ * ตอนกดย้อนกลับด้วย ซึ่งเจอปัญหาเดียวกันอีก
+ */
+function ScrollToTop() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    // ปิดการคืนตำแหน่งอัตโนมัติของเบราว์เซอร์ ไม่งั้นมันจะเลื่อนกลับทับเรา
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual'
+    window.scrollTo(0, 0)
+  }, [pathname])
+  return null
+}
+
 export default function App() {
   return (
     <Suspense fallback={<Fallback />}>
+    <ScrollToTop />
     <Routes>
       <Route path="/login" element={<Login />} />
 
@@ -133,7 +158,7 @@ export default function App() {
       <Route path="/success/:refNo" element={<Guard><Success /></Guard>} />
       <Route path="/returns" element={<Guard><Returns /></Guard>} />
       <Route path="/by" element={<Guard><BySend /></Guard>} />
-      <Route path="/assets" element={<Guard><AssetTypes /></Guard>} />
+      <Route path="/assets" element={<Guard><AssetBasket /></Guard>} />
       <Route path="/assets/done/:refNo" element={<Guard><AssetDone /></Guard>} />
       <Route path="/assets/:typeCode" element={<Guard><AssetPick /></Guard>} />
       <Route path="/history" element={<Guard><History /></Guard>} />
@@ -152,13 +177,30 @@ export default function App() {
         <Route path="approvals" element={<Guard roles={MANAGER_ROLES}><Approvals /></Guard>} />
         <Route path="stock" element={<Guard roles={MANAGER_ROLES}><Stock /></Guard>} />
         <Route path="outstanding" element={<Guard roles={MANAGER_ROLES} allowDispatch><Outstanding /></Guard>} />
-        <Route path="assets" element={<Guard roles={MANAGER_ROLES}><AssetRegistry /></Guard>} />
+        {/*
+          ผู้ตรวจสอบเข้าทะเบียนได้ แต่ทำได้อย่างเดียวคือกดโอน
+          ปุ่มเพิ่ม แก้ ลบ และจัดการแผนก ผูกกับ MANAGER_ROLES อยู่แล้วในหน้านั้น
+          และฐานข้อมูลก็กันซ้ำอีกชั้น (write_assets กับ delete_asset เปิดให้แค่แอดมินขึ้นไป)
+          เปิดสิทธิ์ตรงนี้จึงไม่ได้เพิ่มอำนาจอะไรให้เขานอกจากได้เห็นและได้โอน
+        */}
+        <Route
+          path="assets"
+          element={
+            <Guard roles={MANAGER_ROLES} allowDispatch>
+              <AssetRegistry />
+            </Guard>
+          }
+        />
         <Route path="assets-out" element={<Guard roles={MANAGER_ROLES} allowDispatch><AssetOutstanding /></Guard>} />
         <Route path="by" element={<Guard roles={MANAGER_ROLES}><ByInbox /></Guard>} />
         <Route path="report/supply" element={<Guard roles={MANAGER_ROLES}><SupplyReport /></Guard>} />
         <Route path="report/asset" element={<Guard roles={MANAGER_ROLES}><AssetReport /></Guard>} />
         <Route path="export" element={<Guard roles={MANAGER_ROLES}><ExportSheet /></Guard>} />
         <Route path="evidence" element={<Guard roles={MANAGER_ROLES}><AdminEvidence /></Guard>} />
+        <Route
+          path="return-status"
+          element={<Guard roles={MANAGER_ROLES} allowDispatch><ReturnStatus /></Guard>}
+        />
         <Route path="qr" element={<Guard roles={MANAGER_ROLES}><QrLabels /></Guard>} />
         {/* สองหน้านี้ผู้ตรวจสอบเข้าได้ด้วย นอกนั้นเป็นของแอดมินล้วน */}
         <Route path="meetings" element={<Guard roles={MANAGER_ROLES} allowDispatch><Meetings /></Guard>} />
@@ -175,7 +217,25 @@ export default function App() {
           element={<Guard roles={MANAGER_ROLES} allowDispatch><SupplyHistory /></Guard>}
         />
         {/* เพิ่มบัญชี / รีเซ็ตรหัสผ่านคนอื่น เป็นของผู้ดูแลระบบคนเดียว */}
-        <Route path="users" element={<Guard roles={['admin']}><Users /></Guard>} />
+        <Route path="users" element={<Guard roles={MANAGER_ROLES}><Users /></Guard>} />
+        <Route path="links" element={<Guard roles={MANAGER_ROLES}><WorkLinksAdmin /></Guard>} />
+        {/* ป้ายประกาศเปิดให้แอดมินด้วย ส่วนแท็บนัดประชุมกับกฎเวลาซ่อนในหน้านั้นเอง */}
+        <Route
+          path="notices"
+          element={
+            <Guard roles={MANAGER_ROLES} allowDispatch>
+              <Notices />
+            </Guard>
+          }
+        />
+        <Route
+          path="health"
+          element={
+            <Guard roles={['admin', 'supervisor']} allowDispatch>
+              <SystemHealth />
+            </Guard>
+          }
+        />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -48,6 +48,10 @@ export interface Item {
   min_qty: number
   is_returnable: boolean
   requires_approval: boolean
+  /** true = โชว์สต็อกได้แต่กดเบิกในแอพไม่ได้ เช่นของที่ต้องเบิกผ่านระบบ BY */
+  view_only: boolean
+  /** เหตุผลที่เบิกไม่ได้ · โชว์ให้หน้างานเห็นตรงหน้ารายการ */
+  view_only_note: string | null
   dept_code: string | null
   image_path: string | null
   qr_payload: string | null
@@ -132,6 +136,9 @@ export interface CreateReqResult {
 
 /** บรรทัดในตะกร้า — เก็บ snapshot ไว้พอแสดงผลได้ตอนออฟไลน์ */
 export interface CartLine {
+  /** ของที่โดนปิดการเบิกหลังจากมันเข้าตะกร้าไปแล้ว — ต้องกันไว้ก่อนกดส่ง */
+  view_only?: boolean
+  view_only_note?: string | null
   item_id: number
   sku: string
   name: string
@@ -203,8 +210,8 @@ export interface Asset {
   type_code: string
   dept_code: string | null
   share_depts: string[]
-  /** แผนกที่ได้รับเครื่องนี้มาใช้ชั่วคราวจากการโอน · ว่าง = อยู่บ้านตัวเอง */
-  loan_dept: string | null
+  /** คนที่ได้รับเครื่องนี้มาใช้ชั่วคราวจากการโอน · ว่าง = อยู่บ้านตัวเอง */
+  loan_user: string | null
   is_enabled: boolean
   note: string | null
   held_item_id: number | null
@@ -220,8 +227,9 @@ export interface AssetHolding {
   type_name: string
   asset_dept: string | null
   asset_share_depts: string[]
-  /** แผนกที่ได้รับเครื่องนี้มาใช้ชั่วคราวจากการโอน */
-  asset_loan_dept: string | null
+  /** คนที่ได้รับเครื่องนี้มาใช้ชั่วคราวจากการโอน */
+  asset_loan_user: string | null
+  asset_loan_name: string | null
   txn_id: string
   ref_no: string
   user_id: string
@@ -236,6 +244,163 @@ export interface AssetHolding {
   shift_end: string | null
   due_at: string | null
   taken_at: string
+}
+
+/** หนึ่งบรรทัด Asset ที่รอส่งเข้าชีต หรือส่งไปแล้ว */
+export interface AssetExportRow {
+  line_id: number
+  ref_no: string
+  /** out = เบิก · in = คืน */
+  kind: 'out' | 'in'
+  created_at: string
+  type_name: string
+  asset_code: string
+  who: string
+  employee_code: string
+  dept_code: string | null
+  tab: string | null
+  row_no: number | null
+  is_exported: boolean
+}
+
+/** ลิงก์งานที่เจ้าของระบบใส่ไว้ให้กดจากปุ่มสายฟ้าในแอพ */
+/**
+ * ใครเห็นลิงก์นี้
+ *
+ * 'managers' เป็นของเก่าจากตอนที่ยังเลือกตำแหน่งไม่ได้
+ * ข้อมูลถูกย้ายมาเป็น custom + ตำแหน่งแล้วใน 054 หน้าจอจึงไม่สร้างค่านี้อีก
+ * แต่ยังคงไว้ในชนิดข้อมูล เผื่อมีแถวเก่าค้างจะได้ไม่พัง
+ */
+export type LinkAudience = 'all' | 'managers' | 'custom'
+
+/**
+ * สถานะโควตาแผนฟรี
+ *
+ * db กับ mau วัดจากฐานข้อมูลจริง · egress กับ edge เป็นการประมาณ
+ * เพราะ Supabase นับสองตัวหลังที่ชั้นเครือข่าย ไม่ได้เก็บไว้ให้เราอ่าน
+ */
+export interface SystemHealth {
+  measured_at: string
+  /** per_day_bytes / days_left เป็น null ได้ = ยังจดสถิติไม่ครบ 7 วัน ห้ามเดาแทน */
+  db: {
+    bytes: number
+    limit_bytes: number
+    per_day_bytes: number | null
+    days_left: number | null
+    tracked_days: number
+  }
+  tables: { name: string; bytes: number; rows: number }[]
+  egress: { est_bytes: number; limit_bytes: number; photo_count: number; photo_bytes: number }
+  edge: { est_calls: number; limit_calls: number; uploads: number; pushes: number }
+  mau: { used: number; limit: number; active_profiles: number }
+}
+
+/** ตำแหน่งที่เลือกให้เห็นลิงก์ได้ — dispatch มาจากธง can_dispatch ไม่ใช่ role */
+export type LinkRoleKey = 'staff' | 'supervisor' | 'admin' | 'dispatch'
+
+export interface WorkLink {
+  id: number
+  title: string
+  url: string
+  note: string | null
+  sort_no: number
+  is_active: boolean
+  audience: LinkAudience
+  updated_at: string
+}
+
+/** ลิงก์พร้อมรายชื่อผู้ชม — ใช้เฉพาะหน้าจัดการของเจ้าของระบบ */
+export interface WorkLinkFull extends WorkLink {
+  role_keys: LinkRoleKey[]
+  dept_codes: string[]
+  user_ids: string[]
+}
+
+/** ของหนึ่งอย่างในใบเบิก */
+export interface CardItem {
+  label: string
+  sub: string | null
+  unit: string
+  /** จำนวนที่ต้องคืน · 0 = ไม่ต้องคืน (ของใช้แล้วหมด หรือถูกโอนไปแล้ว) */
+  need: number
+  taken: number
+  returned: number
+  state: 'consumed' | 'open' | 'partial' | 'returned' | 'transferred' | 'forced'
+  note: string | null
+}
+
+/** การคืนหนึ่งครั้ง · ครั้งเดียวอาจคืนหลายอย่างพร้อมกัน */
+export interface CardEvent {
+  at: string
+  by: string | null
+  detail: string
+  cond: string
+  file_ids: string[]
+}
+
+/** หนึ่งใบเบิก = หนึ่งการ์ด */
+export interface ReturnCard {
+  kind: 'supply' | 'asset'
+  card_id: string
+  ref_no: string
+  taken_at: string
+  user_id: string
+  who: string
+  employee_code: string
+  dept_code: string | null
+  sub_dept: string | null
+  shift_start: string | null
+  shift_end: string | null
+  out_file_ids: string[]
+  items: CardItem[]
+  events: CardEvent[]
+}
+
+/** การคืนหนึ่งครั้งของบรรทัดเบิกหนึ่งบรรทัด */
+export interface ReturnEvent {
+  id: number
+  qty: number
+  condition: ReturnCond
+  at: string
+  by: string | null
+  file_ids: string[]
+}
+
+/** หนึ่งบรรทัดที่เบิกออกไป พร้อมการคืนทุกครั้งของมัน */
+export interface BorrowSet {
+  line_id: number
+  requisition_id: string
+  ref_no: string
+  taken_at: string
+  hub_code: string
+  requester_id: string
+  who: string
+  employee_code: string
+  dept_code: string | null
+  sub_dept: string | null
+  shift_start: string | null
+  shift_end: string | null
+  item_id: number
+  sku: string
+  item_name: string
+  unit: string
+  is_returnable: boolean
+  qty_taken: number
+  qty_returned: number
+  qty_open: number
+  /** consumed = ใช้แล้วหมดไป · none/partial/full = ของยืม-คืน */
+  return_state: 'consumed' | 'none' | 'partial' | 'full'
+  out_file_ids: string[]
+  returns: ReturnEvent[]
+}
+
+/** คนที่รับโอนเครื่องได้ */
+export interface TransferTargetRow {
+  id: string
+  employee_code: string
+  full_name: string
+  dept_code: string | null
+  sub_dept: string | null
 }
 
 /** แถบเตือนเรื่องการโอนเครื่อง — ขึ้นทั้งฝั่งที่ได้รับและฝั่งที่ถูกตัด */
@@ -296,6 +461,15 @@ export interface AssetIssueInput {
 
 export type ByStatus = 'pending' | 'done' | 'rejected'
 
+/** วัสดุหนึ่งบรรทัดในบาร์โค้ด BY ใบหนึ่ง */
+export interface ByLine {
+  item_id: number
+  qty: number
+  name: string
+  sku: string
+  unit: string
+}
+
 export interface ByRow {
   id: string
   ref_no: string
@@ -311,6 +485,8 @@ export interface ByRow {
   item_sku: string | null
   item_unit: string | null
   qty: number | null
+  /** รายการทั้งหมดในใบนี้ · ใบเก่าที่มีตัวเดียวก็มาเป็นบรรทัดเดียว */
+  lines: ByLine[]
   user_id: string
   who: string
   employee_code: string
@@ -349,13 +525,25 @@ export interface AssetHistoryRow {
   employee_code: string
   holder_dept: string | null
   sub_dept: string | null
+  /** คนที่กดเบิกให้ · ว่าง = เจ้าตัวเบิกเอง */
+  acted_by: string | null
+  acted_by_name: string | null
   shift_start: string | null
   shift_end: string | null
   due_at: string | null
   taken_at: string
   returned_at: string | null
   return_ref: string | null
+  /** คนที่กดปิดรายการจริง ๆ · คืนแทนจะเป็นชื่อแอดมิน ไม่ใช่ชื่อเจ้าตัว */
   returned_by: string | null
+  /** true = ไม่ใช่เจ้าตัวกดคืนเอง */
+  returned_by_proxy: boolean
+  /** ปิดเพราะถูกโอนให้แผนกอื่น ไม่ใช่การคืนจริง */
+  closed_by_transfer: boolean
+  /** ปิดโดยแอดมินแบบไม่มีรูป */
+  closed_forced: boolean
+  /** เหตุผลที่คนกดพิมพ์ไว้ตอนปิด */
+  return_note: string | null
   still_out: boolean
   held_hours: number | null
   /** รูปตอนเบิก และตอนคืน — หน้างานเปิดดูไม่ได้ เฉพาะแอดมิน */
@@ -405,10 +593,48 @@ export interface MeetingStat {
 }
 
 /** นัดประชุมที่ประกาศไว้ — ผู้เข้าร่วมเป็นข้อความอิสระ ไม่ผูกกับตำแหน่งในระบบ */
+/** ระดับความสำคัญของประกาศ — คุมสีและคำนำหน้าในแจ้งเตือน */
+export type NoticeLevel = 'urgent' | 'warn' | 'info'
+
+export interface Announcement {
+  id: string
+  title: string
+  body: string | null
+  level: NoticeLevel
+  expires_at: string
+  notify: boolean
+  created_by: string
+  created_at: string
+  cancelled_at: string | null
+}
+
+/**
+ * นัดที่กำลังอยู่ในกรอบเวลา พร้อมตัวนับถอยหลังจากเซิร์ฟเวอร์
+ *
+ * ตัวเลขเป็น "อีกกี่วินาที" ไม่ใช่เวลาเป้าหมาย
+ * เพราะถ้าส่งเวลาเป้าหมายมา หน้าจอจะเอาไปลบกับนาฬิกาเครื่องตัวเอง
+ * ซึ่งเป็นสิ่งที่เราตั้งใจไม่เชื่อตั้งแต่แรก
+ */
+export interface MeetingWindow {
+  id: string
+  title: string
+  meet_at: string
+  place: string | null
+  audience: string | null
+  note: string | null
+  phase: 'soon' | 'open' | 'late'
+  opens_in_sec: number
+  closes_in_sec: number
+  late_by_sec: number
+  checked_in: boolean
+}
+
 export interface MeetingEvent {
   id: string
   title: string
   meet_at: string
+  open_before_min?: number
+  late_after_min?: number
   audience: string | null
   place: string | null
   note: string | null

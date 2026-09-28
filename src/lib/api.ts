@@ -25,15 +25,27 @@ import type {
   ByStatus,
   AssetTxnKind,
   AssetHistoryRow,
+  AssetExportRow,
+  BorrowSet,
+  ReturnCard,
   TransferNotice,
+  LinkAudience,
+  LinkRoleKey,
+  SystemHealth,
+  WorkLink,
+  WorkLinkFull,
+  TransferTargetRow,
   MeetingRow,
   MeetingStat,
   MeetingStatus,
   MeetingEvent,
+  MeetingWindow,
+  Announcement,
+  NoticeLevel,
 } from './types'
 
 const ITEM_COLS =
-  'id,sku,name,category_id,hub_code,unit,shelf_code,qty_on_hand,min_qty,is_returnable,requires_approval,dept_code,image_path,qr_payload,is_active,updated_at,categories(id,name,auto_approvable)'
+  'id,sku,name,category_id,hub_code,unit,shelf_code,qty_on_hand,min_qty,is_returnable,requires_approval,view_only,view_only_note,dept_code,image_path,qr_payload,is_active,updated_at,categories(id,name,auto_approvable)'
 
 const REQ_COLS =
   'id,ref_no,requester_id,hub_code,purpose,note,status,evidence_file_id,evidence_web_link,evidence_bytes,created_at,decided_by,decided_at,reject_reason,' +
@@ -229,6 +241,136 @@ export async function createReturn(args: {
   return data as { id: number; qty_after: number | null; photos: number }
 }
 
+/**
+ * คืนหลายรายการในครั้งเดียว — รูปชุดเดียวกันติดไปทุกบรรทัด
+ * ตอนเลิกกะของกองอยู่ตรงหน้าชุดเดียว ไม่มีเหตุผลต้องถ่ายซ้ำทีละรายการ
+ */
+export async function createReturnMany(args: {
+  lines: { line_id: number; qty: number }[]
+  condition: ReturnCond
+  photos: { file_id: string; web_link: string | null; bytes: number | null }[]
+}) {
+  const { data, error } = await supabase.rpc('create_return_many', {
+    p_lines: args.lines,
+    p_condition: args.condition,
+    p_photos: args.photos,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { lines: number; units: number }
+}
+
+/**
+ * ชุดเบิก-คืน — หนึ่งแถวคือหนึ่งรายการที่เบิกออกไป พร้อมการคืนทุกครั้งของมัน
+ * ค่าเริ่มต้นเอาเฉพาะของยืม-คืน เพราะของใช้แล้วหมดไปไม่มีสถานะให้ตาม
+ */
+export async function listBorrowSets(args: {
+  fromISO?: string
+  toISO?: string
+  returnableOnly?: boolean
+  limit?: number
+}): Promise<BorrowSet[]> {
+  let q = supabase.from('borrow_sets').select('*').order('taken_at', { ascending: false })
+  if (args.fromISO) q = q.gte('taken_at', args.fromISO)
+  if (args.toISO) q = q.lte('taken_at', args.toISO)
+  if (args.returnableOnly !== false) q = q.eq('is_returnable', true)
+  return unwrap(await q.limit(args.limit ?? 600)) as unknown as BorrowSet[]
+}
+
+/** การ์ดชุดเบิก-คืน — หนึ่งใบเบิกคือหนึ่งการ์ด พร้อมรายการและการคืนครบในตัว */
+export async function listReturnCards(args: {
+  kind?: 'supply' | 'asset'
+  fromISO?: string
+  toISO?: string
+  limit?: number
+}): Promise<ReturnCard[]> {
+  let q = supabase.from('return_cards').select('*').order('taken_at', { ascending: false })
+  if (args.kind) q = q.eq('kind', args.kind)
+  if (args.fromISO) q = q.gte('taken_at', args.fromISO)
+  if (args.toISO) q = q.lte('taken_at', args.toISO)
+  return unwrap(await q.limit(args.limit ?? 300)) as unknown as ReturnCard[]
+}
+
+/* ------------------------------------------------------- สถานะระบบ */
+
+/** โควตาแผนฟรีเหลือเท่าไหร่ — แอดมินและผู้ตรวจสอบเรียกได้ */
+export async function systemHealth(): Promise<SystemHealth> {
+  const { data, error } = await supabase.rpc('system_health')
+  if (error) throw new Error(readableError(error))
+  return data as unknown as SystemHealth
+}
+
+/* ---------------------------------------------------------- ลิงก์งาน */
+
+/** ลิงก์ที่กดเปิดได้ — เรียงตามลำดับที่เจ้าของระบบตั้งไว้ */
+export async function listWorkLinks(all = false): Promise<WorkLink[]> {
+  let q = supabase.from('work_links').select('*').order('sort_no').order('id')
+  if (!all) q = q.eq('is_active', true)
+  return unwrap(await q) as unknown as WorkLink[]
+}
+
+/**
+ * ลิงก์พร้อมรายชื่อผู้ชม — หน้าจัดการของเจ้าของระบบเท่านั้น
+ *
+ * ตารางเชื่อมเปิดให้เจ้าของระบบอ่านอย่างเดียว คนอื่นเรียกแล้วจะได้ลิสต์ว่าง
+ * ซึ่งถูกแล้ว เพราะการกรองว่าใครเห็นลิงก์ไหนเกิดที่ RLS ของ work_links
+ */
+export async function listWorkLinksFull(): Promise<WorkLinkFull[]> {
+  const rows = unwrap(
+    await supabase
+      .from('work_links')
+      .select(
+        '*, work_link_roles(role_key), work_link_depts(dept_code), work_link_users(user_id)',
+      )
+      .order('sort_no')
+      .order('id'),
+  ) as unknown as (WorkLink & {
+    work_link_roles: { role_key: LinkRoleKey }[]
+    work_link_depts: { dept_code: string }[]
+    work_link_users: { user_id: string }[]
+  })[]
+
+  return rows.map(({ work_link_roles, work_link_depts, work_link_users, ...l }) => ({
+    ...l,
+    role_keys: (work_link_roles ?? []).map((r) => r.role_key),
+    dept_codes: (work_link_depts ?? []).map((d) => d.dept_code),
+    user_ids: (work_link_users ?? []).map((u) => u.user_id),
+  }))
+}
+
+export async function saveWorkLink(row: {
+  id?: number
+  title: string
+  url: string
+  note?: string | null
+  sort_no?: number
+  is_active?: boolean
+  audience?: LinkAudience
+  role_keys?: LinkRoleKey[]
+  dept_codes?: string[]
+  user_ids?: string[]
+}) {
+  const custom = row.audience === 'custom'
+  // บันทึกลิงก์กับรายชื่อผู้ชมในคำสั่งเดียว เน็ตหลุดกลางคันแล้วไม่ค้างครึ่ง ๆ
+  const { error } = await supabase.rpc('save_work_link', {
+    p_id: row.id ?? null,
+    p_title: row.title.trim(),
+    p_url: row.url.trim(),
+    p_note: row.note?.trim() || null,
+    p_sort_no: row.sort_no ?? 0,
+    p_is_active: row.is_active ?? true,
+    p_audience: row.audience ?? 'custom',
+    p_roles: custom ? (row.role_keys ?? []) : [],
+    p_depts: custom ? (row.dept_codes ?? []) : [],
+    p_users: custom ? (row.user_ids ?? []) : [],
+  })
+  if (error) throw new Error(readableError(error))
+}
+
+export async function deleteWorkLink(id: number) {
+  const { error } = await supabase.from('work_links').delete().eq('id', id)
+  if (error) throw new Error(readableError(error))
+}
+
 /* -------------------------------------------------------------- แผนก */
 
 export async function listDepartments(): Promise<Department[]> {
@@ -349,6 +491,8 @@ export type ItemDraft = {
   min_qty: number
   is_returnable: boolean
   requires_approval: boolean
+  view_only: boolean
+  view_only_note: string | null
   qr_payload: string | null
   is_active: boolean
 }
@@ -398,7 +542,26 @@ export async function listHubs() {
 
 /* --------------------------------------------------------- edge functions */
 
-async function callFunction<T>(name: string, body: BodyInit, headers: Record<string, string> = {}): Promise<T> {
+/**
+ * เรียก Edge Function พร้อมกู้เซสชันให้เองหนึ่งครั้ง
+ *
+ * Edge Function ตรวจโทเคนกับ /auth/v1/user ซึ่งเข้มกว่าที่ PostgREST ตรวจ
+ * PostgREST ดูแค่ลายเซ็นกับวันหมดอายุ แต่ฝั่งนี้ถามจริงว่าเซสชันยังอยู่ไหม
+ * ผลคือแอพใช้งานได้ปกติทุกอย่าง แต่พอแตะฟังก์ชันทีไรเด้ง "เซสชันหมดอายุ"
+ * ซึ่งหน้างานอ่านแล้วไม่รู้จะทำยังไงต่อ
+ *
+ * เจอ 401/403 ให้ต่ออายุโทเคนแล้วยิงซ้ำหนึ่งรอบ ส่วนใหญ่จบตรงนี้เงียบ ๆ
+ * ถ้าต่ออายุไม่ผ่านแปลว่าเซสชันตายจริง ล้างเฉพาะในเครื่องแล้วให้เด้งไปหน้าล็อกอิน
+ *
+ * ต้องเป็น scope local เท่านั้น ถ้าเผลอใช้ signOut แบบ global
+ * จะไปเตะเครื่องอื่นของคนคนเดียวกันหลุดตามไปด้วย ซึ่งเคยทำพังมาแล้ว
+ */
+async function callFunction<T>(
+  name: string,
+  body: BodyInit,
+  headers: Record<string, string> = {},
+  mayRetry = true,
+): Promise<T> {
   const { data } = await supabase.auth.getSession()
   const token = data.session?.access_token
   const res = await fetch(functionUrl(name), {
@@ -410,6 +573,16 @@ async function callFunction<T>(name: string, body: BodyInit, headers: Record<str
     },
     body,
   })
+
+  if ((res.status === 401 || res.status === 403) && mayRetry) {
+    const again = await supabase.auth.refreshSession()
+    if (!again.error && again.data.session) {
+      return callFunction<T>(name, body, headers, false)
+    }
+    await supabase.auth.signOut({ scope: 'local' })
+    throw new Error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่')
+  }
+
   const text = await res.text()
   let json: unknown = null
   try {
@@ -545,7 +718,7 @@ export async function setEvidenceArchived(row: EvidenceRow, archived: boolean) {
  * ต้องดึงด้วย fetch เพราะ <img src> ส่ง header ยืนยันตัวตนไม่ได้
  * และไฟล์ใน Drive เป็นส่วนตัว จะแปะ URL ตรง ๆ ไม่ได้
  */
-export async function fetchEvidenceImage(fileId: string): Promise<string> {
+export async function fetchEvidenceImage(fileId: string, mayRetry = true): Promise<string> {
   const { data } = await supabase.auth.getSession()
   const token = data.session?.access_token
   const res = await fetch(`${functionUrl('evidence-image')}?fileId=${encodeURIComponent(fileId)}`, {
@@ -554,6 +727,15 @@ export async function fetchEvidenceImage(fileId: string): Promise<string> {
       apikey: import.meta.env.VITE_SUPABASE_ANON_KEY ?? '',
     },
   })
+
+  // เส้นนี้ไม่ได้ผ่าน callFunction จึงต้องกู้เซสชันเองด้วยเหตุผลเดียวกัน
+  if ((res.status === 401 || res.status === 403) && mayRetry) {
+    const again = await supabase.auth.refreshSession()
+    if (!again.error && again.data.session) return fetchEvidenceImage(fileId, false)
+    await supabase.auth.signOut({ scope: 'local' })
+    throw new Error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่')
+  }
+
   if (!res.ok) {
     const text = await res.text()
     let msg = text
@@ -650,7 +832,7 @@ export async function listAssets(typeCodes?: string | string[]): Promise<Asset[]
   let q = supabase
     .from('assets')
     .select(
-      'code,type_code,dept_code,share_depts,is_enabled,note,held_item_id,created_at,asset_types(code,name)',
+      'code,type_code,dept_code,share_depts,is_enabled,note,held_item_id,loan_user,created_at,asset_types(code,name)',
     )
     .order('code')
   if (list && list.length > 0) q = q.in('type_code', list)
@@ -661,13 +843,6 @@ export async function listAssetHoldings(mineOnly = false, userId?: string): Prom
   let q = supabase.from('asset_holdings').select('*').order('taken_at')
   if (mineOnly && userId) q = q.eq('user_id', userId)
   return unwrap(await q) as unknown as AssetHolding[]
-}
-
-/** เครื่องที่เรากดเบิกให้คนอื่น — ดูอย่างเดียว คนคืนคือคนที่ถืออยู่จริง */
-export async function listProxyHoldings(userId: string): Promise<AssetHolding[]> {
-  return unwrap(
-    await supabase.from('asset_holdings').select('*').eq('acted_by', userId).order('taken_at'),
-  ) as unknown as AssetHolding[]
 }
 
 export async function listAssetOpenIssues(): Promise<AssetOpenIssue[]> {
@@ -731,15 +906,34 @@ export async function listProxyTargets(q?: string): Promise<ProxyTarget[]> {
   return (data ?? []) as ProxyTarget[]
 }
 
-/** โอนเครื่องให้แผนกอื่น — ปลายทางต้องไปกดเบิกเองตามขั้นตอน */
-export async function assetTransfer(code: string, toDept: string, reason?: string) {
-  const { data, error } = await supabase.rpc('asset_transfer', {
-    p_code: code,
-    p_to_dept: toDept,
+/** รายชื่อคนที่รับโอนเครื่องได้ — กรองคนที่เบิก Asset ไม่ได้ออกแล้ว */
+export async function listTransferTargets(q?: string): Promise<TransferTargetRow[]> {
+  const { data, error } = await supabase.rpc('transfer_targets', { p_q: q ?? null })
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as TransferTargetRow[]
+}
+
+/**
+ * โอนเครื่องให้คนอื่นใช้ชั่วคราว — ปลายทางต้องไปกดเบิกเองตามขั้นตอน
+ * เครื่องที่อยู่กับคนนั้นอยู่แล้วจะถูกข้าม ไม่ทำให้ทั้งชุดล้ม
+ */
+export async function assetTransferMany(codes: string[], toUserId: string, reason?: string) {
+  const { data, error } = await supabase.rpc('asset_transfer_many', {
+    p_codes: codes,
+    p_to_user: toUserId,
     p_reason: reason ?? null,
   })
   if (error) throw new Error(readableError(error))
-  return data as { id: number; asset_code: string; to_dept: string; cut_from: string | null }
+  return data as { to_user: string; to_name: string; moved: string[]; skipped: string[]; count: number }
+}
+
+/** นับเครื่องที่ยังไม่คืนทั้งฮับ — เอาแค่ตัวเลข ไม่ดึงแถวมาทั้งกอง */
+export async function countAssetHoldings(): Promise<number> {
+  const { count, error } = await supabase
+    .from('asset_holdings')
+    .select('out_item_id', { count: 'exact', head: true })
+  if (error) throw new Error(readableError(error))
+  return count ?? 0
 }
 
 /** ต้นทางกดรับทราบว่าไม่ต้องตามคืนเครื่องนั้นแล้ว */
@@ -764,6 +958,42 @@ export async function listTransferNotices(): Promise<TransferNotice[]> {
   return (data ?? []) as TransferNotice[]
 }
 
+/**
+ * เบิกแบบตะกร้า — หลายประเภทในรอบเดียว
+ * เบื้องหลังออกใบแยกตามประเภท เพราะจำนวนรูปบังคับไม่เท่ากัน
+ */
+export async function assetCheckoutMany(args: {
+  groups: {
+    type_code: string
+    codes: string[]
+    photos: AssetPhotoInput[]
+    issues: AssetIssueInput[]
+  }[]
+  note?: string
+  forUserId?: string | null
+}) {
+  const { data, error } = await supabase.rpc('asset_checkout_many', {
+    p_groups: args.groups,
+    p_note: args.note ?? null,
+    p_for_user: args.forUserId ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { ok: boolean; count: number; groups: number; ref_no: string; refs: string[] }
+}
+
+/** คืนแบบตะกร้า — หลายประเภทในรอบเดียว รูปแยกตามประเภท */
+export async function assetReturnGroups(args: {
+  groups: { type_code: string; codes: string[]; photos: AssetPhotoInput[]; issues: AssetIssueInput[] }[]
+  note?: string
+}) {
+  const { data, error } = await supabase.rpc('asset_return_groups', {
+    p_groups: args.groups,
+    p_note: args.note ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { ok: boolean; count: number; ref_no: string; refs: string[] }
+}
+
 export async function assetReturn(args: {
   codes: string[]
   photos: AssetPhotoInput[]
@@ -778,6 +1008,52 @@ export async function assetReturn(args: {
   })
   if (error) throw new Error(readableError(error))
   return data as { id: string; ref_no: string; count: number }
+}
+
+/**
+ * เพิ่มเครื่องใหม่เข้าทะเบียน
+ * รหัสเครื่องซ้ำไม่ได้ ฐานข้อมูลจะตีกลับเอง
+ */
+export async function createAsset(row: {
+  code: string
+  type_code: string
+  dept_code: string | null
+  share_depts?: string[]
+  note?: string | null
+}) {
+  const { error } = await supabase.from('assets').insert({
+    code: row.code.trim(),
+    type_code: row.type_code,
+    dept_code: row.dept_code,
+    share_depts: row.share_depts ?? [],
+    note: row.note?.trim() || null,
+    is_enabled: true,
+  })
+  if (error) throw new Error(readableError(error))
+}
+
+/**
+ * แก้ข้อมูลเครื่อง รวมถึงเปลี่ยนรหัส
+ * ฐานข้อมูลตั้ง on update cascade ไว้ ประวัติทุกที่จะตามรหัสใหม่ไปเอง
+ */
+export async function updateAsset(
+  code: string,
+  patch: { code?: string; type_code?: string; dept_code?: string | null; note?: string | null },
+) {
+  const body: Record<string, unknown> = {}
+  if (patch.code !== undefined) body.code = patch.code.trim()
+  if (patch.type_code !== undefined) body.type_code = patch.type_code
+  if (patch.dept_code !== undefined) body.dept_code = patch.dept_code
+  if (patch.note !== undefined) body.note = patch.note?.trim() || null
+  const { error } = await supabase.from('assets').update(body).eq('code', code)
+  if (error) throw new Error(readableError(error))
+}
+
+/** ลบเครื่องพร้อมประวัติทั้งหมด — เครื่องที่ยังมีคนถือลบไม่ได้ */
+export async function deleteAsset(code: string) {
+  const { data, error } = await supabase.rpc('delete_asset', { p_code: code })
+  if (error) throw new Error(readableError(error))
+  return data as { code: string; txn_items: number; issues: number; transfers: number }
 }
 
 export async function setAssetEnabled(code: string, on: boolean) {
@@ -842,6 +1118,23 @@ export interface EvidenceItemOption {
 
 export async function listEvidenceItems(): Promise<EvidenceItemOption[]> {
   return unwrap(await supabase.from('evidence_items').select('*')) as unknown as EvidenceItemOption[]
+}
+
+/** บรรทัด Asset ในช่วงที่เลือก — ไว้ดูก่อนส่ง ว่าจะส่งอะไรเข้าชีตบ้าง */
+export async function listAssetExportRows(args: {
+  fromISO: string
+  toISO: string
+  onlyPending?: boolean
+  limit?: number
+}): Promise<AssetExportRow[]> {
+  let q = supabase
+    .from('asset_export_rows')
+    .select('*')
+    .gte('created_at', args.fromISO)
+    .lte('created_at', args.toISO)
+    .order('created_at', { ascending: false })
+  if (args.onlyPending) q = q.is('tab', null)
+  return unwrap(await q.limit(args.limit ?? 300)) as unknown as AssetExportRow[]
 }
 
 /** นับบรรทัด Asset ที่ยังไม่ได้ส่งเข้าชีต */
@@ -923,6 +1216,26 @@ export async function createByBarcode(args: {
   })
   if (error) throw new Error(readableError(error))
   return data as { id: string; ref_no: string; photos: number }
+}
+
+/**
+ * ปิดงานบาร์โค้ด พร้อมตัดสต็อกหลายรายการในทีเดียว
+ * บาร์โค้ดใบเดียวมักมีของหลายอย่าง การตัดได้ทีละอย่างทำให้ที่เหลือต้องไปตัดมือ
+ */
+export async function setByStatusLines(
+  id: string,
+  status: ByStatus,
+  opts: { note?: string; lines?: { item_id: number; qty: number }[]; cutStock?: boolean } = {},
+) {
+  const { data, error } = await supabase.rpc('set_by_status_lines', {
+    p_id: id,
+    p_status: status,
+    p_note: opts.note ?? null,
+    p_lines: opts.lines ?? [],
+    p_cut_stock: opts.cutStock ?? false,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { ok: boolean; cut_lines: number }
 }
 
 export async function setByStatus(
@@ -1278,6 +1591,8 @@ export async function createMeetingEvent(args: {
   audience?: string | null
   place?: string | null
   note?: string | null
+  openBefore?: number | null
+  lateAfter?: number | null
 }) {
   const { data, error } = await supabase.rpc('create_meeting_event', {
     p_title: args.title,
@@ -1285,9 +1600,66 @@ export async function createMeetingEvent(args: {
     p_audience: args.audience ?? null,
     p_place: args.place ?? null,
     p_note: args.note ?? null,
+    p_open_before: args.openBefore ?? null,
+    p_late_after: args.lateAfter ?? null,
   })
   if (error) throw new Error(readableError(error))
   return data as { id: string }
+}
+
+/* ------------------------------------------- หน้าต่างเวลาเช็คชื่อประชุม */
+
+/** นัดที่กำลังอยู่ในกรอบเวลา · null = ตอนนี้ไม่มีนัดที่เกี่ยวข้อง */
+export async function meetingWindow(): Promise<MeetingWindow | null> {
+  const { data, error } = await supabase.rpc('meeting_now')
+  if (error) throw new Error(readableError(error))
+  const rows = (data ?? []) as MeetingWindow[]
+  return rows[0] ?? null
+}
+
+/* ------------------------------------------------------- ป้ายประกาศ */
+
+/**
+ * ประกาศที่ยังไม่หมดอายุ
+ *
+ * RLS กรองให้เองว่าใครเห็นอะไร หน้าจอจึงไม่ต้องรู้กติกา
+ * คนคุมเห็นของที่หมดอายุแล้วด้วย จึงต้องกรองฝั่งนี้เมื่อใช้ในแอพ
+ */
+export async function listAnnouncements(all = false): Promise<Announcement[]> {
+  let q = supabase
+    .from('announcements')
+    .select('*')
+    .is('cancelled_at', null)
+    .order('created_at', { ascending: false })
+  if (!all) q = q.gt('expires_at', new Date().toISOString())
+  return unwrap(await q) as unknown as Announcement[]
+}
+
+export async function createAnnouncement(args: {
+  title: string
+  body?: string | null
+  level?: NoticeLevel
+  days?: number
+  notify?: boolean
+}) {
+  const { data, error } = await supabase.rpc('create_announcement', {
+    p_title: args.title,
+    p_body: args.body ?? null,
+    p_level: args.level ?? 'info',
+    p_days: args.days ?? 3,
+    p_notify: args.notify ?? true,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { id: string }
+}
+
+/** เก็บประกาศก่อนหมดอายุ — ไม่ลบทิ้ง เผื่อย้อนดูว่าเคยประกาศอะไรไป */
+export async function retireAnnouncement(id: string) {
+  const { error } = await supabase
+    .from('announcements')
+    .update({ cancelled_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw new Error(readableError(error))
 }
 
 export async function cancelMeetingEvent(id: string) {
