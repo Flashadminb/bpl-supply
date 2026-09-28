@@ -2,13 +2,20 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { useCart } from '../../lib/cart'
 import { useAsync } from '../../lib/useAsync'
-import { listAssetHoldings, listMyHistory, listOpenBorrowings } from '../../lib/api'
+import {
+  countAssetHoldings,
+  listAssetHoldings,
+  listMyHistory,
+  listOpenBorrowings,
+} from '../../lib/api'
 import { StaffPage } from '../../components/Shell'
 import { EmptyState, ErrorBox, Loading } from '../../components/ui'
 import { STATUS_TH, fmtDateTime, statusClass } from '../../lib/format'
-import { MANAGER_ROLES, roleLabel } from '../../lib/roles'
+import { MANAGER_ROLES, canProxy, roleLabel } from '../../lib/roles'
 import { usePendingApprovals } from '../../lib/usePendingApprovals'
 import { NotifyBell } from '../../components/NotifyBell'
+import { WorkLinks } from '../../components/WorkLinks'
+import { NoticeBoard } from '../../components/NoticeBoard'
 import { MeetingCheckIn } from '../../components/MeetingCheckIn'
 import { relativeAge } from '../../lib/format'
 
@@ -25,10 +32,20 @@ export default function Home() {
   const openCount = (borrow.data ?? []).reduce((n, b) => n + b.qty_open, 0)
   const assetCount = (heldAssets.data ?? []).length
   const owing = openCount + assetCount
+
+  // เครื่องที่คนอื่นถืออยู่ — เฉพาะคนที่คืนแทนได้
+  // เดิมการ์ดนี้นับแต่ของตัวเอง แอดมินเลยเห็น "ไม่มีของค้าง" ทั้งที่ของออกไปอยู่ข้างนอก
+  // ขอมาแค่ตัวเลข ไม่ดึงแถวมาทั้งกอง จะได้ไม่เปลืองโควต้าตอนเปลี่ยนกะ
+  const mayProxy = canProxy(profile)
+  const hubHeld = useAsync(
+    () => (mayProxy ? countAssetHoldings() : Promise.resolve(0)),
+    [mayProxy],
+  )
+  const hubOthers = Math.max((hubHeld.data ?? 0) - assetCount, 0)
   const approvals = usePendingApprovals()
 
   return (
-    <div className="min-h-dvh bg-canvas">
+    <div className="bg-canvas">
       <header className="safe-t bg-brand-500 text-ink">
         <div className="mx-auto flex max-w-phone items-start gap-3 px-4 pb-5 pt-4">
           <div className="flex-1">
@@ -42,6 +59,8 @@ export default function Home() {
             <span className="flex items-center gap-2">
               {/* เช็คอินประชุมเห็นทุกคน ไม่ใช่ของแอดมิน */}
               <MeetingCheckIn />
+              {/* ลิงก์งาน — เห็นเฉพาะแอดมิน เจ้าของระบบ และผู้ตรวจสอบ */}
+              <WorkLinks />
               {can(...MANAGER_ROLES) && <NotifyBell />}
               {(can(...MANAGER_ROLES) || profile?.can_dispatch) && (
                 <Link to="/admin" className="rounded-btn bg-ink px-3 py-2 text-sm text-white">
@@ -57,6 +76,9 @@ export default function Home() {
       </header>
 
       <StaffPage className="-mt-3">
+        {/* ป้ายประกาศ — ต้องอยู่บนสุด ถ้าอยู่ล่างจะไม่มีใครเลื่อนลงไปอ่าน */}
+        <NoticeBoard />
+
         {/* คำขอรออนุมัติ — ขึ้นเฉพาะแอดมินกับเจ้าของระบบ อนุมัติจากมือถือได้เลย */}
         {approvals.count > 0 && (
           <Link
@@ -148,6 +170,9 @@ export default function Home() {
                       .join(' · ')
                   : 'ไม่มีของค้าง'}
             </span>
+            {mayProxy && hubOthers > 0 && (
+              <span className="text-xs text-ink-400">คนอื่นถืออยู่ {hubOthers} เครื่อง</span>
+            )}
           </Link>
         </div>
 

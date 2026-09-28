@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useAuth } from '../lib/auth'
+import { MeetingWindowCard } from './MeetingWindowCard'
 import { useAsync } from '../lib/useAsync'
-import { listMyMeetings, listUpcomingMeetings, meetingCheckin } from '../lib/api'
+import { listMyMeetings, listUpcomingMeetings, meetingCheckin, meetingWindow } from '../lib/api'
 import { readableError } from '../lib/supabase'
 import { fmtDateTime } from '../lib/format'
 import { Sheet, Spinner } from './ui'
@@ -38,6 +39,16 @@ export function MeetingCheckIn() {
     [open, planTick],
   )
   const mayPlan = canProxy(profile)
+
+  // นัดที่กำลังอยู่ในกรอบเวลา · โหลดตอนเปิดแผ่นเท่านั้น
+  const win = useAsync(() => (open ? meetingWindow() : Promise.resolve(null)), [open, done])
+
+  /**
+   * ยังไม่ถึงเวลา = ปิดปุ่มส่งไว้ก่อน
+   * ฐานข้อมูลปฏิเสธให้อยู่แล้ว แต่ถ้าปล่อยให้กดได้ เขาจะถ่ายรูปเสร็จแล้วค่อยโดนปฏิเสธ
+   * ซึ่งเสียเวลาเปล่าและดูเหมือนระบบพัง
+   */
+  const tooEarly = win.data?.phase === 'soon'
 
   const photos = shotsToPhotos(shots)
   const uploading = shots.some((s) => s.state === 'uploading' || s.state === 'ready')
@@ -134,6 +145,8 @@ export function MeetingCheckIn() {
           </>
         ) : (
           <>
+            {win.data && <MeetingWindowCard win={win.data} />}
+
             <MeetingNotices rows={events.data ?? []} />
 
             <p className="mb-3 text-sm text-ink-500">
@@ -164,11 +177,21 @@ export function MeetingCheckIn() {
             <button
               type="button"
               className="btn-primary mt-4 w-full py-4 text-md"
-              disabled={busy || !ready}
+              disabled={busy || !ready || tooEarly}
               onClick={() => void submit()}
             >
               {busy ? <Spinner /> : null}
-              {ready ? 'ส่งเช็คอิน' : failed ? 'รูปส่งไม่สำเร็จ กดที่รูปเพื่อลองใหม่' : uploading ? 'กำลังส่งรูป…' : 'ถ่ายรูปก่อน'}
+              {tooEarly
+                ? 'ยังไม่ถึงเวลาเช็คชื่อ'
+                : ready
+                  ? win.data?.phase === 'late'
+                    ? 'ส่งเช็คอิน (จะบันทึกว่าสาย)'
+                    : 'ส่งเช็คอิน'
+                  : failed
+                    ? 'รูปส่งไม่สำเร็จ กดที่รูปเพื่อลองใหม่'
+                    : uploading
+                      ? 'กำลังส่งรูป…'
+                      : 'ถ่ายรูปก่อน'}
             </button>
 
             {history.length > 0 && (

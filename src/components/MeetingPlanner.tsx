@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { describeWindow } from '../lib/meetingWindow'
 import { useAsync } from '../lib/useAsync'
 import { cancelMeetingEvent, createMeetingEvent, deleteMeetingEvent, listUpcomingMeetings } from '../lib/api'
 import { readableError } from '../lib/supabase'
@@ -72,6 +73,15 @@ export function MeetingPlanner({ onChanged }: { onChanged?: () => void }) {
   const [audience, setAudience] = useState('')
   const [place, setPlace] = useState('')
   const [note, setNote] = useState('')
+  /**
+   * กรอบเวลาเช็คชื่อรายนัด
+   *
+   * null = ใช้ค่ากลางที่ตั้งไว้ในหน้าเว็บ ซึ่งเป็นสิ่งที่คนส่วนใหญ่ต้องการ
+   * จึงซ่อนไว้ใต้ปุ่ม ไม่ยัดให้กรอกทุกครั้งที่นัดประชุม
+   */
+  const [detail, setDetail] = useState(false)
+  const [openBefore, setOpenBefore] = useState<number | null>(null)
+  const [lateAfter, setLateAfter] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
@@ -90,12 +100,17 @@ export function MeetingPlanner({ onChanged }: { onChanged?: () => void }) {
         audience,
         place,
         note,
+        openBefore,
+        lateAfter,
       })
       setTitle('')
       setAudience('')
       setPlace('')
       setNote('')
       setWhen(defaultWhen())
+      setDetail(false)
+      setOpenBefore(null)
+      setLateAfter(null)
       setOpen(false)
       setDone(new Date().toISOString())
       onChanged?.()
@@ -177,6 +192,72 @@ export function MeetingPlanner({ onChanged }: { onChanged?: () => void }) {
             </div>
           </div>
 
+          {/* ตั้งกรอบเวลาเฉพาะนัดนี้ — ซ่อนไว้ เพราะปกติใช้ค่ากลางก็พอ */}
+          <button
+            type="button"
+            className="mt-2 min-h-tap text-sm underline decoration-line-2"
+            onClick={() => setDetail((v) => !v)}
+          >
+            {detail ? 'ซ่อนการตั้งเวลาเช็คชื่อ' : 'ตั้งเวลาเช็คชื่อเฉพาะนัดนี้'}
+          </button>
+
+          {detail && (
+            <div className="mt-2 rounded-card border border-line bg-surface-2 p-3">
+              <div className="grid grid-cols-2 gap-2">
+                <span>
+                  <label className="label" htmlFor="mw-open">
+                    เช็คก่อนเวลาได้ (นาที)
+                  </label>
+                  <input
+                    id="mw-open"
+                    type="number"
+                    min={0}
+                    max={240}
+                    className="input"
+                    placeholder="ใช้ค่ากลาง"
+                    value={openBefore ?? ''}
+                    onChange={(e) =>
+                      setOpenBefore(e.target.value === '' ? null : Math.max(Number(e.target.value) || 0, 0))
+                    }
+                  />
+                  <span className="mt-1 block text-xs text-ink-400">
+                    0 = กดก่อนไม่ได้ ต้องรอถึงเวลานัด
+                  </span>
+                </span>
+                <span>
+                  <label className="label" htmlFor="mw-late">
+                    เลยเวลาได้ (นาที)
+                  </label>
+                  <input
+                    id="mw-late"
+                    type="number"
+                    min={0}
+                    max={240}
+                    className="input"
+                    placeholder="ใช้ค่ากลาง"
+                    value={lateAfter ?? ''}
+                    onChange={(e) =>
+                      setLateAfter(e.target.value === '' ? null : Math.max(Number(e.target.value) || 0, 0))
+                    }
+                  />
+                  <span className="mt-1 block text-xs text-ink-400">
+                    0 = ต้องตรงเวลาเป๊ะ เลยวินาทีเดียวก็สาย
+                  </span>
+                </span>
+              </div>
+
+              {when && (openBefore !== null || lateAfter !== null) && (
+                <p className="mt-2 rounded-btn bg-brand-50 px-3 py-2 text-sm text-ink-700">
+                  {describeWindow(new Date(when), openBefore ?? 15, lateAfter ?? 10).line}
+                </p>
+              )}
+
+              <p className="mt-2 text-xs text-ink-400">
+                เว้นว่างไว้ = ใช้ค่ากลางที่ตั้งในหน้าเว็บ · ตั้งแล้วนัดนี้ถือค่านี้ติดตัวไปตลอด
+              </p>
+            </div>
+          )}
+
           {error && (
             <p className="mt-2 rounded-btn bg-danger-bg px-3 py-2 text-sm text-danger-txt">{error}</p>
           )}
@@ -191,6 +272,8 @@ export function MeetingPlanner({ onChanged }: { onChanged?: () => void }) {
           </button>
           <p className="mt-1 text-center text-xs text-ink-400">
             ทุกคนจะได้รับแจ้งเตือนทันที · คนที่ไม่ใช่ตำแหน่งที่ระบุจะได้รู้ว่าไม่ต้องมา
+            <br />
+            และจะเด้งอีกรอบตอนถึงเวลาที่เช็คชื่อได้
           </p>
         </>
       )}
