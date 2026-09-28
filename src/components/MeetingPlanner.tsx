@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { describeWindow } from '../lib/meetingWindow'
+import { AudiencePicker, EMPTY_AUDIENCE, type Audience } from './AudiencePicker'
 import { useAsync } from '../lib/useAsync'
 import { cancelMeetingEvent, createMeetingEvent, deleteMeetingEvent, listUpcomingMeetings } from '../lib/api'
 import { readableError } from '../lib/supabase'
@@ -79,6 +80,17 @@ export function MeetingPlanner({ onChanged }: { onChanged?: () => void }) {
    * null = ใช้ค่ากลางที่ตั้งไว้ในหน้าเว็บ ซึ่งเป็นสิ่งที่คนส่วนใหญ่ต้องการ
    * จึงซ่อนไว้ใต้ปุ่ม ไม่ยัดให้กรอกทุกครั้งที่นัดประชุม
    */
+  /**
+   * ใครต้องเข้าประชุม
+   *
+   * free  = พิมพ์เอาเองในช่อง "ใครต้องเข้า" (ของเดิม) — ไม่มีรายชื่อจึงนับขาดไม่ได้
+   * all   = ทุกคนในระบบ
+   * picked= เลือกแผนกหรือรายคน
+   *
+   * สองแบบหลังเท่านั้นที่รู้ว่าใครควรมา จึงบอกได้ว่าใครขาด
+   */
+  const [audMode, setAudMode] = useState<'free' | 'list'>('free')
+  const [aud, setAud] = useState<Audience>(EMPTY_AUDIENCE)
   const [detail, setDetail] = useState(false)
   const [openBefore, setOpenBefore] = useState<number | null>(null)
   const [lateAfter, setLateAfter] = useState<number | null>(null)
@@ -102,6 +114,9 @@ export function MeetingPlanner({ onChanged }: { onChanged?: () => void }) {
         note,
         openBefore,
         lateAfter,
+        mode: audMode === 'free' ? 'free' : aud.mode,
+        deptCodes: aud.deptCodes,
+        userIds: aud.userIds,
       })
       setTitle('')
       setAudience('')
@@ -109,6 +124,8 @@ export function MeetingPlanner({ onChanged }: { onChanged?: () => void }) {
       setNote('')
       setWhen(defaultWhen())
       setDetail(false)
+      setAudMode('free')
+      setAud(EMPTY_AUDIENCE)
       setOpenBefore(null)
       setLateAfter(null)
       setOpen(false)
@@ -167,13 +184,51 @@ export function MeetingPlanner({ onChanged }: { onChanged?: () => void }) {
               value={when}
               onChange={(e) => setWhen(e.target.value)}
             />
-            <input
-              className="input"
-              aria-label="ใครต้องเข้า"
-              placeholder="ใครต้องเข้า เช่น sup และ lead"
-              value={audience}
-              onChange={(e) => setAudience(e.target.value)}
-            />
+            <div className="rounded-card border border-line p-3">
+              <p className="label">ใครต้องเข้าประชุม</p>
+              <div className="mb-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={`chip ${audMode === 'free' ? 'chip-on' : ''}`}
+                  onClick={() => setAudMode('free')}
+                >
+                  พิมพ์เอง
+                </button>
+                <button
+                  type="button"
+                  className={`chip ${audMode === 'list' ? 'chip-on' : ''}`}
+                  onClick={() => setAudMode('list')}
+                >
+                  เลือกจากรายชื่อ
+                </button>
+              </div>
+
+              {audMode === 'free' ? (
+                <>
+                  <input
+                    className="input"
+                    aria-label="ใครต้องเข้า"
+                    placeholder="ใครต้องเข้า เช่น sup และ lead"
+                    value={audience}
+                    onChange={(e) => setAudience(e.target.value)}
+                  />
+                  <p className="mt-1 text-xs text-ink-400">
+                    แจ้งเตือนไปหาทุกคน และระบบไม่รู้ว่าใครควรมา จึงบอกไม่ได้ว่าใครขาดประชุม
+                  </p>
+                </>
+              ) : (
+                <>
+                  <AudiencePicker
+                    value={aud}
+                    onChange={setAud}
+                    allHint="ทุกคนในระบบต้องเข้า และนับขาดได้ทุกคน"
+                  />
+                  <p className="mt-1 text-xs text-ink-400">
+                    แบบนี้ระบบรู้รายชื่อที่ต้องมา จึงจับได้ว่าใครมาสายและใครขาด
+                  </p>
+                </>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <input
                 className="input"

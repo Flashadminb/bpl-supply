@@ -1597,7 +1597,11 @@ export async function createMeetingEvent(args: {
   note?: string | null
   openBefore?: number | null
   lateAfter?: number | null
+  mode?: 'all' | 'picked' | 'free'
+  deptCodes?: string[]
+  userIds?: string[]
 }) {
+  const picked = args.mode === 'picked'
   const { data, error } = await supabase.rpc('create_meeting_event', {
     p_title: args.title,
     p_meet_at: args.meetAt,
@@ -1606,6 +1610,9 @@ export async function createMeetingEvent(args: {
     p_note: args.note ?? null,
     p_open_before: args.openBefore ?? null,
     p_late_after: args.lateAfter ?? null,
+    p_mode: args.mode ?? 'free',
+    p_depts: picked ? (args.deptCodes ?? []) : [],
+    p_users: picked ? (args.userIds ?? []) : [],
   })
   if (error) throw new Error(readableError(error))
   return data as { id: string }
@@ -1711,13 +1718,20 @@ export async function createAnnouncement(args: {
   level?: NoticeLevel
   days?: number
   notify?: boolean
+  mode?: 'all' | 'picked'
+  deptCodes?: string[]
+  userIds?: string[]
 }) {
+  const picked = args.mode === 'picked'
   const { data, error } = await supabase.rpc('create_announcement', {
     p_title: args.title,
     p_body: args.body ?? null,
     p_level: args.level ?? 'info',
     p_days: args.days ?? 3,
     p_notify: args.notify ?? true,
+    p_mode: args.mode ?? 'all',
+    p_depts: picked ? (args.deptCodes ?? []) : [],
+    p_users: picked ? (args.userIds ?? []) : [],
   })
   if (error) throw new Error(readableError(error))
   return data as { id: string }

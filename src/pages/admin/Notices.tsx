@@ -12,6 +12,7 @@ import { readableError } from '../../lib/supabase'
 import { EmptyState, ErrorBox, Loading, Spinner } from '../../components/ui'
 import { fmtDateTime } from '../../lib/format'
 import { MeetingPlanner } from '../../components/MeetingPlanner'
+import { AudiencePicker, EMPTY_AUDIENCE, type Audience } from '../../components/AudiencePicker'
 import { describeWindow } from '../../lib/meetingWindow'
 import type { NoticeLevel } from '../../lib/types'
 
@@ -49,6 +50,8 @@ export default function Notices() {
   const [level, setLevel] = useState<NoticeLevel>('info')
   const [days, setDays] = useState(3)
   const [notify, setNotify] = useState(true)
+  /** ใครได้รับประกาศนี้ · ตั้งต้นเป็นทุกคน ซึ่งเป็นกรณีที่ใช้บ่อยสุด */
+  const [aud, setAud] = useState<Audience>(EMPTY_AUDIENCE)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
@@ -80,15 +83,29 @@ export default function Notices() {
       setErr('ต้องใส่หัวข้อประกาศ')
       return
     }
+    if (aud.mode === 'picked' && aud.deptCodes.length === 0 && aud.userIds.length === 0) {
+      setErr('เลือกเจาะจงต้องเลือกอย่างน้อยหนึ่งแผนกหรือหนึ่งคน ไม่งั้นจะไม่มีใครได้รับ')
+      return
+    }
     setBusy(true)
     setErr(null)
     try {
-      await createAnnouncement({ title, body, level, days, notify })
+      await createAnnouncement({
+        title,
+        body,
+        level,
+        days,
+        notify,
+        mode: aud.mode,
+        deptCodes: aud.deptCodes,
+        userIds: aud.userIds,
+      })
       setTitle('')
       setBody('')
       setLevel('info')
       setDays(3)
       setNotify(true)
+      setAud(EMPTY_AUDIENCE)
       setDone(notify ? 'ประกาศแล้ว · แจ้งเตือนกำลังทยอยส่ง' : 'ประกาศแล้ว · ไม่ได้ส่งแจ้งเตือน')
       feed.reload()
     } catch (e) {
@@ -211,6 +228,13 @@ export default function Notices() {
                 </button>
               ))}
             </div>
+
+            <p className="label mt-4">ใครได้รับประกาศนี้</p>
+            <AudiencePicker
+              value={aud}
+              onChange={setAud}
+              allHint="หน้างานทุกคนเห็นป้ายนี้บนหน้าแรก"
+            />
 
             <div className="mt-3 flex flex-wrap items-end gap-4">
               <span>
