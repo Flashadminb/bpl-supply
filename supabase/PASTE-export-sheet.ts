@@ -16,7 +16,7 @@
 // ไม่บังคับ: GSHEET_MEETING_ID (ไม่ตั้งก็ใช้ไฟล์ที่ฝังไว้ในโค้ด)
 // =====================================================================
 
-const VERSION = 'asset-fk-v8'
+const VERSION = 'attendance-v9'
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
 
 const HEADER = ['เลขที่คำขอ', 'วันเวลา', 'ผู้เบิก (ฮับ)', 'วัสดุ', 'จำนวน', 'หลักฐาน', 'Drive File ID']
@@ -68,6 +68,28 @@ const BY_HEADER = [
 // ไฟล์รายชื่อประชุมแยกจากไฟล์เบิก-คืน · ตั้ง GSHEET_MEETING_ID ทับได้ถ้าย้ายไฟล์
 const MEETING_SHEET_ID = '15_ES88gZhq8ZWBaAwoFekP-3o3HKnNW52jPimSIjHRY'
 
+/**
+ * สถานะการเข้าประชุมเป็นภาษาคน
+ *
+ * คนละเรื่องกับคอลัมน์ "สถานะ" ที่มีอยู่เดิม
+ * อันเดิมคือผู้ตรวจสอบรับรองรูปเซลฟี่ · อันนี้คือมาทันเวลาไหม
+ * รูปผ่านแต่มาสายก็มี รูปไม่ผ่านแต่มาตรงเวลาก็มี
+ */
+function attendText(state: string | null): string {
+  switch (state) {
+    case 'ontime':
+      return 'ตรงเวลา'
+    case 'late':
+      return 'มาสาย'
+    case 'absent':
+      return 'ขาดประชุม'
+    case 'excused':
+      return 'ผ่อนผัน'
+    default:
+      return ''
+  }
+}
+
 const MEETING_HEADER = [
   'เลขที่',
   'วันเวลาเช็คอิน',
@@ -82,6 +104,13 @@ const MEETING_HEADER = [
   'หมายเหตุผู้เช็คอิน',
   'รูปเซลฟี่',
   'Drive File ID',
+  // ── เพิ่มใหม่ ต่อท้าย ชีตเก่าจึงยังอ่านคอลัมน์เดิมได้ตรงตำแหน่ง
+  'การประชุม',
+  'สถานะการเข้า',
+  'สายกี่นาที',
+  'เหตุผลที่แก้',
+  'ผู้แก้สถานะ',
+  'เวลาที่แก้',
 ]
 
 interface DbMeeting {
@@ -100,6 +129,12 @@ interface DbMeeting {
   decided_by_name: string | null
   decided_at: string | null
   decide_note: string | null
+  event_title: string | null
+  attend_state: string | null
+  late_min: number | null
+  attend_reason: string | null
+  attend_by_name: string | null
+  attend_at: string | null
 }
 
 const cors = {
@@ -746,7 +781,8 @@ Deno.serve(async (req) => {
       const mqs = new URLSearchParams({
         select:
           'id,ref_no,created_at,full_name,employee_code,dept_code,sub_dept,' +
-          'shift_start,shift_end,note,file_id,status,decided_by_name,decided_at,decide_note',
+          'shift_start,shift_end,note,file_id,status,decided_by_name,decided_at,decide_note,' +
+          'event_title,attend_state,late_min,attend_reason,attend_by_name,attend_at',
         order: 'created_at.asc',
       })
       if (payload.from) mqs.append('created_at', `gte.${payload.from}`)
@@ -770,6 +806,12 @@ Deno.serve(async (req) => {
           m.note ?? '',
           m.file_id ? driveLink(m.file_id, 'ดูรูป') : '',
           m.file_id ?? '',
+          m.event_title ?? '',
+          attendText(m.attend_state),
+          m.attend_state === 'late' && m.late_min ? String(m.late_min) : '',
+          m.attend_reason ?? '',
+          m.attend_by_name ?? '',
+          m.attend_at ? thaiDateTime(m.attend_at) : '',
         ],
       }))
 

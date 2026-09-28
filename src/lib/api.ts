@@ -40,6 +40,10 @@ import type {
   MeetingStatus,
   MeetingEvent,
   MeetingWindow,
+  AttendState,
+  RosterRow,
+  MeetingSummary,
+  IssueRow,
   Announcement,
   NoticeLevel,
 } from './types'
@@ -1615,6 +1619,72 @@ export async function meetingWindow(): Promise<MeetingWindow | null> {
   if (error) throw new Error(readableError(error))
   const rows = (data ?? []) as MeetingWindow[]
   return rows[0] ?? null
+}
+
+/* ------------------------------------------- สถานะการเข้าประชุม */
+
+/** รายชื่อที่ต้องเข้าประชุมพร้อมสถานะ — คิดสดที่ฐานข้อมูลทุกครั้ง */
+export async function meetingRoster(eventId: string): Promise<RosterRow[]> {
+  const { data, error } = await supabase.rpc('meeting_roster', { p_event: eventId })
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as RosterRow[]
+}
+
+export async function meetingSummary(eventId: string): Promise<MeetingSummary> {
+  const { data, error } = await supabase.rpc('meeting_summary', { p_event: eventId })
+  if (error) throw new Error(readableError(error))
+  return data as MeetingSummary
+}
+
+/** ผู้ตรวจสอบแก้สถานะ — ฐานข้อมูลบังคับให้ใส่เหตุผททุกครั้ง */
+export async function setAttendance(args: {
+  eventId: string
+  userId: string
+  state: Exclude<AttendState, 'waiting'>
+  reason: string
+}) {
+  const { error } = await supabase.rpc('set_meeting_attendance', {
+    p_event: args.eventId,
+    p_user: args.userId,
+    p_state: args.state,
+    p_reason: args.reason,
+  })
+  if (error) throw new Error(readableError(error))
+}
+
+/** ถอนการแก้ กลับไปใช้ค่าที่ระบบคำนวณ */
+export async function clearAttendance(eventId: string, userId: string) {
+  const { error } = await supabase.rpc('clear_meeting_attendance', {
+    p_event: eventId,
+    p_user: userId,
+  })
+  if (error) throw new Error(readableError(error))
+}
+
+/* ------------------------------------------ รูปประกอบการแจ้งซ่อม */
+
+/**
+ * แนบรูปเข้าใบแจ้งซ่อมที่เพิ่งสร้าง
+ *
+ * เรียกหลังเบิกหรือคืนสำเร็จ อ้างจากรหัสเครื่อง
+ * ตั้งใจไม่ผูกไว้ใน RPC เบิก-คืน เพราะสองตัวนั้นเป็นหัวใจของสต็อก
+ * ถ้าแนบรูปไม่สำเร็จ ใบแจ้งซ่อมต้องยังอยู่ครบ เรื่องสำคัญห้ามพังตาม
+ */
+export async function attachIssuePhotos(assetCode: string, photos: { file_id: string; web_link: string | null; bytes: number | null }[]) {
+  if (photos.length === 0) return 0
+  const { data, error } = await supabase.rpc('attach_issue_photos_by_code', {
+    p_asset_code: assetCode,
+    p_photos: photos,
+  })
+  if (error) throw new Error(readableError(error))
+  return (data as number) ?? 0
+}
+
+/** ใบแจ้งซ่อมพร้อมรูปทั้งหมด — แอดมินและผู้ตรวจสอบเท่านั้น */
+export async function listIssueRows(assetCode?: string): Promise<IssueRow[]> {
+  let q = supabase.from('asset_issue_rows').select('*').order('reported_at', { ascending: false })
+  if (assetCode) q = q.eq('asset_code', assetCode)
+  return unwrap(await q) as unknown as IssueRow[]
 }
 
 /* ------------------------------------------------------- ป้ายประกาศ */

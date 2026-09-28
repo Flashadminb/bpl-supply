@@ -593,6 +593,66 @@ export interface MeetingStat {
 }
 
 /** นัดประชุมที่ประกาศไว้ — ผู้เข้าร่วมเป็นข้อความอิสระ ไม่ผูกกับตำแหน่งในระบบ */
+/**
+ * สถานะการเข้าประชุมรายคน
+ *
+ * waiting = ยังไม่ถึงเวลาสาย ยังลุ้นอยู่ · absent = เลยเวลาแล้วยังไม่เช็ค
+ * คนที่ขึ้น absent ยังเดินมาสแกนได้ แล้วสถานะจะเปลี่ยนเป็น late เอง
+ */
+export type AttendState = 'ontime' | 'late' | 'absent' | 'excused' | 'waiting'
+
+export interface RosterRow {
+  user_id: string
+  full_name: string
+  employee_code: string
+  dept_code: string | null
+  checked_at: string | null
+  ref_no: string | null
+  /** สถานะที่ระบบคำนวณ เก็บไว้ให้เห็นแม้จะถูกแก้แล้ว */
+  raw_state: AttendState
+  /** สถานะที่ใช้จริง — ของผู้ตรวจสอบชนะ */
+  state: AttendState
+  late_min: number | null
+  reason: string | null
+  by_name: string | null
+  changed_at: string | null
+}
+
+export interface MeetingSummary {
+  expected: number
+  ontime: number
+  late: number
+  absent: number
+  excused: number
+  waiting: number
+}
+
+/** ใครต้องเข้าประชุม — ทุกคน · เลือกเจาะจง · พิมพ์เอง */
+export type AudienceMode = 'all' | 'picked' | 'free'
+
+/** รูปประกอบใบแจ้งซ่อม */
+export interface IssuePhoto {
+  seq: number
+  file_id: string
+  web_link: string | null
+}
+
+export interface IssueRow {
+  id: number
+  asset_code: string
+  phase: string | null
+  symptom: string
+  reported_name: string | null
+  reported_at: string
+  file_id: string | null
+  web_link: string | null
+  resolved_at: string | null
+  resolved_by_name: string | null
+  resolve_note: string | null
+  type_name: string | null
+  photos: IssuePhoto[]
+}
+
 /** ระดับความสำคัญของประกาศ — คุมสีและคำนำหน้าในแจ้งเตือน */
 export type NoticeLevel = 'urgent' | 'warn' | 'info'
 
