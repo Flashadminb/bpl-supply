@@ -6,7 +6,7 @@ import { useCart } from '../../lib/cart'
 import { StaffPage, TopBar } from '../../components/Shell'
 import { ErrorBox, Loading, QtyStepper, StockBadge } from '../../components/ui'
 
-const PURPOSES = ['ใช้ในไลน์คัดแยก', 'ทำความสะอาดพื้นที่', 'งานสำนักงาน', 'เปลี่ยนของชำรุด']
+const PURPOSES = ['งานหน้างาน', 'งานในออฟฟิศ', 'ส่วนตัว', 'ทำความสะอาดพื้นที่', 'เปลี่ยนของชำรุด']
 
 export default function ItemDetail() {
   const { id } = useParams()
@@ -104,6 +104,19 @@ export default function ItemDetail() {
               />
             </div>
 
+            {/* ปิดทางเบิกตั้งแต่ตรงนี้ ไม่ใช่แค่ปุ่มจาง ๆ ให้กดไม่ติดแล้วงงว่าทำไม */}
+            {it.view_only && (
+              <p className="mt-3 rounded-card border border-warn/40 bg-warn-bg px-3 py-3 text-sm text-warn-txt">
+                <b className="font-display">ของตัวนี้เบิกในแอพนี้ไม่ได้</b>
+                <span className="mt-1 block">
+                  {it.view_only_note?.trim() || 'ดูสต็อกได้อย่างเดียว'}
+                </span>
+                <span className="mt-1 block text-xs">
+                  จำนวนคงเหลือด้านบนยังเป็นของจริง ใช้ดูได้ตามปกติ
+                </span>
+              </p>
+            )}
+
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -113,7 +126,7 @@ export default function ItemDetail() {
                   if (note) cart.setNote([cart.note, `${it.name}: ${note}`].filter(Boolean).join(' · '))
                   nav('/items')
                 }}
-                disabled={it.qty_on_hand <= 0}
+                disabled={it.qty_on_hand <= 0 || it.view_only}
               >
                 เลือกต่อ
               </button>
@@ -125,7 +138,7 @@ export default function ItemDetail() {
                   if (note) cart.setNote([cart.note, `${it.name}: ${note}`].filter(Boolean).join(' · '))
                   nav('/cart')
                 }}
-                disabled={it.qty_on_hand <= 0}
+                disabled={it.qty_on_hand <= 0 || it.view_only}
               >
                 เพิ่มลงตะกร้า
               </button>

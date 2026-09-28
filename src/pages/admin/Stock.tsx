@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useAuth } from '../../lib/auth'
+import { MANAGER_ROLES } from '../../lib/roles'
 import { useAsync } from '../../lib/useAsync'
 import {
   adjustStock,
@@ -38,6 +39,8 @@ function emptyDraft(): ItemDraft {
     min_qty: 0,
     is_returnable: false,
     requires_approval: false,
+    view_only: false,
+    view_only_note: '',
     qr_payload: '',
     is_active: true,
   }
@@ -142,7 +145,7 @@ export default function Stock() {
           >
             พิมพ์รายการ
           </button>
-          {can('admin') && (
+          {can(...MANAGER_ROLES) && (
             <button type="button" className="btn-ghost" onClick={() => setDeptsOpen(true)}>
               จัดการแผนก
             </button>
@@ -201,6 +204,10 @@ export default function Stock() {
                   {!i.is_active && <span className="badge-mute ml-2">ปิดใช้งาน</span>}
                   {i.is_returnable && <span className="badge-mute ml-2">ยืม-คืน</span>}
                   {i.requires_approval && <span className="badge-warn ml-2">ต้องอนุมัติ</span>}
+                  {i.view_only && <span className="badge-warn ml-2">ดูอย่างเดียว</span>}
+                  {i.view_only && i.view_only_note && (
+                    <span className="block text-xs text-ink-400">{i.view_only_note}</span>
+                  )}
                 </td>
                 <td className="p-2 font-mono text-xs">{i.sku}</td>
                 <td className="p-2 text-ink-500">{i.categories?.name ?? '—'}</td>
@@ -240,6 +247,8 @@ export default function Stock() {
                           min_qty: i.min_qty,
                           is_returnable: i.is_returnable,
                           requires_approval: i.requires_approval,
+                          view_only: i.view_only,
+                          view_only_note: i.view_only_note ?? '',
                           qr_payload: i.qr_payload ?? '',
                           is_active: i.is_active,
                         })
@@ -375,6 +384,46 @@ export default function Stock() {
                 </span>
               </span>
             </label>
+
+            {/* ดูอย่างเดียว — ของที่ต้องไปเบิกที่อื่น แต่ยังอยากให้หน้างานเห็นว่ามีของเท่าไหร่ */}
+            <div className="sm:col-span-2">
+              <label className="inline-flex min-h-tap items-center gap-2">
+                <input
+                  type="checkbox"
+                  className="h-5 w-5 accent-[var(--yellow-500)]"
+                  checked={draft.view_only}
+                  onChange={(e) => setDraft({ ...draft, view_only: e.target.checked })}
+                />
+                <span>
+                  ดูอย่างเดียว — กดเบิกในแอพไม่ได้
+                  <span className="block text-xs text-ink-400">
+                    หน้างานยังเห็นจำนวนคงเหลือตามปกติ แต่ปุ่มเบิกจะถูกปิด
+                    <br />
+                    ใช้กับของที่ต้องไปเบิกในระบบ BY · ถ้าซ่อนทิ้งไปเลย หน้างานจะนึกว่าของหมดแล้วเดินไปหยิบเองที่ชั้น
+                  </span>
+                </span>
+              </label>
+
+              {draft.view_only && (
+                <div className="mt-2">
+                  <label className="label" htmlFor="vo-note">
+                    เหตุผลที่จะโชว์ให้หน้างานเห็น
+                  </label>
+                  <input
+                    id="vo-note"
+                    className="input"
+                    placeholder="เช่น ของตัวนี้ต้องเบิกในระบบ BY เท่านั้น"
+                    value={draft.view_only_note ?? ''}
+                    onChange={(e) => setDraft({ ...draft, view_only_note: e.target.value })}
+                  />
+                  <p className="mt-1 text-xs text-ink-400">
+                    เขียนให้บอกด้วยว่าต้องไปเบิกที่ไหนแทน ไม่งั้นหน้างานจะเดินมาถามอยู่ดี
+                    <br />
+                    ถ้าเว้นว่าง ระบบจะขึ้นแค่ว่า “ดูสต็อกได้อย่างเดียว”
+                  </p>
+                </div>
+              )}
+            </div>
             <label className="inline-flex min-h-tap items-center gap-2">
               <input
                 type="checkbox"
@@ -484,7 +533,7 @@ export default function Stock() {
       />
 
       <DepartmentManager
-        open={deptsOpen && can('admin')}
+        open={deptsOpen && can(...MANAGER_ROLES)}
         onClose={() => setDeptsOpen(false)}
         departments={depts.data ?? []}
         onChanged={() => {

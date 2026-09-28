@@ -71,6 +71,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
               qty_on_hand: item.qty_on_hand,
               is_returnable: item.is_returnable,
               requires_approval: item.requires_approval,
+              view_only: item.view_only,
+              view_only_note: item.view_only_note,
               qty: Math.min(qty, item.qty_on_hand),
             } satisfies CartLine,
           ]

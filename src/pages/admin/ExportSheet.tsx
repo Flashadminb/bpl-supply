@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
 import {
   countAssetExportRows,
+  listAssetExportRows,
   countMeetingExportRows,
   countSheetExportRows,
   exportToSheet,
@@ -31,6 +32,9 @@ export default function ExportSheet() {
   const [to, setTo] = useState(isoDay(0))
   const [dept, setDept] = useState('')
   const [view, setView] = useState<View>('pending')
+  // เดิมหน้านี้โชว์ตัวอย่างข้อมูลแค่ฝั่งสิ้นเปลือง
+  // ฝั่ง Asset มีแต่ตัวเลขนับ กดส่งแล้วไม่รู้ว่าส่งอะไรไป ตรวจย้อนไม่ได้
+  const [side, setSide] = useState<'supply' | 'asset'>('supply')
   const [busy, setBusy] = useState(false)
   const [runs, setRuns] = useState<RunLog[]>([])
 
@@ -52,6 +56,14 @@ export default function ExportSheet() {
     () => countSheetExportRows({ ...range, dept: dept || undefined }),
     [range, dept],
   )
+  const assetFeed = useAsync(
+    () =>
+      side === 'asset'
+        ? listAssetExportRows({ ...range, onlyPending: view === 'pending' })
+        : Promise.resolve([]),
+    [range, view, side],
+  )
+
   const feed = useAsync(
     () =>
       listSheetExportRows({
@@ -194,7 +206,25 @@ export default function ExportSheet() {
 
       <section className="panel mt-4 p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-display text-md">วัสดุสิ้นเปลืองในช่วงที่เลือก</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="font-display text-md">ข้อมูลในช่วงที่เลือก</h2>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                className={`chip ${side === 'supply' ? 'chip-on' : ''}`}
+                onClick={() => setSide('supply')}
+              >
+                วัสดุสิ้นเปลือง
+              </button>
+              <button
+                type="button"
+                className={`chip ${side === 'asset' ? 'chip-on' : ''}`}
+                onClick={() => setSide('asset')}
+              >
+                อุปกรณ์ Asset
+              </button>
+            </div>
+          </div>
           <div className="flex gap-1">
             <button
               type="button"
@@ -213,79 +243,162 @@ export default function ExportSheet() {
           </div>
         </div>
 
-        {feed.loading && <Loading />}
-        {feed.error && <ErrorBox message={feed.error} onRetry={feed.reload} />}
+        {/* ---------------------------------------------- วัสดุสิ้นเปลือง */}
+        {side === 'supply' && (
+          <>
+            {feed.loading && <Loading />}
+            {feed.error && <ErrorBox message={feed.error} onRetry={feed.reload} />}
 
-        {!feed.loading && rows.length === 0 && (
-          <EmptyState
-            title={view === 'pending' ? 'ส่งเข้าชีตครบแล้ว' : 'ไม่มีข้อมูลในช่วงที่เลือก'}
-            hint={view === 'pending' ? 'ไม่มีบรรทัดไหนค้างส่งในช่วงนี้' : 'ลองขยายช่วงวันที่'}
-          />
+            {!feed.loading && rows.length === 0 && (
+              <EmptyState
+                title={view === 'pending' ? 'ส่งเข้าชีตครบแล้ว' : 'ไม่มีข้อมูลในช่วงที่เลือก'}
+                hint={view === 'pending' ? 'ไม่มีบรรทัดไหนค้างส่งในช่วงนี้' : 'ลองขยายช่วงวันที่'}
+              />
+            )}
+
+            {rows.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[880px] text-left text-sm">
+                  <thead className="text-ink-500">
+                    <tr className="border-b border-line">
+                      <th className="p-2 font-medium">สถานะ</th>
+                      <th className="p-2 font-medium">เลขที่</th>
+                      <th className="p-2 font-medium">วันเวลา</th>
+                      <th className="p-2 font-medium">ผู้เบิก</th>
+                      <th className="p-2 font-medium">วัสดุ</th>
+                      <th className="p-2 font-medium">จำนวน</th>
+                      <th className="p-2 font-medium">อยู่ในชีต</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr key={r.line_id} className="border-b border-line last:border-0">
+                        <td className="p-2">
+                          {r.is_exported ? (
+                            <span className="badge-ok">ส่งแล้ว</span>
+                          ) : (
+                            <span className="badge-warn">ยังไม่ส่ง</span>
+                          )}
+                        </td>
+                        <td className="p-2 font-mono text-xs">{r.ref_no}</td>
+                        <td className="p-2 text-ink-500">{fmtDateTime(r.created_at)}</td>
+                        <td className="p-2">
+                          {r.requester_name}
+                          <span className="ml-1 font-mono text-xs text-ink-400">
+                            {r.requester_code}
+                          </span>
+                          {(r.requester_dept || r.requester_sub_dept) && (
+                            <p className="text-xs text-ink-400">
+                              {r.requester_dept}
+                              {r.requester_sub_dept ? ` · ${r.requester_sub_dept}` : ''}
+                            </p>
+                          )}
+                        </td>
+                        <td className="p-2">
+                          {r.item_name}
+                          <span className="ml-1 font-mono text-xs text-ink-400">{r.sku}</span>
+                        </td>
+                        <td className="p-2">
+                          {r.qty} {r.unit}
+                        </td>
+                        <td className="p-2 text-xs text-ink-500">
+                          {r.tab ? (
+                            <>
+                              <span className="font-mono">{r.tab}</span>
+                              <span className="ml-1 text-ink-400">แถว {r.row_no}</span>
+                            </>
+                          ) : (
+                            <span className="text-ink-300">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
 
-        {rows.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[880px] text-left text-sm">
-              <thead className="text-ink-500">
-                <tr className="border-b border-line">
-                  <th className="p-2 font-medium">สถานะ</th>
-                  <th className="p-2 font-medium">เลขที่</th>
-                  <th className="p-2 font-medium">วันเวลา</th>
-                  <th className="p-2 font-medium">ผู้เบิก</th>
-                  <th className="p-2 font-medium">วัสดุ</th>
-                  <th className="p-2 font-medium">จำนวน</th>
-                  <th className="p-2 font-medium">อยู่ในชีต</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.line_id} className="border-b border-line last:border-0">
-                    <td className="p-2">
-                      {r.is_exported ? (
-                        <span className="badge-ok">ส่งแล้ว</span>
-                      ) : (
-                        <span className="badge-warn">ยังไม่ส่ง</span>
-                      )}
-                    </td>
-                    <td className="p-2 font-mono text-xs">{r.ref_no}</td>
-                    <td className="p-2 text-ink-500">{fmtDateTime(r.created_at)}</td>
-                    <td className="p-2">
-                      {r.requester_name}
-                      <span className="ml-1 font-mono text-xs text-ink-400">{r.requester_code}</span>
-                      {(r.requester_dept || r.requester_sub_dept) && (
-                        <p className="text-xs text-ink-400">
-                          {r.requester_dept}
-                          {r.requester_sub_dept ? ` · ${r.requester_sub_dept}` : ''}
-                        </p>
-                      )}
-                    </td>
-                    <td className="p-2">
-                      {r.item_name}
-                      <span className="ml-1 font-mono text-xs text-ink-400">{r.sku}</span>
-                    </td>
-                    <td className="p-2">
-                      {r.qty} {r.unit}
-                    </td>
-                    <td className="p-2 text-xs text-ink-500">
-                      {r.tab ? (
-                        <>
-                          <span className="font-mono">{r.tab}</span>
-                          <span className="ml-1 text-ink-400">แถว {r.row_no}</span>
-                        </>
-                      ) : (
-                        <span className="text-ink-300">—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        {/* ---------------------------------------------- อุปกรณ์ Asset */}
+        {side === 'asset' && (
+          <>
+            {assetFeed.loading && <Loading />}
+            {assetFeed.error && <ErrorBox message={assetFeed.error} onRetry={assetFeed.reload} />}
+
+            {!assetFeed.loading && (assetFeed.data ?? []).length === 0 && (
+              <EmptyState
+                title={view === 'pending' ? 'ส่งเข้าชีตครบแล้ว' : 'ไม่มีข้อมูลในช่วงที่เลือก'}
+                hint={view === 'pending' ? 'ไม่มีบรรทัดไหนค้างส่งในช่วงนี้' : 'ลองขยายช่วงวันที่'}
+              />
+            )}
+
+            {(assetFeed.data ?? []).length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[880px] text-left text-sm">
+                  <thead className="text-ink-500">
+                    <tr className="border-b border-line">
+                      <th className="p-2 font-medium">สถานะ</th>
+                      <th className="p-2 font-medium">เลขที่</th>
+                      <th className="p-2 font-medium">วันเวลา</th>
+                      <th className="p-2 font-medium">ผู้เบิก/ผู้คืน</th>
+                      <th className="p-2 font-medium">เครื่อง</th>
+                      <th className="p-2 font-medium">รายการ</th>
+                      <th className="p-2 font-medium">อยู่ในชีต</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(assetFeed.data ?? []).map((r) => (
+                      <tr key={r.line_id} className="border-b border-line last:border-0">
+                        <td className="p-2">
+                          {r.is_exported ? (
+                            <span className="badge-ok">ส่งแล้ว</span>
+                          ) : (
+                            <span className="badge-warn">ยังไม่ส่ง</span>
+                          )}
+                        </td>
+                        <td className="p-2 font-mono text-xs">{r.ref_no}</td>
+                        <td className="p-2 text-ink-500">{fmtDateTime(r.created_at)}</td>
+                        <td className="p-2">
+                          {r.who}
+                          <span className="ml-1 font-mono text-xs text-ink-400">
+                            {r.employee_code}
+                          </span>
+                          {r.dept_code && <p className="text-xs text-ink-400">{r.dept_code}</p>}
+                        </td>
+                        <td className="p-2">
+                          <span className="font-mono">{r.asset_code}</span>
+                          <p className="text-xs text-ink-400">{r.type_name}</p>
+                        </td>
+                        <td className="p-2">
+                          {/* เบิกกับคืนอยู่ปนกันในชีตเดียว ต้องแยกให้เห็นตั้งแต่ตรงนี้ */}
+                          <span className={r.kind === 'out' ? 'badge-warn' : 'badge-ok'}>
+                            {r.kind === 'out' ? 'เบิก' : 'คืน'}
+                          </span>
+                        </td>
+                        <td className="p-2 text-xs text-ink-500">
+                          {r.tab ? (
+                            <>
+                              <span className="font-mono">{r.tab}</span>
+                              <span className="ml-1 text-ink-400">แถว {r.row_no}</span>
+                            </>
+                          ) : (
+                            <span className="text-ink-300">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
 
-        {rows.length >= 500 && (
+        {((side === 'supply' && rows.length >= 500) ||
+          (side === 'asset' && (assetFeed.data ?? []).length >= 300)) && (
           <p className="mt-2 text-xs text-ink-400">
-            แสดง 500 บรรทัดแรก — ปุ่มส่งยังทำงานกับทั้งช่วงที่เลือกครบถ้วน
+            แสดงไม่ครบทุกบรรทัด — ปุ่มส่งยังทำงานกับทั้งช่วงที่เลือกครบถ้วน
           </p>
         )}
       </section>

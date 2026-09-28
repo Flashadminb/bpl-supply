@@ -10,8 +10,14 @@ import {
 } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { MANAGER_ROLES } from '../../lib/roles'
+import {
+  AssetTransfer,
+  candidateFromHolding,
+  targetFromHolding,
+} from '../../components/AssetTransfer'
 import { readableError } from '../../lib/supabase'
 import { PhotoSteps, shotsToPhotos, type Shot } from '../../components/PhotoSteps'
+import { PartBoundary } from '../../components/ErrorBoundary'
 import { stampLines } from '../../lib/image'
 import { EmptyState, ErrorBox, Loading, Modal, Sheet, Spinner } from '../../components/ui'
 import { fmtDateTime, relativeAge } from '../../lib/format'
@@ -25,6 +31,16 @@ import type { AssetHolding } from '../../lib/types'
  */
 
 type SortKey = 'late' | 'oldest' | 'person' | 'asset'
+
+// ไม่ได้บังคับจำนวนตอนคืนแทน แต่ต้องมีเพดานกันกดรัวจนเครื่องค้าง
+const PHOTO_CAP = 20
+
+const QUICK_REASONS = [
+  'เอามาคืนที่ห้องแล้ว',
+  'เจ้าตัวลืมกดคืน',
+  'เลิกกะแล้วฝากคืน',
+  'รับคืนหน้างาน',
+]
 
 const hoursLate = (h: AssetHolding) =>
   h.due_at ? (Date.now() - Date.parse(h.due_at)) / 3_600_000 : -Infinity
@@ -56,8 +72,12 @@ export default function AssetOutstanding() {
   const [closeBusy, setCloseBusy] = useState(false)
   const [closeErr, setCloseErr] = useState<string | null>(null)
   const mayCancel = can(...MANAGER_ROLES)
+  // โอนเครื่องให้แผนกอื่น · ผู้ตรวจสอบทำได้ด้วย เพราะนี่คือหน้าเดียวที่เขาเห็นเครื่องที่ถูกยืมอยู่
+  const [moving, setMoving] = useState<AssetHolding | null>(null)
   const [picked, setPicked] = useState<string[]>([])
   const [shots, setShots] = useState<Shot[]>([])
+  // เหตุผล — บังคับ เพราะรายการนี้ไปปิดประวัติของคนอื่น
+  const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [okMsg, setOkMsg] = useState<string | null>(null)
@@ -67,35 +87,53 @@ export default function AssetOutstanding() {
     [giveBack?.type_code],
   )
 
-  /** เครื่องของคนคนนั้น ประเภทเดียวกัน — คืนรอบเดียวได้หลายตัว */
-  const sameHolder = useMemo(
-    () =>
-      giveBack
-        ? all.filter((h) => h.user_id === giveBack.user_id && h.type_code === giveBack.type_code)
-        : [],
-    [all, giveBack],
+  /**
+   * เลือกคืนได้ทุกเครื่องที่ค้างอยู่ ไม่จำกัดว่าต้องเป็นของคนเดียวกันหรือประเภทเดียวกัน
+   * ของคนที่กดเปิดขึ้นก่อน เพราะเป็นกองที่ถูกเอามาคืนพร้อมกันจริง ๆ
+   */
+  const canPick = useMemo(() => {
+    if (!giveBack) return []
+    return [...all].sort((a, b) => {
+      const same = (h: AssetHolding) => (h.user_id === giveBack.user_id ? 0 : 1)
+      return same(a) - same(b) || a.asset_code.localeCompare(b.asset_code, 'th')
+    })
+  }, [all, giveBack])
+
+  /**
+   * มีเครื่องของคนอื่นปนอยู่ไหม — ถ้ามีถือเป็นการคืนแทน รูปไม่บังคับ
+   * เงื่อนไขต้องตรงกับที่ฐานข้อมูลใช้ตัดสิน ไม่งั้นหน้าจอจะปล่อยผ่านแล้วไปโดนปฏิเสธทีหลัง
+   */
+  const isProxy = useMemo(
+    () => picked.some((c) => all.find((h) => h.asset_code === c)?.user_id !== profile?.id),
+    [picked, all, profile?.id],
   )
 
   const photos = shotsToPhotos(shots)
   const typeInfo = (types.data ?? []).find((t) => t.code === giveBack?.type_code)
   const needPhotos =
     steps.data && steps.data.length > 0 ? steps.data.length : (typeInfo?.photo_min ?? 1)
-  const photosReady =
-    photos.length >= needPhotos && !shots.some((s) => s.state !== 'done')
+  const uploading = shots.some((s) => s.state !== 'done')
+  const photosReady = isProxy ? !uploading : photos.length >= needPhotos && !uploading
+  const ready = picked.length > 0 && photosReady && reason.trim().length > 0
 
   function openReturn(h: AssetHolding) {
     setGiveBack(h)
     setPicked([h.asset_code])
     setShots([])
+    setReason('')
     setErr(null)
   }
 
   async function submitReturn() {
-    if (!giveBack) return
+    if (!giveBack || !ready) return
     setBusy(true)
     setErr(null)
     try {
-      const res = await assetReturn({ codes: picked, photos, note: 'คืนแทนโดยแอดมิน' })
+      const res = await assetReturn({
+        codes: picked,
+        photos,
+        note: `คืนแทน · ${reason.trim()}`,
+      })
       setOkMsg(`คืนแทนแล้ว ${res.count} เครื่อง · ${res.ref_no}`)
       setGiveBack(null)
       setShots([])
@@ -267,8 +305,8 @@ export default function AssetOutstanding() {
                       <td className="p-2">
                         <p className="font-display">{h.asset_code}</p>
                         <p className="text-xs text-ink-400">{h.type_name}</p>
-                        {h.asset_loan_dept && (
-                          <p className="text-xs text-warn-txt">โอนให้ {h.asset_loan_dept}</p>
+                        {h.asset_loan_name && (
+                          <p className="text-xs text-warn-txt">โอนให้ {h.asset_loan_name}</p>
                         )}
                       </td>
                       <td className="p-2">
@@ -318,6 +356,13 @@ export default function AssetOutstanding() {
                           </button>
                           <button
                             type="button"
+                            className="btn-soft h-tap px-3 text-sm"
+                            onClick={() => setMoving(h)}
+                          >
+                            โอน
+                          </button>
+                          <button
+                            type="button"
                             className="btn-ghost h-tap px-3 text-sm"
                             onClick={() => {
                               setCloseErr(null)
@@ -355,8 +400,14 @@ export default function AssetOutstanding() {
             </p>
 
             <p className="label mt-3">เลือกเครื่องที่จะคืน</p>
-            <ul className="space-y-1">
-              {sameHolder.map((h) => {
+            <p className="mb-1 text-xs text-ink-400">
+              เลือกกี่เครื่องก็ได้ ของใครก็ได้ ประเภทไหนก็ได้ · ระบบจะแยกใบคืนตามประเภทให้เอง
+              <br />
+              {/* คนมักไม่กล้าติ๊กแค่ตัวเดียว เพราะกลัวว่าจะปิดทั้งใบให้เจ้าตัว */}
+              เครื่องที่ไม่ได้ติ๊กยังค้างชื่อเจ้าตัวเหมือนเดิม เวลานับต่อจากตอนเบิกครั้งแรก
+            </p>
+            <ul className="max-h-[300px] space-y-1 overflow-y-auto">
+              {canPick.map((h) => {
                 const on = picked.includes(h.asset_code)
                 return (
                   <li key={h.out_item_id}>
@@ -383,7 +434,10 @@ export default function AssetOutstanding() {
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="font-display">{h.asset_code}</span>
-                        <span className="block text-sm text-ink-500">
+                        <span className="block truncate text-sm text-ink-500">
+                          {h.type_name} · {h.holder_name}
+                        </span>
+                        <span className="block text-xs text-ink-400">
                           เบิก {fmtDateTime(h.taken_at)} · {relativeAge(h.taken_at)}
                         </span>
                       </span>
@@ -393,18 +447,44 @@ export default function AssetOutstanding() {
               })}
             </ul>
 
+            <p className="label mt-3">เหตุผลที่คืนแทน</p>
+            <div className="mb-2 flex flex-wrap gap-2">
+              {QUICK_REASONS.map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  className={`chip ${reason === r ? 'chip-on' : ''}`}
+                  onClick={() => setReason(r)}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+            <input
+              className="input"
+              placeholder="หรือพิมพ์เอง"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+
             {picked.length > 0 && (
               <div className="mt-3 rounded-card border border-line p-3">
-                <p className="font-display">รูปสภาพตอนคืน</p>
+                <p className="font-display">
+                  รูปสภาพตอนคืน{isProxy ? ' (ไม่บังคับ)' : ''}
+                </p>
                 <p className="mb-2 text-sm text-ink-400">
-                  คืน {picked.length} เครื่อง · บังคับ {needPhotos} ใบ เหมือนตอนหน้างานคืนเอง
+                  {isProxy
+                    ? 'ถ่ายกี่ใบก็ได้ หรือไม่ถ่ายเลยก็ได้ · แนะนำให้ถ่ายถ้าเครื่องมีรอยหรือสภาพผิดปกติ'
+                    : `คืนเครื่องของตัวเอง ต้องถ่ายให้ครบ ${needPhotos} ใบเหมือนหน้างาน`}
                 </p>
                 {steps.loading ? (
                   <Loading />
                 ) : (
+                  <PartBoundary label="กล่องถ่ายรูป">
                   <PhotoSteps
-                    steps={steps.data ?? []}
-                    maxFree={typeInfo?.photo_max ?? 5}
+                    steps={isProxy ? [] : (steps.data ?? [])}
+                    maxFree={isProxy ? PHOTO_CAP : (typeInfo?.photo_max ?? 5)}
+                    minFree={isProxy ? 0 : 1}
                     stamp={stampLines(
                       profile?.full_name ?? '',
                       profile?.employee_code ?? '',
@@ -414,6 +494,7 @@ export default function AssetOutstanding() {
                     shots={shots}
                     onShots={setShots}
                   />
+                  </PartBoundary>
                 )}
               </div>
             )}
@@ -427,7 +508,7 @@ export default function AssetOutstanding() {
             <button
               type="button"
               className="btn-primary mt-3 w-full py-4 text-md"
-              disabled={picked.length === 0 || !photosReady || busy}
+              disabled={!ready || busy}
               onClick={() => void submitReturn()}
             >
               {busy ? <Spinner /> : null}
@@ -435,9 +516,13 @@ export default function AssetOutstanding() {
                 ? 'กำลังบันทึก…'
                 : picked.length === 0
                   ? 'เลือกเครื่องก่อน'
-                  : photosReady
-                    ? `ยืนยันคืนแทน ${picked.length} เครื่อง`
-                    : `ต้องถ่ายรูปให้ครบ ${needPhotos} ใบก่อน`}
+                  : !photosReady
+                    ? uploading
+                      ? 'รอรูปอัปโหลดให้เสร็จก่อน'
+                      : `ต้องถ่ายรูปให้ครบ ${needPhotos} ใบก่อน`
+                    : !reason.trim()
+                      ? 'ใส่เหตุผลก่อน'
+                      : `ยืนยันคืนแทน ${picked.length} เครื่อง`}
             </button>
           </>
         )}
@@ -448,6 +533,14 @@ export default function AssetOutstanding() {
         <br />
         คนที่ยังไม่ได้ตั้งกะจะไม่มีกำหนดคืน ตั้งได้ที่หน้าผู้ใช้และสิทธิ์
       </p>
+
+      <AssetTransfer
+        asset={moving ? targetFromHolding(moving) : null}
+        holding={moving ?? undefined}
+        candidates={all.map(candidateFromHolding)}
+        onClose={() => setMoving(null)}
+        onDone={feed.reload}
+      />
 
       {/* ------------------------------------------- ปิดรายการโดยไม่มีรูป */}
       <Modal

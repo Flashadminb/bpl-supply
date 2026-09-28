@@ -71,7 +71,7 @@ export default function BySend() {
 
   if (done) {
     return (
-      <div className="min-h-dvh bg-canvas">
+      <div className="bg-canvas">
         <header className="safe-t bg-success text-white">
           <div className="mx-auto max-w-phone px-4 pb-5 pt-5">
             <p className="font-display text-xl">✓ ส่งบาร์โค้ดแล้ว</p>
@@ -106,7 +106,7 @@ export default function BySend() {
   }
 
   return (
-    <div className="min-h-dvh bg-canvas">
+    <div className="bg-canvas">
       <TopBar title="ส่งบาร์โค้ดจาก BY" back="/" />
       <StaffPage nav={false} className="pb-[130px]">
         <p className="mb-3 rounded-card border border-line bg-surface p-3 text-sm text-ink-500">

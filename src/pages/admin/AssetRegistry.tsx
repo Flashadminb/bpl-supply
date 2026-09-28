@@ -13,11 +13,14 @@ import {
   setAssetDepts,
   setAssetEnabled,
 } from '../../lib/api'
-import { EmptyState, ErrorBox, Loading, Sheet, Spinner } from '../../components/ui'
+import { EmptyState, ErrorBox, Loading, Modal, Sheet, Spinner } from '../../components/ui'
 import { fmtDateTime, relativeAge } from '../../lib/format'
 import type { Asset, Department } from '../../lib/types'
-import { AssetTransfer } from '../../components/AssetTransfer'
-import { canProxy } from '../../lib/roles'
+import { AssetTransfer, type TransferCandidate } from '../../components/AssetTransfer'
+import { createAsset, deleteAsset, updateAsset } from '../../lib/api'
+import { readableError } from '../../lib/supabase'
+import { DepartmentManager } from '../../components/DepartmentManager'
+import { MANAGER_ROLES, canProxy } from '../../lib/roles'
 
 type Filter = 'all' | 'free' | 'out' | 'issue' | 'off'
 
@@ -59,6 +62,29 @@ export default function AssetRegistry() {
     [depts.data],
   )
 
+  // ชื่อคนที่ถือครองชั่วคราว · อ่านจากรายการค้างคืนที่โหลดมาแล้ว
+  // เครื่องที่โอนแล้วยังไม่มีใครกดรับจะไม่มีชื่อ ขึ้นว่า "คนอื่น" แทน
+  const loanName = useMemo(
+    () => new Map((held.data ?? []).map((h) => [h.user_id, h.holder_name])),
+    [held.data],
+  )
+
+  // เครื่องอื่นที่เลือกโอนไปพร้อมกันได้ · เอาทั้งทะเบียน ไม่ใช่แค่ที่ตัวกรองโชว์อยู่
+  // เพราะคนกรองหาเครื่องหนึ่งอยู่แล้วนึกออกว่าต้องย้ายอีกคันไปด้วย
+  const moveCandidates = useMemo<TransferCandidate[]>(
+    () =>
+      (assets.data ?? [])
+        .filter((a) => a.is_enabled)
+        .map((a) => ({
+          code: a.code,
+          type_name: a.asset_types?.name ?? a.type_code,
+          dept: a.dept_code,
+          holder: holdBy.get(a.code)?.holder_name ?? null,
+          holderId: holdBy.get(a.code)?.user_id ?? null,
+        })),
+    [assets.data, holdBy],
+  )
+
   const rows = useMemo(() => {
     const s = search.trim().toLowerCase()
     return (assets.data ?? []).filter((a) => {
@@ -81,6 +107,83 @@ export default function AssetRegistry() {
     off: all.filter((a) => !a.is_enabled).length,
   }
 
+  /**
+   * เพิ่มเครื่องใหม่ และแก้ของเดิม
+   *
+   * รหัสเครื่องเป็นกุญแจที่ตารางประวัติชี้มา เดิมจึงแก้ไม่ได้เลย
+   * ฐานข้อมูลตั้งให้ประวัติตามรหัสใหม่ไปเองแล้ว (051) จึงเปิดให้แก้ได้
+   */
+  const [form, setForm] = useState<{
+    original?: string
+    code: string
+    type_code: string
+    dept_code: string
+    note: string
+  } | null>(null)
+  const [kill, setKill] = useState<Asset | null>(null)
+  const [killStep, setKillStep] = useState(0)
+  const [formBusy, setFormBusy] = useState(false)
+  const [formErr, setFormErr] = useState<string | null>(null)
+
+  async function saveForm() {
+    if (!form) return
+    if (!form.code.trim()) {
+      setFormErr('ต้องใส่รหัสเครื่อง')
+      return
+    }
+    setFormBusy(true)
+    setFormErr(null)
+    try {
+      if (form.original) {
+        await updateAsset(form.original, {
+          code: form.code,
+          type_code: form.type_code,
+          dept_code: form.dept_code === 'ALL' ? null : form.dept_code,
+          note: form.note,
+        })
+      } else {
+        await createAsset({
+          code: form.code,
+          type_code: form.type_code,
+          dept_code: form.dept_code === 'ALL' ? null : form.dept_code,
+          note: form.note,
+        })
+      }
+      setForm(null)
+      reloadAll()
+    } catch (e) {
+      setFormErr(readableError(e))
+    } finally {
+      setFormBusy(false)
+    }
+  }
+
+  async function runDelete() {
+    if (!kill) return
+    setFormBusy(true)
+    setFormErr(null)
+    try {
+      const r = await deleteAsset(kill.code)
+      setKill(null)
+      setKillStep(0)
+      setOpen(null)
+      reloadAll()
+      setDone(
+        `ลบ ${r.code} แล้ว · ประวัติเบิก-คืน ${r.txn_items} รายการ · ใบแจ้งชำรุด ${r.issues} ใบ`,
+      )
+      setTimeout(() => setDone(null), 6000)
+    } catch (e) {
+      setFormErr(readableError(e))
+    } finally {
+      setFormBusy(false)
+    }
+  }
+
+  const [done, setDone] = useState<string | null>(null)
+  // จัดการแผนกอยู่ในหน้าสต็อกอย่างเดียวมาตลอด ซึ่งไม่ใช่ที่ที่คนนึกถึง
+  // ตอนเพิ่มเครื่องแล้วไม่มีแผนกที่ต้องการ คนจะมาหาปุ่มตรงนี้
+  const [deptsOpen, setDeptsOpen] = useState(false)
+
   function reloadAll() {
     assets.reload()
     held.reload()
@@ -94,10 +197,45 @@ export default function AssetRegistry() {
     <div className="mx-auto max-w-[1180px]">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-lg">ทะเบียนเครื่อง</h1>
+        {can(...MANAGER_ROLES) && (
+          <button
+            type="button"
+            className="btn-soft h-tap px-3 text-sm"
+            onClick={() => setDeptsOpen(true)}
+          >
+            จัดการแผนก
+          </button>
+        )}
+        {can(...MANAGER_ROLES) && (
+          <button
+            type="button"
+            className="btn-primary h-tap px-3 text-sm"
+            onClick={() => {
+              setFormErr(null)
+              setForm({
+                code: '',
+                type_code: (types.data ?? [])[0]?.code ?? '',
+                dept_code: 'ALL',
+                note: '',
+              })
+            }}
+          >
+            เพิ่มเครื่อง
+          </button>
+        )}
         <button type="button" className="btn-soft h-tap px-3 text-sm" onClick={reloadAll}>
           รีเฟรช
         </button>
       </div>
+
+      {done && (
+        <p className="mb-3 rounded-card bg-success-bg px-3 py-2 text-sm text-success-txt">
+          {done}
+          <button type="button" className="ml-2 underline" onClick={() => setDone(null)}>
+            ปิด
+          </button>
+        </p>
+      )}
 
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div className="rounded-card border border-line bg-surface p-4">
@@ -209,9 +347,9 @@ export default function AssetRegistry() {
                           + {a.share_depts.map((c) => deptName.get(c) ?? c).join(', ')}
                         </p>
                       )}
-                      {a.loan_dept && (
+                      {a.loan_user && (
                         <p className="text-xs text-warn-txt">
-                          โอนให้ {deptName.get(a.loan_dept) ?? a.loan_dept} ชั่วคราว
+                          โอนให้ {loanName.get(a.loan_user) ?? 'คนอื่น'} ใช้ชั่วคราว
                         </p>
                       )}
                     </td>
@@ -277,17 +415,245 @@ export default function AssetRegistry() {
         <AssetSheet
           asset={open}
           departments={depts.data ?? []}
-          canMove={can('admin')}
+          canMove={can(...MANAGER_ROLES)}
           holder={holdBy.get(open.code) ?? null}
           onClose={() => setOpen(null)}
           onChanged={reloadAll}
+          onEdit={() => {
+            setFormErr(null)
+            setForm({
+              original: open.code,
+              code: open.code,
+              type_code: open.type_code,
+              dept_code: open.dept_code ?? 'ALL',
+              note: open.note ?? '',
+            })
+          }}
+          onDelete={() => {
+            setFormErr(null)
+            setForm(null)
+            setKillStep(0)
+            setKill(open)
+          }}
         />
       )}
+
+      {/* --------------------------------------------- เพิ่ม / แก้เครื่อง */}
+      <Modal
+        open={Boolean(form)}
+        onClose={() => setForm(null)}
+        title={form?.original ? `แก้เครื่อง ${form.original}` : 'เพิ่มเครื่องใหม่'}
+      >
+        {form && (
+          <>
+            <label className="label" htmlFor="as-code">
+              รหัสเครื่อง
+            </label>
+            <input
+              id="as-code"
+              className="input font-mono"
+              placeholder="เช่น PP-30"
+              value={form.code}
+              onChange={(e) => setForm({ ...form, code: e.target.value })}
+            />
+            {form.original && form.code.trim() !== form.original && (
+              <p className="mt-2 rounded-btn bg-warn-bg px-3 py-2 text-sm text-warn-txt">
+                เปลี่ยนรหัสจาก <b>{form.original}</b> เป็น <b>{form.code.trim()}</b>
+                <br />
+                ประวัติเบิก-คืนและรูปทั้งหมดจะตามรหัสใหม่ไปเอง ไม่ขาดหาย
+                <br />
+                แต่ QR ที่ติดอยู่ที่ตัวเครื่องจะใช้ไม่ได้ ต้องพิมพ์ใหม่
+              </p>
+            )}
+
+            <label className="label mt-3" htmlFor="as-type">
+              ประเภท
+            </label>
+            <select
+              id="as-type"
+              className="input"
+              value={form.type_code}
+              onChange={(e) => setForm({ ...form, type_code: e.target.value })}
+            >
+              {(types.data ?? []).map((t) => (
+                <option key={t.code} value={t.code}>
+                  {t.name}
+                  {t.parent_code ? ' (ของพ่วง)' : ''}
+                </option>
+              ))}
+            </select>
+
+            <label className="label mt-3" htmlFor="as-dept">
+              แผนกเจ้าของ
+            </label>
+            <select
+              id="as-dept"
+              className="input"
+              value={form.dept_code}
+              onChange={(e) => setForm({ ...form, dept_code: e.target.value })}
+            >
+              <option value="ALL">ส่วนกลาง — ทุกแผนกเบิกได้</option>
+              {(depts.data ?? [])
+                .filter((d) => d.code !== 'ALL')
+                .map((d) => (
+                  <option key={d.code} value={d.code}>
+                    {d.name}
+                  </option>
+                ))}
+            </select>
+
+            <label className="label mt-3" htmlFor="as-note">
+              หมายเหตุ (ไม่บังคับ)
+            </label>
+            <input
+              id="as-note"
+              className="input"
+              placeholder="เช่น ซื้อเพิ่มรอบเดือนกันยายน"
+              value={form.note}
+              onChange={(e) => setForm({ ...form, note: e.target.value })}
+            />
+
+            {!form.original && (
+              <p className="mt-2 text-xs text-ink-400">
+                เครื่องใหม่จะเปิดให้เบิกทันที · แชร์ให้แผนกอื่นได้ทีหลังในแผงจัดการ
+              </p>
+            )}
+
+            {formErr && (
+              <div className="mt-3">
+                <ErrorBox message={formErr} />
+              </div>
+            )}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="btn-ghost" onClick={() => setForm(null)}>
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={formBusy}
+                onClick={() => void saveForm()}
+              >
+                {formBusy ? <Spinner /> : null} บันทึก
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {/* ------------------------------------------------- ลบเครื่อง 2 ชั้น */}
+      <Modal
+        open={Boolean(kill)}
+        onClose={() => {
+          setKill(null)
+          setKillStep(0)
+        }}
+        title={kill ? `ลบเครื่อง ${kill.code}` : ''}
+      >
+        {kill && (
+          <>
+            {killStep === 0 ? (
+              <>
+                <p className="text-sm text-ink-500">
+                  {kill.asset_types?.name ?? kill.type_code}
+                  {kill.dept_code ? ` · แผนก ${kill.dept_code}` : ' · ส่วนกลาง'}
+                </p>
+                <p className="mt-3 rounded-card bg-danger-bg px-3 py-2 text-sm text-danger-txt">
+                  ลบเครื่องนี้จะลบ <b>ประวัติการเบิก-คืนทั้งหมด</b> ของมันไปด้วย
+                  <br />
+                  รวมถึงใบแจ้งชำรุดและประวัติการโอน · กู้คืนไม่ได้
+                </p>
+                <p className="mt-2 text-sm text-ink-500">
+                  ถ้าแค่ไม่อยากให้เบิกได้แล้ว ให้ใช้ <b>ปิดไม่ให้เบิก</b> ในแผงจัดการแทน
+                  <br />
+                  เครื่องจะยังอยู่ในทะเบียนและประวัติไม่หาย
+                </p>
+                {formErr && (
+                  <div className="mt-3">
+                    <ErrorBox message={formErr} />
+                  </div>
+                )}
+                <div className="mt-4 flex justify-end gap-2">
+                  <button type="button" className="btn-ghost" onClick={() => setKill(null)}>
+                    ยกเลิก
+                  </button>
+                  <button
+                    type="button"
+                    className="h-tap rounded-btn bg-danger px-3 text-sm text-white"
+                    onClick={() => {
+                      setFormErr(null)
+                      setKillStep(1)
+                    }}
+                  >
+                    เข้าใจแล้ว ไปต่อ
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-ink-500">
+                  ยืนยันอีกครั้ง — พิมพ์รหัสเครื่องให้ตรงเพื่อยืนยันว่าลบถูกตัว
+                </p>
+                <p className="mt-2 text-center font-mono text-lg">{kill.code}</p>
+                <input
+                  className="input mt-2 text-center font-mono"
+                  placeholder="พิมพ์รหัสเครื่องที่นี่"
+                  value={form?.code ?? ''}
+                  onChange={(e) =>
+                    setForm({ code: e.target.value, type_code: '', dept_code: 'ALL', note: '' })
+                  }
+                />
+                {formErr && (
+                  <div className="mt-3">
+                    <ErrorBox message={formErr} />
+                  </div>
+                )}
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => {
+                      setKill(null)
+                      setKillStep(0)
+                      setForm(null)
+                    }}
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    type="button"
+                    className="h-tap rounded-btn bg-danger px-3 text-sm text-white"
+                    disabled={formBusy || form?.code.trim() !== kill.code}
+                    onClick={() => {
+                      setForm(null)
+                      void runDelete()
+                    }}
+                  >
+                    {formBusy ? <Spinner /> : null}
+                    {form?.code.trim() === kill.code ? 'ลบถาวร' : 'พิมพ์รหัสให้ตรงก่อน'}
+                  </button>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </Modal>
+
+      <DepartmentManager
+        open={deptsOpen}
+        onClose={() => setDeptsOpen(false)}
+        departments={depts.data ?? []}
+        onChanged={() => {
+          depts.reload()
+          reloadAll()
+        }}
+      />
 
       <AssetTransfer
         asset={moving}
         holding={moving ? holdBy.get(moving.code) : undefined}
-        depts={depts.data ?? []}
+        candidates={moveCandidates}
         onClose={() => setMoving(null)}
         onDone={reloadAll}
       />
@@ -304,14 +670,18 @@ function AssetSheet({
   holder,
   onClose,
   onChanged,
+  onEdit,
+  onDelete,
 }: {
   asset: Asset
   departments: Department[]
-  /** ย้ายแผนกเครื่องได้เฉพาะเจ้าของระบบ แอดมินดูได้อย่างเดียว */
+  /** จัดการเครื่องได้ — แอดมินและเจ้าของระบบ */
   canMove: boolean
   holder: { holder_name: string; holder_code: string; taken_at: string; ref_no: string } | null
   onClose: () => void
   onChanged: () => void
+  onEdit: () => void
+  onDelete: () => void
 }) {
   const log = useAsync(() => listAssetIssues(asset.code), [asset.code])
   const [busy, setBusy] = useState(false)
@@ -345,6 +715,21 @@ function AssetSheet({
       <div className="space-y-4">
         {err && <ErrorBox message={err} />}
 
+        {canMove && (
+          <div className="flex gap-2">
+            <button type="button" className="btn-soft h-tap flex-1 text-sm" onClick={onEdit}>
+              แก้รหัส / ประเภท / แผนก
+            </button>
+            <button
+              type="button"
+              className="btn-ghost h-tap px-3 text-sm text-danger-txt"
+              onClick={onDelete}
+            >
+              ลบเครื่อง
+            </button>
+          </div>
+        )}
+
         <div className="rounded-card border border-line bg-surface-2 p-3 text-sm">
           <p>
             <span className="text-ink-500">ประเภท</span> {asset.asset_types?.name ?? asset.type_code}
@@ -363,7 +748,7 @@ function AssetSheet({
           <p className="mt-1 text-sm text-ink-500">
             {canMove
               ? 'ย้ายเครื่องได้ทุกเมื่อ · มีผลทันที · ประวัติเดิมไม่กระทบ'
-              : 'เปลี่ยนได้เฉพาะเจ้าของระบบ'}
+              : 'เปลี่ยนได้เฉพาะแอดมินและเจ้าของระบบ'}
           </p>
 
           <label className="label mt-3" htmlFor="asset-home">

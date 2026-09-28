@@ -47,6 +47,7 @@ export function shotsToPhotos(shots: Shot[]): AssetPhotoInput[] {
 export function PhotoSteps({
   steps,
   maxFree,
+  minFree = 1,
   stamp,
   shots,
   onShots,
@@ -54,6 +55,8 @@ export function PhotoSteps({
   /** ขั้นตอนบังคับ — ว่างแปลว่าถ่ายอิสระ */
   steps: AssetPhotoStep[]
   maxFree: number
+  /** ขั้นต่ำตอนถ่ายอิสระ · 0 = ไม่บังคับ เช่นตอนคืนแทน */
+  minFree?: number
   stamp: string[]
   shots: Shot[]
   onShots: (next: Shot[] | ((prev: Shot[]) => Shot[])) => void
@@ -65,6 +68,9 @@ export function PhotoSteps({
   // ยังอยู่บนหน้าจอไหม · ใช้ตัวนี้ตัดสิน ไม่ใช่รอบของ effect
   const mountedRef = useRef(true)
   const [compressing, setCompressing] = useState(false)
+  // เดิมถ้าบีบอัดพัง จะเงียบสนิท วงหมุนหยุดแล้วไม่มีอะไรเกิดขึ้น
+  // หน้างานจะกดถ่ายซ้ำไปเรื่อย ๆ โดยไม่รู้ว่าเกิดอะไรขึ้น และแจ้งกลับมาไม่ได้ว่าพังตรงไหน
+  const [pickError, setPickError] = useState<string | null>(null)
   // ขั้นที่กำลังถ่ายอยู่ ใช้เฉพาะตอนมีขั้นตอนบังคับ
   const [target, setTarget] = useState<number | null>(null)
 
@@ -96,23 +102,38 @@ export function PhotoSteps({
 
   async function onPick(files: FileList | null) {
     if (!files || files.length === 0) return
+    setPickError(null)
     setCompressing(true)
     try {
       const picked = Array.from(files)
       const added: Shot[] = []
 
       if (guided) {
-        // โหมดมีขั้นตอน รับทีละใบ ลงช่องที่กำลังถ่ายอยู่
-        const seq = target ?? nextStep?.seq ?? 1
-        const step = steps.find((st) => st.seq === seq)
-        const img = await compressImage(picked[0], { stamp })
-        added.push({
-          key: `${seq}-${Date.now()}`,
-          seq,
-          label: step?.label ?? null,
-          img,
-          state: 'ready',
-        })
+        /**
+         * เลือกทีเดียวหลายรูปได้ แล้วเติมลงขั้นที่ยังว่างตามลำดับ
+         *
+         * หน้างานถ่ายรอบคันรวดเดียว 4 รูปแล้วค่อยเลือกทีเดียว เร็วกว่าไล่ทีละขั้นมาก
+         * ยังบังคับลำดับเหมือนเดิม รูปแรกที่เลือกลงขั้นที่ว่างขั้นแรก เรียงต่อไป
+         * ถ้ากดถ่ายจากขั้นใดขั้นหนึ่งโดยตรง รูปแรกจะลงขั้นนั้นตามที่กด
+         */
+        const firstSeq = target ?? nextStep?.seq ?? 1
+        const taken = new Set(shotsRef.current.map((x) => x.seq))
+        const queue: number[] = [firstSeq]
+        for (const st of steps) {
+          if (st.seq !== firstSeq && !taken.has(st.seq)) queue.push(st.seq)
+        }
+        for (let i = 0; i < picked.length && i < queue.length; i++) {
+          const seq = queue[i]
+          const step = steps.find((st) => st.seq === seq)
+          const img = await compressImage(picked[i], { stamp })
+          added.push({
+            key: `${seq}-${Date.now()}-${i}`,
+            seq,
+            label: step?.label ?? null,
+            img,
+            state: 'ready',
+          })
+        }
       } else {
         const room = cap - shots.length
         for (const f of picked.slice(0, Math.max(0, room))) {
@@ -131,12 +152,16 @@ export function PhotoSteps({
       onShots((prev) => {
         // ถ่ายซ้ำขั้นเดิม ให้ทับของเก่าแล้วคืนหน่วยความจำรูปเดิม
         if (guided) {
-          const seq = added[0].seq
-          prev.filter((s) => s.seq === seq).forEach((s) => releaseImage(s.img))
-          return [...prev.filter((s) => s.seq !== seq), ...added].sort((a, b) => a.seq - b.seq)
+          const seqs = new Set(added.map((a) => a.seq))
+          prev.filter((s) => seqs.has(s.seq)).forEach((s) => releaseImage(s.img))
+          return [...prev.filter((s) => !seqs.has(s.seq)), ...added].sort((a, b) => a.seq - b.seq)
         }
         return [...prev, ...added]
       })
+    } catch (e) {
+      setPickError(
+        `ใช้รูปนี้ไม่ได้: ${(e as Error).message} · ลองถ่ายใหม่ หรือเลือกจากคลังรูปแทน`,
+      )
     } finally {
       setCompressing(false)
       setTarget(null)
@@ -222,7 +247,7 @@ export function PhotoSteps({
         ref={galleryRef}
         type="file"
         accept="image/*"
-        multiple={!guided}
+        multiple
         className="hidden"
         onChange={(e) => void onPick(e.target.files)}
       />
@@ -251,7 +276,7 @@ export function PhotoSteps({
                 disabled={compressing}
                 onClick={() => openPicker('gallery', nextStep.seq)}
               >
-                เลือกจากคลังรูป
+                เลือกจากคลังรูป — เลือกหลายใบพร้อมกันได้
               </button>
             </div>
           ) : (
@@ -260,24 +285,58 @@ export function PhotoSteps({
             </p>
           )}
 
-          <div className="mt-2 flex justify-center gap-[6px]">
-            {steps.map((st) => {
-              const s = bySeq.get(st.seq)
+          {/* รายการขั้นตอนแบบมีเลข — หน้างานต้องรู้ตั้งแต่ต้นว่าต้องถ่ายอะไรบ้าง
+              จุดเล็ก ๆ แบบเดิมบอกแค่ว่าเหลือกี่ขั้น แต่ไม่บอกว่าขั้นไหนคืออะไร */}
+          <ul className="mt-2 space-y-1">
+            {steps.map((st, i) => {
+              const got = bySeq.get(st.seq)
+              const isNext = nextStep?.seq === st.seq
               return (
-                <span
+                <li
                   key={st.seq}
-                  title={st.label}
-                  className={`h-2 w-2 rounded-pill ${
-                    s?.state === 'done'
-                      ? 'bg-success'
-                      : s
-                        ? 'bg-brand-500'
-                        : 'bg-line-2'
+                  className={`flex items-center gap-2 rounded-btn px-2 py-[6px] ${
+                    isNext ? 'bg-brand-50' : ''
                   }`}
-                />
+                >
+                  <span
+                    aria-hidden
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-pill text-xs font-semibold ${
+                      got
+                        ? 'bg-success text-white'
+                        : isNext
+                          ? 'bg-brand-500 text-ink'
+                          : 'bg-line-2 text-ink-500'
+                    }`}
+                  >
+                    {got ? '✓' : i + 1}
+                  </span>
+                  <span className={`flex-1 text-sm ${got ? 'text-ink-400' : 'text-ink'}`}>
+                    {st.label}
+                  </span>
+                  {got && (
+                    <button
+                      type="button"
+                      className="shrink-0 text-xs underline decoration-line-2"
+                      onClick={() => openPicker('camera', st.seq)}
+                    >
+                      ถ่ายใหม่
+                    </button>
+                  )}
+                </li>
               )
             })}
-          </div>
+          </ul>
+
+          <p className="mt-2 text-center text-sm text-ink-500">
+            ถ่ายแล้ว <b className="text-ink">{shots.length}</b> จาก {steps.length} ใบ
+            {shots.length < steps.length ? ` · เหลืออีก ${steps.length - shots.length}` : ' · ครบแล้ว'}
+          </p>
+
+          {pickError && (
+            <p className="mt-1 rounded-btn bg-danger-bg px-2 py-1 text-center text-sm text-danger-txt">
+              {pickError}
+            </p>
+          )}
         </>
       ) : (
         <div className="flex gap-2">
@@ -302,7 +361,18 @@ export function PhotoSteps({
 
       {!guided && (
         <p className="mt-1 text-center text-sm text-ink-400">
-          ถ่ายได้ {shots.length}/{cap} ใบ · อย่างน้อย 1 ใบ
+          {pickError && (
+            <span className="mb-1 block rounded-btn bg-danger-bg px-2 py-1 text-danger-txt">
+              {pickError}
+            </span>
+          )}
+          ถ่ายแล้ว <b className="text-ink">{shots.length}</b> ใบ
+          {minFree > 0
+            ? shots.length >= minFree
+              ? ' · ครบขั้นต่ำแล้ว'
+              : ` · ต้องอีกอย่างน้อย ${minFree - shots.length} ใบ`
+            : ' · ไม่บังคับ'}
+          {cap < 99 ? ` · สูงสุด ${cap} ใบ` : ''}
         </p>
       )}
 

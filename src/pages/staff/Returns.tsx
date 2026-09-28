@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../../lib/auth'
 import { useAsync } from '../../lib/useAsync'
-import { MAX_PHOTOS, createReturn, listOpenBorrowings, uploadEvidence } from '../../lib/api'
+import {
+  MAX_PHOTOS,
+  createReturn,
+  createReturnMany,
+  listOpenBorrowings,
+  uploadEvidence,
+} from '../../lib/api'
 import { compressImage, prettyBytes, releaseImage, stampLines, type CompressedImage } from '../../lib/image'
 import { readableError } from '../../lib/supabase'
 import type { OpenBorrowing, ReturnCond } from '../../lib/types'
@@ -9,7 +15,7 @@ import { StaffPage, TopBar } from '../../components/Shell'
 import { EmptyState, ErrorBox, Loading, QtyStepper, Sheet, Spinner } from '../../components/ui'
 import { fmtDateTime } from '../../lib/format'
 import { AssetReturn } from '../../components/AssetReturn'
-import { ProxyHoldings } from '../../components/ProxyHoldings'
+import { HubHoldings } from '../../components/HubHoldings'
 import { TransferNotices } from '../../components/TransferNotices'
 
 const CONDITIONS: { key: ReturnCond; label: string }[] = [
@@ -38,6 +44,10 @@ export default function Returns() {
   const shotsRef = useRef<Shot[]>([])
 
   const [target, setTarget] = useState<OpenBorrowing | null>(null)
+  // คืนหลายรายการรวดเดียว · ตอนเลิกกะของกองอยู่ตรงหน้าชุดเดียว
+  // ไม่มีเหตุผลต้องกดทีละอันแล้วถ่ายรูปซ้ำทุกอัน
+  const [bulk, setBulk] = useState<number[]>([])
+  const [bulkOpen, setBulkOpen] = useState(false)
   const [qty, setQty] = useState(1)
   const [cond, setCond] = useState<ReturnCond>('ok')
   const [shots, setShots] = useState<Shot[]>([])
@@ -46,6 +56,8 @@ export default function Returns() {
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
   const [assetCount, setAssetCount] = useState<number | null>(null)
+  // เครื่องที่คนอื่นถืออยู่ นับเฉพาะคนที่มีสิทธิ์เห็นทั้งฮับ
+  const [hubCount, setHubCount] = useState(0)
 
   useEffect(() => {
     shotsRef.current = shots
@@ -139,6 +151,52 @@ export default function Returns() {
     return list.map((s) => ({ ...s, ...(result.get(s.key) ?? {}) }))
   }
 
+  const bulkRows = (open.data ?? []).filter((b) => bulk.includes(b.requisition_item_id))
+
+  function openBulk() {
+    if (bulk.length === 0) return
+    setShots([])
+    setCond('ok')
+    setError(null)
+    setBulkOpen(true)
+  }
+
+  function closeBulk() {
+    setBulkOpen(false)
+    shots.forEach((s) => releaseImage(s.img))
+    setShots([])
+  }
+
+  async function submitBulk() {
+    const okShots = shots.filter((s) => s.state === 'done' && s.fileId)
+    if (okShots.length === 0) {
+      setError('ต้องมีรูปที่ส่งสำเร็จอย่างน้อย 1 ใบ')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await createReturnMany({
+        lines: bulkRows.map((b) => ({ line_id: b.requisition_item_id, qty: b.qty_open })),
+        condition: cond,
+        photos: okShots.map((s) => ({
+          file_id: s.fileId as string,
+          web_link: s.webLink ?? null,
+          bytes: s.bytes ?? null,
+        })),
+      })
+      setDone(`คืน ${res.lines} รายการ รวม ${res.units} ชิ้น · แนบรูป ${okShots.length} ใบ`)
+      setBulk([])
+      closeBulk()
+      open.reload()
+      setTimeout(() => setDone(null), 4000)
+    } catch (e) {
+      setError(readableError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function submit() {
     if (!target) return
     if (shots.length === 0) {
@@ -197,19 +255,79 @@ export default function Returns() {
     failed: 'badge-dang',
   }
 
+  /** กล่องถ่ายรูป — ใช้ทั้งตอนคืนทีละรายการและคืนหลายรายการ */
+  const photoBlock = (
+    <>
+      <p className="label mt-4">
+        รูปสภาพตอนคืน <span className="text-danger-txt">· บังคับอย่างน้อย 1 ใบ</span>
+      </p>
+
+      {shots.length > 0 && (
+        <ul className="mb-2 space-y-2">
+          {shots.map((s, i) => (
+            <li key={s.key} className="flex items-center gap-2 rounded-card border border-line p-2">
+              <img
+                src={s.img.objectUrl}
+                alt={`ใบที่ ${i + 1}`}
+                className="h-[48px] w-[48px] shrink-0 rounded-btn object-cover"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="font-mono text-xs text-ink-400">{prettyBytes(s.img.bytes)}</p>
+                <span className={stateClass[s.state]}>{stateLabel[s.state]}</span>
+                {s.error && <p className="text-xs text-danger-txt">{s.error}</p>}
+              </div>
+              <button
+                type="button"
+                aria-label={`ลบใบที่ ${i + 1}`}
+                className="h-tap w-tap shrink-0 text-ink-400"
+                disabled={busy || s.state === 'uploading'}
+                onClick={() => removeShot(s.key)}
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          className="btn-ghost"
+          disabled={busy || compressing || shots.length >= MAX_PHOTOS}
+          onClick={() => cameraRef.current?.click()}
+        >
+          {compressing ? <Spinner /> : null}
+          {shots.length === 0 ? 'ถ่ายรูป' : 'ถ่ายเพิ่ม'}
+        </button>
+        <button
+          type="button"
+          className="btn-ghost"
+          disabled={busy || compressing || shots.length >= MAX_PHOTOS}
+          onClick={() => galleryRef.current?.click()}
+        >
+          เลือกจากเครื่อง
+        </button>
+      </div>
+      <p className="mt-1 text-center text-sm text-ink-400">
+        ใส่แล้ว {shots.length}/{MAX_PHOTOS} ใบ
+      </p>
+    </>
+  )
+
   return (
     <>
       <TopBar title="คืนของ" back="/" />
       <StaffPage>
         <TransferNotices />
         <AssetReturn onCount={setAssetCount} />
-        <ProxyHoldings />
+        <HubHoldings onCount={setHubCount} />
 
         {open.loading && <Loading />}
         {open.error && <ErrorBox message={open.error} onRetry={open.reload} />}
         {done && <p className="mb-3 rounded-card bg-success-bg p-3 text-sm text-success-txt">{done}</p>}
 
-        {!open.loading && !open.error && (open.data ?? []).length === 0 && assetCount === 0 && (
+        {!open.loading && !open.error && (open.data ?? []).length === 0 && assetCount === 0 && hubCount === 0 && (
           <EmptyState
             title="ไม่มีของค้างคืน"
             hint="อุปกรณ์และวัสดุประเภทยืม-คืนที่เบิกไปจะขึ้นที่นี่"
@@ -217,13 +335,51 @@ export default function Returns() {
         )}
 
         {(open.data ?? []).length > 0 && (
-          <h2 className="mb-2 font-display text-md">วัสดุยืม-คืน</h2>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h2 className="font-display text-md">
+              วัสดุยืม-คืน
+              <span className="text-sm text-ink-400"> · {(open.data ?? []).length} รายการ</span>
+            </h2>
+            {(open.data ?? []).length > 1 && (
+              <button
+                type="button"
+                className="h-tap rounded-btn px-2 text-sm underline decoration-line-2 underline-offset-2"
+                onClick={() =>
+                  setBulk((v) =>
+                    v.length === (open.data ?? []).length
+                      ? []
+                      : (open.data ?? []).map((b) => b.requisition_item_id),
+                  )
+                }
+              >
+                {bulk.length === (open.data ?? []).length ? 'เอาออกทั้งหมด' : 'เลือกทั้งหมด'}
+              </button>
+            )}
+          </div>
         )}
 
         <ul className="space-y-2">
           {(open.data ?? []).map((b) => (
             <li key={b.requisition_item_id} className="card p-3">
               <div className="flex items-start justify-between gap-3">
+                <button
+                  type="button"
+                  aria-label="เลือกคืนรายการนี้"
+                  className={`mt-[2px] flex h-6 w-6 shrink-0 items-center justify-center rounded-btn border text-sm ${
+                    bulk.includes(b.requisition_item_id)
+                      ? 'border-ink bg-ink text-white'
+                      : 'border-line-2 text-transparent'
+                  }`}
+                  onClick={() =>
+                    setBulk((v) =>
+                      v.includes(b.requisition_item_id)
+                        ? v.filter((x) => x !== b.requisition_item_id)
+                        : [...v, b.requisition_item_id],
+                    )
+                  }
+                >
+                  ✓
+                </button>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-display text-base">{b.item_name}</p>
                   <p className="truncate font-mono text-xs text-ink-400">
@@ -243,7 +399,70 @@ export default function Returns() {
             </li>
           ))}
         </ul>
+        {bulk.length > 0 && (
+          <div className="safe-b sticky bottom-0 z-30 -mx-4 mt-3 border-t border-line bg-surface px-4 py-3">
+            <button type="button" className="btn-primary w-full py-4 text-md" onClick={openBulk}>
+              คืนที่เลือก {bulk.length} รายการ — เต็มจำนวนที่ค้าง
+            </button>
+            <p className="mt-1 text-center text-xs text-ink-400">
+              ถ้าจะคืนไม่เต็มจำนวน ให้กดปุ่ม คืน ของรายการนั้นแทน
+            </p>
+          </div>
+        )}
       </StaffPage>
+
+      {/* ------------------------------------------------ คืนหลายรายการรวดเดียว */}
+      <Sheet
+        open={bulkOpen}
+        onClose={closeBulk}
+        title={`คืน ${bulkRows.length} รายการ`}
+      >
+        <ul className="space-y-1">
+          {bulkRows.map((b) => (
+            <li
+              key={b.requisition_item_id}
+              className="flex items-baseline justify-between gap-2 rounded-card border border-line bg-surface p-2 text-sm"
+            >
+              <span className="min-w-0 flex-1 truncate">{b.item_name}</span>
+              <span className="shrink-0 font-display">
+                {b.qty_open} {b.unit}
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        <span className="label mt-4">สภาพของ — ใช้กับทุกรายการที่เลือก</span>
+        <div className="flex gap-2">
+          {CONDITIONS.map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              className={`chip ${cond === c.key ? 'chip-on' : ''}`}
+              onClick={() => setCond(c.key)}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+
+        <p className="mt-3 rounded-card bg-surface-2 px-3 py-2 text-sm text-ink-500">
+          ถ่ายรูปกองของที่เอามาคืนชุดเดียวพอ · รูปชุดนี้จะติดกับทุกรายการที่เลือก
+        </p>
+
+        {photoBlock}
+
+        {error && <div className="mt-3"><ErrorBox message={error} /></div>}
+
+        <button
+          type="button"
+          className="btn-primary mt-3 w-full py-4 text-md"
+          disabled={busy || compressing || shots.length === 0}
+          onClick={() => void submitBulk()}
+        >
+          {busy ? <Spinner /> : null}
+          {shots.length === 0 ? 'ถ่ายรูปก่อน' : `ยืนยันคืน ${bulkRows.length} รายการ`}
+        </button>
+      </Sheet>
 
       <Sheet open={Boolean(target)} onClose={closeSheet} title={target ? `คืน ${target.item_name}` : ''}>
         {target && (
@@ -295,60 +514,7 @@ export default function Returns() {
               }}
             />
 
-            <p className="label mt-4">
-              รูปสภาพตอนคืน <span className="text-danger-txt">· บังคับอย่างน้อย 1 ใบ</span>
-            </p>
-
-            {shots.length > 0 && (
-              <ul className="mb-2 space-y-2">
-                {shots.map((s, i) => (
-                  <li key={s.key} className="flex items-center gap-2 rounded-card border border-line p-2">
-                    <img
-                      src={s.img.objectUrl}
-                      alt={`ใบที่ ${i + 1}`}
-                      className="h-[48px] w-[48px] shrink-0 rounded-btn object-cover"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="font-mono text-xs text-ink-400">{prettyBytes(s.img.bytes)}</p>
-                      <span className={stateClass[s.state]}>{stateLabel[s.state]}</span>
-                      {s.error && <p className="text-xs text-danger-txt">{s.error}</p>}
-                    </div>
-                    <button
-                      type="button"
-                      aria-label={`ลบใบที่ ${i + 1}`}
-                      className="h-tap w-tap shrink-0 text-ink-400"
-                      disabled={busy || s.state === 'uploading'}
-                      onClick={() => removeShot(s.key)}
-                    >
-                      ✕
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                className="btn-ghost"
-                disabled={busy || compressing || shots.length >= MAX_PHOTOS}
-                onClick={() => cameraRef.current?.click()}
-              >
-                {compressing ? <Spinner /> : null}
-                {shots.length === 0 ? 'ถ่ายรูป' : 'ถ่ายเพิ่ม'}
-              </button>
-              <button
-                type="button"
-                className="btn-ghost"
-                disabled={busy || compressing || shots.length >= MAX_PHOTOS}
-                onClick={() => galleryRef.current?.click()}
-              >
-                เลือกจากเครื่อง
-              </button>
-            </div>
-            <p className="mt-1 text-center text-sm text-ink-400">
-              ใส่แล้ว {shots.length}/{MAX_PHOTOS} ใบ
-            </p>
+            {photoBlock}
 
             {error && (
               <div className="mt-3 rounded-card border-2 border-danger bg-danger-bg p-3">

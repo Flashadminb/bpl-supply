@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
 import { useAuth } from '../../lib/auth'
+import { MANAGER_ROLES } from '../../lib/roles'
 import {
   deleteEvidence,
   listEvidence,
@@ -40,7 +41,7 @@ export default function Evidence() {
   const [busyId, setBusyId] = useState<string | null>(null)
   // ลบถาวร — เจ้าของระบบเท่านั้น เพราะลบใบเบิกคือลบประวัติการตัดสต็อก
   const { can } = useAuth()
-  const isOwner = can('admin')
+  const isOwner = can(...MANAGER_ROLES)
   const [killing, setKilling] = useState<EvidenceRow | null>(null)
   const [killErr, setKillErr] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)

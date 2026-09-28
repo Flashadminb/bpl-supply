@@ -56,7 +56,9 @@ export default function Items() {
 
           {(items.data ?? []).map((it) => {
             const inCart = cart.qtyOf(it.id)
-            const out = it.qty_on_hand <= 0
+            // ดูอย่างเดียวไม่ใช่ของหมด จงใจไม่หรี่การ์ดลง เพราะเลขสต็อกคือสิ่งที่เขามาดู
+            const locked = it.view_only
+            const out = !locked && it.qty_on_hand <= 0
             return (
               <div key={it.id} className={`card flex items-center gap-3 p-3 ${out ? 'opacity-55' : ''}`}>
                 <Link to={`/items/${it.id}`} className="min-w-0 flex-1">
@@ -68,10 +70,25 @@ export default function Items() {
                     <StockBadge qty={it.qty_on_hand} min={it.min_qty} />
                     {it.is_returnable && <span className="badge-mute">ยืม-คืน</span>}
                     {it.requires_approval && <span className="badge-warn">ต้องอนุมัติ</span>}
+                    {locked && <span className="badge-warn">เบิกในแอพนี้ไม่ได้</span>}
                   </div>
+                  {/* เหตุผลต้องอยู่ตรงนี้เลย ไม่ใช่ให้กดเข้าไปอ่าน
+                      หน้างานยืนอยู่หน้าชั้นของ ต้องรู้เดี๋ยวนั้นว่าต้องไปเบิกที่ไหนแทน */}
+                  {locked && (
+                    <p className="mt-1 rounded-btn bg-warn-bg px-2 py-1 text-xs text-warn-txt">
+                      {it.view_only_note?.trim() || 'ดูสต็อกได้อย่างเดียว'}
+                    </p>
+                  )}
                 </Link>
 
-                {out ? (
+                {locked ? (
+                  <span
+                    aria-label="เบิกในแอพนี้ไม่ได้"
+                    className="shrink-0 rounded-btn bg-surface-2 px-3 py-2 text-xs text-ink-400"
+                  >
+                    ดูอย่างเดียว
+                  </span>
+                ) : out ? (
                   <button
                     type="button"
                     className="btn-soft shrink-0 text-sm"

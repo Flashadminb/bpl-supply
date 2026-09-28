@@ -47,7 +47,7 @@ export function AssetTypes() {
   )
 
   return (
-    <div className="min-h-dvh bg-canvas">
+    <div className="bg-canvas">
       <TopBar title="เบิกอุปกรณ์" back="/" />
       <StaffPage>
         {(types.loading || assets.loading) && <Loading />}
@@ -311,7 +311,7 @@ export default function AssetPick() {
   }
 
   return (
-    <div className="min-h-dvh bg-canvas">
+    <div className="bg-canvas">
       <TopBar
         title={`${type?.name ?? 'เบิกอุปกรณ์'} · ${STEP_TITLE[step]}`}
         back={step === 'pick' ? '/assets' : undefined}

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import { useAuth } from '../../lib/auth'
+import { MANAGER_ROLES } from '../../lib/roles'
 import {
   countAssetExportRows,
   countSheetExportRows,
@@ -44,7 +45,7 @@ const COND_TH: Record<string, string> = { damaged: 'ชำรุด', lost: 'ส
 export default function Dashboard() {
   // ชำรุดค้างเป็นงานของเจ้าของระบบ ไม่ต้องขึ้นกวนแอดมิน
   const { can } = useAuth()
-  const isOwner = can('admin')
+  const isOwner = can(...MANAGER_ROLES)
   const [days, setDays] = useState(30)
   const [dept, setDept] = useState('')
 

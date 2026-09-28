@@ -3,11 +3,13 @@ import { useCart } from '../../lib/cart'
 import { StaffPage, TopBar } from '../../components/Shell'
 import { EmptyState, QtyStepper } from '../../components/ui'
 
-const PURPOSES = ['ใช้ในไลน์คัดแยก', 'ทำความสะอาดพื้นที่', 'งานสำนักงาน', 'เปลี่ยนของชำรุด']
+const PURPOSES = ['งานหน้างาน', 'งานในออฟฟิศ', 'ส่วนตัว', 'ทำความสะอาดพื้นที่', 'เปลี่ยนของชำรุด']
 
 export default function Cart() {
   const cart = useCart()
   const nav = useNavigate()
+
+  const blocked = cart.lines.some((l) => l.view_only)
 
   return (
     <>
@@ -110,6 +112,36 @@ export default function Cart() {
               />
             </div>
 
+            {/* ของที่เบิกไม่ได้ ต้องเอาออกก่อนถึงจะไปต่อได้ */}
+            {/*
+              ของอาจโดนปิดการเบิกหลังจากมันเข้าตะกร้าไปแล้ว
+              ตะกร้าเก็บในเครื่อง ค้างข้ามวันได้ ของในนั้นจึงเก่ากว่าความจริงเสมอ
+              ถ้าไม่ดักตรงนี้ เขาจะถ่ายรูปหลักฐานเสร็จแล้วค่อยเด้ง error ตอนกดส่ง
+              ซึ่งเสียเวลาเปล่าและหาสาเหตุไม่เจอ
+            */}
+            {cart.lines.some((l) => l.view_only) && (
+              <div className="mt-3 rounded-card border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger-txt">
+                <b className="font-display">มีของที่เบิกในแอพนี้ไม่ได้อยู่ในตะกร้า</b>
+                <ul className="mt-1 space-y-1">
+                  {cart.lines
+                    .filter((l) => l.view_only)
+                    .map((l) => (
+                      <li key={l.item_id}>
+                        <b>{l.name}</b> — {l.view_only_note?.trim() || 'ดูสต็อกได้อย่างเดียว'}
+                        <button
+                          type="button"
+                          className="ml-2 underline"
+                          onClick={() => cart.setQty(l.item_id, 0)}
+                        >
+                          เอาออก
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+                <p className="mt-1 text-xs">เอาออกก่อนถึงจะส่งคำขอได้</p>
+              </div>
+            )}
+
             {cart.lines.some((l) => l.requires_approval) && (
               <p className="mt-3 rounded-card border border-warn/30 bg-warn-bg px-3 py-2 text-sm text-warn-txt">
                 คำขอนี้มีของที่ <b>ต้องขออนุมัติ</b> —{' '}
@@ -133,13 +165,15 @@ export default function Cart() {
               </span>
             </div>
 
+            {/* กันไว้ตั้งแต่ก่อนพาไปถ่ายรูป ไม่ใช่ปล่อยให้ถ่ายเสร็จแล้วค่อยพัง */}
             <div className="safe-b fixed inset-x-0 bottom-[68px] z-20 px-3">
               <button
                 type="button"
                 className="btn-primary mx-auto flex w-full max-w-phone shadow-float"
+                disabled={blocked}
                 onClick={() => nav('/evidence')}
               >
-                ถ่ายรูปหลักฐาน
+                {blocked ? 'เอาของที่เบิกไม่ได้ออกก่อน' : 'ถ่ายรูปหลักฐาน'}
               </button>
             </div>
           </>

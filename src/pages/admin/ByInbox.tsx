@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
-import { listAllItemsForAdmin, listByRows, listByStats, setByStatus } from '../../lib/api'
+import { listAllItemsForAdmin, listByRows, listByStats, setByStatusLines } from '../../lib/api'
 import { readableError } from '../../lib/supabase'
 import { EmptyState, ErrorBox, Loading, Modal, Spinner } from '../../components/ui'
 import { EvidenceImg, ThumbStrip } from '../../components/EvidenceThumbs'
@@ -29,6 +29,19 @@ export default function ByInbox() {
   const [from, setFrom] = useState(isoDay(-30))
   const [to, setTo] = useState(isoDay(0))
   const [open, setOpen] = useState<ByRow | null>(null)
+  // บาร์โค้ดใบเดียวมักมีของหลายอย่าง เดิมผูกได้อย่างเดียว ที่เหลือต้องไปตัดมือที่หน้าสต็อก
+  // ซึ่งไม่เหลือร่องรอยว่าตัดเพราะใบไหน
+  const [lines, setLines] = useState<{ item_id: number; qty: number }[]>([])
+  const [pickItem, setPickItem] = useState('')
+  const [pickQty, setPickQty] = useState(1)
+
+  /** เปิดใบ — ตั้งต้นด้วยรายการที่เคยบันทึกไว้ จะได้แก้ต่อได้ ไม่ต้องกรอกใหม่ */
+  function openRow(r: ByRow) {
+    setLines((r.lines ?? []).map((l) => ({ item_id: l.item_id, qty: l.qty })))
+    setPickItem('')
+    setPickQty(1)
+    setOpen(r)
+  }
   const [big, setBig] = useState<{ row: ByRow; index: number } | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -50,9 +63,6 @@ export default function ByInbox() {
   const items = useAsync(() => listAllItemsForAdmin(), [])
 
   // ตอนปิดรายการ ระบุได้ว่าบาร์โค้ดนั้นคือวัสดุตัวไหนกี่ชิ้น
-  const [pickItem, setPickItem] = useState('')
-  const [pickQty, setPickQty] = useState(1)
-  const [cutStock, setCutStock] = useState(false)
 
   const itemOpts: Option[] = useMemo(
     () =>
@@ -89,19 +99,24 @@ export default function ByInbox() {
     return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
   }, [monthRows])
 
-  async function mark(row: ByRow, status: ByStatus, withItem = false) {
+  /**
+   * ปิดงานหนึ่งใบ
+   *
+   * cut = true  ของอยู่ในคลังนี้ ตัดสต็อกตามบรรทัดที่ใส่ไว้
+   * cut = false ของไม่ได้อยู่ในคลังนี้ ปิดใบทิ้งเฉย ๆ ไม่แตะยอดอะไรเลย
+   */
+  async function mark(row: ByRow, status: ByStatus, cut = false) {
     setBusyId(row.id)
     setError(null)
     try {
-      await setByStatus(row.id, status, {
-        itemId: withItem && pickItem ? Number(pickItem) : null,
-        qty: withItem && pickItem ? pickQty : null,
-        cutStock: withItem && cutStock,
+      await setByStatusLines(row.id, status, {
+        lines,
+        cutStock: cut,
       })
       setOpen(null)
+      setLines([])
       setPickItem('')
       setPickQty(1)
-      setCutStock(false)
       items.reload()
       pending.reload()
       history.reload()
@@ -298,7 +313,7 @@ export default function ByInbox() {
                         type="button"
                         className="btn-primary h-tap px-3 text-sm"
                         disabled={busyId === r.id}
-                        onClick={() => setOpen(r)}
+                        onClick={() => openRow(r)}
                       >
                         {busyId === r.id ? <Spinner /> : 'จัดการ'}
                       </button>
@@ -348,51 +363,107 @@ export default function ByInbox() {
             <div className="mt-3 rounded-card border border-line p-3">
               <p className="font-display">บาร์โค้ดนี้คือวัสดุตัวไหน</p>
               <p className="mb-2 text-sm text-ink-400">
-                ไม่บังคับ — ใส่ไว้เพื่อให้สถิติบอกได้ว่าของอะไรถูกขอบ่อย
+                ใส่ได้หลายรายการ — บาร์โค้ดใบเดียวมีของหลายอย่างก็ตัดได้ครบในครั้งเดียว
+                <br />
+                ถ้าของไม่ได้นับรวมอยู่ในคลังนี้ ไม่ต้องใส่อะไร กดปุ่ม
+                <b> ไม่มีของในระบบนี้ </b>
+                ด้านล่างได้เลย
               </p>
 
+              {/* บรรทัดที่ใส่ไว้แล้ว */}
+              {lines.length > 0 && (
+                <ul className="mb-3 space-y-1">
+                  {lines.map((l) => {
+                    const it = (items.data ?? []).find((x) => x.id === l.item_id)
+                    const left = (it?.qty_on_hand ?? 0) - l.qty
+                    return (
+                      <li
+                        key={l.item_id}
+                        className="flex items-center gap-2 rounded-card border border-line bg-surface p-2"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="font-display">{it?.name ?? `วัสดุ #${l.item_id}`}</span>
+                          <span className="block text-xs text-ink-400">
+                            {it?.sku}
+                            {it ? ` · เหลือ ${it.qty_on_hand} ${it.unit}` : ''}
+                            {it ? ` → ตัดแล้วเหลือ ${left}` : ''}
+                          </span>
+                          {it && left < 0 && (
+                            <span className="block text-xs text-danger-txt">
+                              สต็อกไม่พอ ตัดไม่ได้ ต้องแก้จำนวนหรือเติมของก่อน
+                            </span>
+                          )}
+                        </span>
+                        <span className="shrink-0">
+                          <QtyStepper
+                            value={l.qty}
+                            max={9999}
+                            onChange={(q) =>
+                              setLines((v) =>
+                                v.map((x) => (x.item_id === l.item_id ? { ...x, qty: q } : x)),
+                              )
+                            }
+                          />
+                        </span>
+                        <button
+                          type="button"
+                          className="btn-ghost h-tap shrink-0 px-2 text-sm"
+                          title="เอาออก"
+                          onClick={() => setLines((v) => v.filter((x) => x.item_id !== l.item_id))}
+                        >
+                          ลบ
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+
+              {/* เพิ่มบรรทัดใหม่ */}
               <SearchSelect
-                label="วัสดุ"
+                label="เพิ่มวัสดุ"
                 value={pickItem}
                 options={itemOpts}
                 onChange={setPickItem}
-                allLabel="ไม่ระบุ"
+                allLabel="— เลือกวัสดุ —"
                 placeholder="พิมพ์ชื่อหรือ SKU"
                 width="w-full"
               />
 
               {pickItem && (
-                <>
-                  <p className="label mt-3">จำนวน {pickedItem?.unit ?? ''}</p>
-                  <QtyStepper value={pickQty} max={9999} onChange={setPickQty} />
-
-                  <label className="mt-3 flex items-start gap-2 rounded-card bg-surface-2 p-3">
-                    <input
-                      type="checkbox"
-                      className="mt-1 h-5 w-5 shrink-0"
-                      checked={cutStock}
-                      onChange={(e) => setCutStock(e.target.checked)}
-                    />
-                    <span className="text-sm">
-                      <b>ตัดสต็อกในระบบนี้ด้วย</b>
-                      <span className="block text-ink-400">
-                        ติ๊กเฉพาะตอนของชิ้นนี้นับรวมอยู่ในคลังนี้จริง ๆ
-                        {pickedItem
-                          ? ` — ตอนนี้เหลือ ${pickedItem.qty_on_hand} ${pickedItem.unit} ตัดแล้วจะเหลือ ${pickedItem.qty_on_hand - pickQty}`
-                          : ''}
-                        <br />
-                        ถ้าตัดในระบบ BY อย่างเดียว อย่าติ๊ก ไม่งั้นยอดจะหายสองเด้ง
-                      </span>
-                    </span>
-                  </label>
-                </>
+                <div className="mt-2 flex items-end gap-2">
+                  <span>
+                    <p className="label">จำนวน {pickedItem?.unit ?? ''}</p>
+                    <QtyStepper value={pickQty} max={9999} onChange={setPickQty} />
+                  </span>
+                  <button
+                    type="button"
+                    className="btn-soft h-tap flex-1 text-sm"
+                    onClick={() => {
+                      const id = Number(pickItem)
+                      // วัสดุเดิมซ้ำให้รวมจำนวน ไม่ใช่เพิ่มบรรทัดซ้อน
+                      setLines((v) =>
+                        v.some((x) => x.item_id === id)
+                          ? v.map((x) => (x.item_id === id ? { ...x, qty: x.qty + pickQty } : x))
+                          : [...v, { item_id: id, qty: pickQty }],
+                      )
+                      setPickItem('')
+                      setPickQty(1)
+                    }}
+                  >
+                    เพิ่มเข้ารายการ
+                  </button>
+                </div>
               )}
+
             </div>
 
             <p className="mt-3 rounded-card bg-surface-2 px-3 py-2 text-sm text-ink-500">
               ตัดสต็อกในระบบ BY ให้เรียบร้อยก่อน แล้วค่อยกดปุ่มด้านล่าง
             </p>
 
+            {/* สองทางนี้ต่างกันที่ยอดสต็อก ไม่ใช่แค่คำ จึงแยกเป็นคนละปุ่ม
+                ไม่ใช่ช่องติ๊กที่ลืมกดแล้วยอดเพี้ยนเงียบ ๆ */}
             <div className="mt-4 flex flex-wrap justify-end gap-2">
               <button type="button" className="btn-ghost" onClick={() => setOpen(null)}>
                 ปิด
@@ -407,11 +478,23 @@ export default function ByInbox() {
               </button>
               <button
                 type="button"
-                className="btn-primary"
+                className="btn-soft h-tap px-3"
                 disabled={busyId === open.id}
+                title="ของชิ้นนี้ไม่ได้นับรวมอยู่ในคลังนี้ ปิดใบทิ้งโดยไม่แตะยอด"
+                onClick={() => void mark(open, 'done', false)}
+              >
+                ไม่มีของในระบบนี้ — เคลียร์เลย
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={busyId === open.id || lines.length === 0}
                 onClick={() => void mark(open, 'done', true)}
               >
-                {busyId === open.id ? <Spinner /> : null} ตัดสต็อกแล้ว
+                {busyId === open.id ? <Spinner /> : null}
+                {lines.length === 0
+                  ? 'ใส่รายการก่อนถึงตัดสต็อกได้'
+                  : `ตัดสต็อก ${lines.length} รายการ`}
               </button>
             </div>
           </>

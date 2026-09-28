@@ -43,7 +43,7 @@ export default function AssetDone() {
   const clean = codes.filter((c) => !damaged.has(c))
 
   return (
-    <div className="min-h-dvh bg-canvas">
+    <div className="bg-canvas">
       <header className="safe-t bg-success text-white">
         <div className="mx-auto max-w-phone px-4 pb-5 pt-5">
           <p className="font-display text-xl">

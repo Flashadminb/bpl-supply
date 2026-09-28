@@ -3,25 +3,32 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useAsync } from '../lib/useAsync'
 import {
-  assetReturn,
+  assetReturnGroups,
   listAssetHoldings,
   listAssetOpenIssues,
   listAssetPhotoSteps,
   listAssetTypes,
 } from '../lib/api'
 import { readableError } from '../lib/supabase'
-import { ErrorBox, Loading, Sheet, Spinner } from './ui'
+import { ErrorBox, Loading, Spinner } from './ui'
 import { PhotoSteps, shotsToPhotos, type Shot } from './PhotoSteps'
+import { PartBoundary } from './ErrorBoundary'
 import { stampLines } from '../lib/image'
 import { fmtDateTime, relativeAge } from '../lib/format'
-import type { AssetIssueInput } from '../lib/types'
+import { LOST, isLost, symptomsFor } from '../lib/symptoms'
+import type { AssetIssueInput, AssetPhotoStep } from '../lib/types'
 
 /**
- * คืนอุปกรณ์ที่ถืออยู่
+ * คืนอุปกรณ์ — ตะกร้าแบบเดียวกับหน้าเบิก
+ *
+ * เลือกข้ามประเภทได้ในรอบเดียว มีเลือกทั้งหมดต่อประเภท
+ * แต่ขั้นถ่ายรูปแยกเป็นช่วงตามประเภท เพราะจำนวนรูปบังคับไม่เท่ากัน
+ * ถ้าถ่ายกองรวมแล้วยัดใส่ทุกใบ รูปรถแดงจะไปติดใบวิทยุด้วย ซึ่งใช้เป็นหลักฐานไม่ได้
  *
  * คืนบางเครื่องได้ ที่เหลือยังค้างชื่อเดิม เวลานับต่อจากตอนเบิกครั้งแรก ไม่รีเซ็ต
- * เลือกได้ทีละประเภท เพราะจำนวนรูปที่บังคับของแต่ละประเภทไม่เท่ากัน
- * (Power Pallet ห้าใบตามขั้นตอน ที่เหลือหนึ่งใบขึ้นไป)
+ *
+ * "แจ้งเสีย" ตอนคืนคนละความหมายกับ "เสียมาก่อนเบิก"
+ * อันนี้คือเสียระหว่างที่เราใช้งาน เป็นเรื่องที่ต้องตามต่อ จึงใช้ชุดอาการคนละชุด
  */
 
 export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
@@ -32,22 +39,14 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
   const types = useAsync(() => listAssetTypes(), [])
   const issues = useAsync(() => listAssetOpenIssues(), [])
 
-  const [typeCode, setTypeCode] = useState<string | null>(null)
   const [picked, setPicked] = useState<string[]>([])
-  const [shots, setShots] = useState<Shot[]>([])
+  const [shotsBy, setShotsBy] = useState<Record<string, Shot[]>>({})
+  const [stepsBy, setStepsBy] = useState<Record<string, AssetPhotoStep[]>>({})
   const [newIssues, setNewIssues] = useState<Record<string, string>>({})
-  const [issueFor, setIssueFor] = useState<string | null>(null)
-  const [issueText, setIssueText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const steps = useAsync(
-    () => (typeCode ? listAssetPhotoSteps(typeCode) : Promise.resolve([])),
-    [typeCode],
-  )
-
   const rows = held.data ?? []
-
 
   // บอกหน้าแม่ว่าถืออุปกรณ์อยู่กี่เครื่อง จะได้ไม่ขึ้น "ไม่มีของค้างคืน" ทั้งที่ยังมี
   const reported = useRef<number>(-1)
@@ -56,6 +55,12 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
     reported.current = rows.length
     onCount?.(rows.length)
   }, [rows.length, held.loading, onCount])
+
+  const issueBy = useMemo(
+    () => new Map((issues.data ?? []).map((i) => [i.asset_code, i])),
+    [issues.data],
+  )
+
   // ของพ่วงคืนพร้อมประเภทแม่ในรอบเดียว จึงจับกลุ่มด้วย "ประเภทหลัก"
   const rootOf = useMemo(() => {
     const m = new Map((types.data ?? []).map((t) => [t.code, t.parent_code ?? t.code]))
@@ -66,12 +71,6 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
     return (code: string) => m.get(code) ?? code
   }, [types.data])
 
-  const type = (types.data ?? []).find((t) => t.code === typeCode)
-  const issueBy = useMemo(
-    () => new Map((issues.data ?? []).map((i) => [i.asset_code, i])),
-    [issues.data],
-  )
-
   const groups = useMemo(() => {
     const map = new Map<string, typeof rows>()
     for (const h of rows) {
@@ -80,263 +79,334 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
       list.push(h)
       map.set(root, list)
     }
-    return [...map.entries()].map(([code, list]) => ({
-      code,
-      name: nameOf(code),
-      list,
-    }))
+    return [...map.entries()].map(([code, list]) => ({ code, name: nameOf(code), list }))
   }, [rows, rootOf, nameOf])
 
-  const photos = shotsToPhotos(shots)
-  const needPhotos =
-    steps.data && steps.data.length > 0 ? steps.data.length : (type?.photo_min ?? 1)
-  const uploading = shots.some((s) => s.state === 'uploading' || s.state === 'ready')
-  const failed = shots.some((s) => s.state === 'failed')
-  const photosReady = photos.length >= needPhotos && !uploading && !failed
-  const blockedWhy = failed
-    ? 'มีรูปส่งไม่สำเร็จ กดที่รูปนั้นเพื่อส่งใหม่'
-    : uploading
-      ? 'กำลังส่งรูปขึ้นระบบ รอสักครู่'
-      : 'ถ่ายรูปก่อนจึงยืนยันได้'
+  /** ประเภทที่มีเครื่องถูกติ๊กอยู่ — ใช้กำหนดว่าต้องถ่ายรูปกี่ช่วง */
+  const chosenTypes = useMemo(
+    () => groups.filter((g) => g.list.some((h) => picked.includes(h.asset_code))).map((g) => g.code),
+    [groups, picked],
+  )
 
-  function toggle(code: string, tCode: string) {
-    // สลับประเภทแล้วต้องเริ่มใหม่ เพราะจำนวนรูปที่บังคับไม่เท่ากัน
-    if (typeCode && tCode !== typeCode) {
-      setPicked([code])
-      setTypeCode(tCode)
-      setShots([])
-      return
+  useEffect(() => {
+    let alive = true
+    for (const code of chosenTypes) {
+      if (stepsBy[code]) continue
+      void listAssetPhotoSteps(code).then((r) => {
+        if (alive) setStepsBy((v) => ({ ...v, [code]: r }))
+      })
     }
-    setTypeCode(tCode)
-    setPicked((v) => {
-      const next = v.includes(code) ? v.filter((c) => c !== code) : [...v, code]
-      if (next.length === 0) setTypeCode(null)
-      return next
-    })
+    return () => {
+      alive = false
+    }
+  }, [chosenTypes, stepsBy])
+
+  function needOf(typeCode: string) {
+    const st = stepsBy[typeCode]
+    if (st && st.length > 0) return st.length
+    return (types.data ?? []).find((t) => t.code === typeCode)?.photo_min ?? 1
   }
+
+  function toggle(code: string) {
+    setPicked((v) => (v.includes(code) ? v.filter((c) => c !== code) : [...v, code]))
+  }
+
+  function toggleAll(codes: string[]) {
+    const allOn = codes.every((c) => picked.includes(c))
+    setPicked((v) => (allOn ? v.filter((c) => !codes.includes(c)) : [...new Set([...v, ...codes])]))
+  }
+
+  const photoReady = chosenTypes.every((code) => {
+    const shots = shotsBy[code] ?? []
+    return (
+      shotsToPhotos(shots).length >= needOf(code) && !shots.some((s) => s.state !== 'done')
+    )
+  })
+  const missing = chosenTypes.reduce(
+    (n, code) => n + Math.max(needOf(code) - shotsToPhotos(shotsBy[code] ?? []).length, 0),
+    0,
+  )
+
+  /**
+   * สรุปจำนวนต่อประเภทสำหรับปุ่มยืนยัน — "ไอดาต้า 2 · Power Pallet 1"
+   *
+   * เดิมปุ่มบอกแค่จำนวนรวม หน้างานที่คืนหลายประเภทพร้อมกันจึงไม่รู้ว่า
+   * ที่กำลังจะส่งคือของอะไรบ้าง แล้วมารู้ตัวตอนเครื่องหายไปจากมือแล้ว
+   * เขียนแยกประเภทไว้ให้เห็นก่อนกด จะได้ทักท้วงได้ทัน
+   */
+  const pickedSummary = chosenTypes
+    .map((code) => {
+      const n = (groups.find((g) => g.code === code)?.list ?? []).filter((h) =>
+        picked.includes(h.asset_code),
+      ).length
+      return `${nameOf(code)} ${n}`
+    })
+    .join(' · ')
 
   async function submit() {
     setBusy(true)
     setError(null)
     try {
-      const issueList: AssetIssueInput[] = Object.entries(newIssues)
-        .filter(([code, text]) => picked.includes(code) && text.trim())
-        .map(([code, text]) => ({ asset_code: code, symptom: text.trim() }))
-
-      const res = await assetReturn({ codes: picked, photos, issues: issueList })
-      nav(`/assets/done/${res.ref_no}`, {
+      const payload = chosenTypes.map((code) => {
+        const g = groups.find((x) => x.code === code)
+        const codes = (g?.list ?? [])
+          .map((h) => h.asset_code)
+          .filter((c) => picked.includes(c))
+        return {
+          type_code: code,
+          codes,
+          photos: shotsToPhotos(shotsBy[code] ?? []),
+          issues: codes
+            .filter((c) => (newIssues[c] ?? '').trim())
+            .map<AssetIssueInput>((c) => ({ asset_code: c, symptom: newIssues[c].trim() })),
+        }
+      })
+      const res = await assetReturnGroups({ groups: payload })
+      nav(`/assets/done/${res.refs[0]}`, {
         state: {
           kind: 'in',
           refNo: res.ref_no,
           codes: picked,
-          typeName: type?.name ?? '',
-          issues: issueList,
-          photoCount: photos.length,
+          typeName: chosenTypes.map(nameOf).join(' · '),
+          photoCount: chosenTypes.reduce(
+            (n, c) => n + shotsToPhotos(shotsBy[c] ?? []).length,
+            0,
+          ),
         },
       })
     } catch (e) {
       setError(readableError(e))
-    } finally {
       setBusy(false)
     }
   }
 
   if (held.loading) return <Loading />
-  if (held.error) return <ErrorBox message={held.error} onRetry={held.reload} />
   if (rows.length === 0) return null
 
   return (
-    <section className="mb-5">
-      <h2 className="mb-2 font-display text-md">
-        อุปกรณ์ที่ถืออยู่ {rows.length} เครื่อง
-      </h2>
+    <section className="mb-4">
+      <h2 className="mb-2 font-display text-md">อุปกรณ์ที่คุณถืออยู่</h2>
 
-      {groups.map((g) => (
-        <div key={g.code} className="mb-3">
-          <p className="mb-1 text-sm text-ink-500">{g.name}</p>
-          <ul className="space-y-1">
-            {g.list.map((h) => {
-              const on = picked.includes(h.asset_code)
-              const dim = Boolean(typeCode) && typeCode !== g.code
-              const late = h.due_at ? Date.now() > Date.parse(h.due_at) : false
-              const iss = issueBy.get(h.asset_code)
-              return (
-                <li key={h.asset_code}>
-                  <button
-                    type="button"
-                    onClick={() => toggle(h.asset_code, g.code)}
-                    className={`flex w-full items-start gap-3 rounded-card border p-3 text-left ${
-                      on ? 'border-ink bg-brand-50' : dim ? 'border-line bg-surface-2 opacity-60' : 'border-line bg-surface'
-                    }`}
-                  >
-                    <span
-                      aria-hidden
-                      className={`mt-[2px] flex h-6 w-6 shrink-0 items-center justify-center rounded-btn border text-sm ${
-                        on ? 'border-ink bg-ink text-white' : 'border-line-2 text-transparent'
-                      }`}
-                    >
-                      ✓
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="font-display">{h.asset_code}</span>
-                      {rootOf(h.type_code) !== h.type_code && (
-                        <span className="ml-1 text-xs text-ink-400">{h.type_name}</span>
-                      )}
-                      <span className="block text-sm text-ink-500">
-                        เบิก {fmtDateTime(h.taken_at)} · ถือมาแล้ว {relativeAge(h.taken_at)}
-                      </span>
-                      {late && (
-                        <span className="block text-sm text-danger-txt">
-                          เลยเวลาคืนของกะแล้ว{' '}
-                          {h.due_at ? relativeAge(h.due_at) : ''}
-                        </span>
-                      )}
-                      {iss && <span className="block text-sm text-warn-txt">⚠ {iss.symptoms}</span>}
-                      {newIssues[h.asset_code] && (
-                        <span className="block text-sm text-danger-txt">
-                          แจ้งใหม่: {newIssues[h.asset_code]}
-                        </span>
-                      )}
-                    </span>
-                  </button>
-
-                  {on && (
-                    <button
-                      type="button"
-                      className="mt-1 min-h-tap w-full rounded-card border border-line-2 bg-surface px-3 text-sm text-ink-700"
-                      onClick={() => {
-                        setIssueFor(h.asset_code)
-                        setIssueText(newIssues[h.asset_code] ?? '')
-                      }}
-                    >
-                      {newIssues[h.asset_code]
-                        ? `แก้อาการที่แจ้ง · ${h.asset_code}`
-                        : `แจ้งชำรุด · ${h.asset_code}`}
-                    </button>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-      ))}
-
-      {picked.length > 0 && (
-        <div className="rounded-card border border-line bg-surface p-3">
-          <h3 className="mb-1 font-display">รูปสภาพตอนคืน</h3>
-          <p className="mb-2 text-sm text-ink-500">
-            คืน {picked.length} เครื่อง · ถ่ายรวมครั้งเดียว บังคับ {needPhotos} ใบ
-          </p>
-          {steps.loading ? (
-            <Loading />
-          ) : (
-            <PhotoSteps
-              steps={steps.data ?? []}
-              maxFree={type?.photo_max ?? 5}
-              stamp={stampLines(
-                profile?.full_name ?? '',
-                profile?.employee_code ?? '',
-                profile?.dept_code ?? 'BPL',
-                `คืน ${type?.name ?? ''}`,
+      {groups.map((g) => {
+        const codes = g.list.map((h) => h.asset_code)
+        const allOn = codes.every((c) => picked.includes(c))
+        return (
+          <div key={g.code} className="mb-3">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <p className="text-sm text-ink-500">
+                {g.name}
+                <span className="text-ink-400"> · {g.list.length} เครื่อง</span>
+              </p>
+              {g.list.length > 1 && (
+                <button
+                  type="button"
+                  className="h-tap rounded-btn px-2 text-sm underline decoration-line-2"
+                  onClick={() => toggleAll(codes)}
+                >
+                  {allOn ? 'เอาออกทั้งหมด' : 'เลือกทั้งหมด'}
+                </button>
               )}
-              shots={shots}
-              onShots={setShots}
-            />
-          )}
+            </div>
 
-          {error && <div className="mt-2"><ErrorBox message={error} /></div>}
+            <ul className="overflow-hidden rounded-card border border-line bg-surface px-3">
+              {g.list.map((h) => {
+                const on = picked.includes(h.asset_code)
+                const late = h.due_at ? Date.now() > Date.parse(h.due_at) : false
+                const old = issueBy.get(h.asset_code)
+                const note = newIssues[h.asset_code]
+                return (
+                  <li key={h.asset_code} className="border-b border-line last:border-0">
+                    <div className="flex items-center gap-3 py-2">
+                      <button
+                        type="button"
+                        aria-label={`เลือก ${h.asset_code}`}
+                        onClick={() => toggle(h.asset_code)}
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-btn border text-sm ${
+                          on ? 'border-ink bg-ink text-white' : 'border-line-2 text-transparent'
+                        }`}
+                      >
+                        ✓
+                      </button>
+
+                      <span className="min-w-0 flex-1">
+                        <span className="font-mono text-base">{h.asset_code}</span>
+                        {/* ปัญหาเดิมอ่านอย่างเดียว บรรทัดเดียวพอ */}
+                        {old && (
+                          <span className="block truncate text-xs text-warn-txt">
+                            ⚠ เสียมาก่อนเบิก · {old.symptoms}
+                          </span>
+                        )}
+                      </span>
+
+                      <span className="shrink-0 text-right">
+                        <span
+                          className={`block text-xs ${late ? 'text-danger-txt' : 'text-ink-500'}`}
+                        >
+                          {late ? 'เลยกะแล้ว' : `ถือ ${relativeAge(h.taken_at)}`}
+                        </span>
+                        {/* ปุ่มแจ้งเสีย — เดิมเป็นตัวหนังสือขีดเส้นใต้เล็ก ๆ หน้างานใส่ถุงมือกดไม่โดน
+                            ตอนนี้เป็นปุ่มสีแดงเต็มตัว สูงพอให้นิ้วโป้งกดได้ */}
+                        {on && note === undefined && (
+                          <button
+                            type="button"
+                            className="mt-1 h-tap rounded-btn bg-danger-bg px-3 text-sm font-semibold text-danger-txt"
+                            onClick={() => setNewIssues((v) => ({ ...v, [h.asset_code]: '' }))}
+                          >
+                            ⚠ แจ้งเครื่องเสีย
+                          </button>
+                        )}
+                      </span>
+                    </div>
+
+                    {on && note !== undefined && (
+                      <div className="mb-2 rounded-card bg-danger-bg p-3">
+                        <div className="mb-2 flex items-start justify-between gap-2">
+                          <p className="text-sm font-semibold text-danger-txt">
+                            แจ้งเครื่องเสีย · {h.asset_code}
+                            <span className="block text-xs font-normal">
+                              เสียระหว่างที่เราใช้งาน
+                            </span>
+                          </p>
+                          <button
+                            type="button"
+                            className="shrink-0 text-sm underline"
+                            onClick={() =>
+                              setNewIssues((v) => {
+                                const n = { ...v }
+                                delete n[h.asset_code]
+                                return n
+                              })
+                            }
+                          >
+                            ไม่แจ้ง
+                          </button>
+                        </div>
+                        <div className="mb-2 flex flex-wrap gap-2">
+                          {symptomsFor(h.type_code, 'in').map((sym) => (
+                            <button
+                              key={sym}
+                              type="button"
+                              className={`chip ${note === sym ? 'chip-on' : ''}`}
+                              onClick={() =>
+                                setNewIssues((v) => ({ ...v, [h.asset_code]: sym }))
+                              }
+                            >
+                              {sym}
+                            </button>
+                          ))}
+                        </div>
+                        <input
+                          className="input"
+                          placeholder="หรือพิมพ์เอง"
+                          value={note}
+                          onChange={(e) =>
+                            setNewIssues((v) => ({ ...v, [h.asset_code]: e.target.value }))
+                          }
+                        />
+                        {isLost(note) && (
+                          <p className="mt-1 rounded-btn bg-danger-bg px-2 py-1 text-xs text-danger-txt">
+                            แจ้ง{LOST} · แอดมินจะได้รับแจ้งเตือนทันทีที่กดส่ง
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {on && (
+                      <p className="pb-2 pl-9 text-xs text-ink-400">
+                        เบิก {fmtDateTime(h.taken_at)}
+                      </p>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )
+      })}
+
+      {/* ------------------------------------------ ถ่ายรูป แยกตามประเภท */}
+      {chosenTypes.length > 0 && (
+        <>
+          <p className="mb-2 rounded-card bg-brand-50 px-3 py-2 text-sm text-ink-700">
+            ถ่ายแยกตามประเภท · แต่ละประเภทบังคับจำนวนไม่เท่ากัน
+          </p>
+
+          {chosenTypes.map((code) => {
+            const t = (types.data ?? []).find((x) => x.code === code)
+            const st = stepsBy[code]
+            const shots = shotsBy[code] ?? []
+            const done = shotsToPhotos(shots).length
+            const need = needOf(code)
+            const codes = (groups.find((g) => g.code === code)?.list ?? [])
+              .map((h) => h.asset_code)
+              .filter((c) => picked.includes(c))
+            return (
+              <section key={code} className="mb-3 rounded-card border border-line p-3">
+                <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+                  <p className="font-display text-md">{nameOf(code)}</p>
+                  <span
+                    className={`text-sm ${done >= need ? 'text-success-txt' : 'text-warn-txt'}`}
+                  >
+                    {done} จาก {need} ใบ
+                  </span>
+                </div>
+                <p className="mb-2 font-mono text-xs text-ink-400">{codes.join(' · ')}</p>
+
+                {st === undefined ? (
+                  <Loading />
+                ) : (
+                  <PartBoundary label="กล่องถ่ายรูป">
+                    <PhotoSteps
+                      steps={st}
+                      maxFree={t?.photo_max ?? 5}
+                      minFree={need}
+                      stamp={stampLines(
+                        profile?.full_name ?? '',
+                        profile?.employee_code ?? '',
+                        profile?.dept_code ?? 'BPL',
+                        `คืน ${nameOf(code)}`,
+                      )}
+                      shots={shots}
+                      onShots={(next) =>
+                        setShotsBy((v) => ({
+                          ...v,
+                          [code]: typeof next === 'function' ? next(v[code] ?? []) : next,
+                        }))
+                      }
+                    />
+                  </PartBoundary>
+                )}
+              </section>
+            )
+          })}
+
+          {error && (
+            <div className="mb-2">
+              <ErrorBox message={error} />
+            </div>
+          )}
 
           <button
             type="button"
-            className="btn-primary mt-3 w-full py-4 text-md"
-            disabled={!photosReady || busy}
+            className="btn-primary w-full py-4 text-md"
+            disabled={!photoReady || busy}
             onClick={() => void submit()}
           >
             {busy ? <Spinner /> : null}
             {busy
               ? 'กำลังบันทึก…'
-              : photosReady
-                ? `ยืนยันคืน ${picked.length} เครื่อง`
-                : blockedWhy}
+              : photoReady
+                ? `ยืนยันคืน ${pickedSummary}`
+                : `ยังถ่ายไม่ครบ — เหลือ ${missing} ใบ`}
           </button>
 
-          {picked.length < rows.filter((h) => h.type_code === typeCode).length && (
+          {photoReady && !busy && (
             <p className="mt-2 text-center text-sm text-ink-500">
-              เครื่องที่ไม่ได้ติ๊กจะยังค้างชื่อคุณอยู่ นับเวลาต่อจากตอนเบิกเดิม
+              รวม <b className="text-ink">{picked.length}</b> เครื่อง
             </p>
           )}
-        </div>
+        </>
       )}
-
-      <Sheet
-        open={Boolean(issueFor)}
-        title={`แจ้งชำรุด · ${issueFor ?? ''}`}
-        onClose={() => setIssueFor(null)}
-      >
-        {issueFor && (
-          <>
-            {issueBy.get(issueFor) && (
-              <p className="mb-2 rounded-card bg-warn-bg px-3 py-2 text-sm text-warn-txt">
-                อาการที่แจ้งไว้แล้ว: {issueBy.get(issueFor)?.symptoms}
-                <br />
-                ถ้าเป็นอาการเดิม <b>ไม่ต้องแจ้งซ้ำ</b> แจ้งเฉพาะที่พังเพิ่ม
-              </p>
-            )}
-
-            {(type?.issue_tags ?? []).length > 0 && (
-              <div className="mb-2 flex flex-wrap gap-1">
-                {(type?.issue_tags ?? []).map((tag) => (
-                  <button
-                    key={tag}
-                    type="button"
-                    className="chip"
-                    onClick={() => setIssueText((v) => (v ? `${v} · ${tag}` : tag))}
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <textarea
-              className="input h-[90px] w-full"
-              placeholder="อาการที่เจอ"
-              value={issueText}
-              onChange={(e) => setIssueText(e.target.value)}
-            />
-
-            <div className="mt-3 flex gap-2">
-              {newIssues[issueFor] && (
-                <button
-                  type="button"
-                  className="btn-ghost flex-1"
-                  onClick={() => {
-                    setNewIssues((m) => {
-                      const next = { ...m }
-                      delete next[issueFor]
-                      return next
-                    })
-                    setIssueFor(null)
-                  }}
-                >
-                  ลบที่แจ้งไว้
-                </button>
-              )}
-              <button
-                type="button"
-                className="btn-primary flex-1"
-                disabled={!issueText.trim()}
-                onClick={() => {
-                  setNewIssues((m) => ({ ...m, [issueFor]: issueText.trim() }))
-                  setIssueFor(null)
-                }}
-              >
-                บันทึกอาการ
-              </button>
-            </div>
-          </>
-        )}
-      </Sheet>
     </section>
   )
 }
