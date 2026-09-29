@@ -4,6 +4,7 @@ import {
   createSackOrder,
   deleteSackOrder,
   exportToSheet,
+  updateSackOrder,
   listSackOrders,
   sackBranches,
   sackNotifyTargets,
@@ -48,6 +49,8 @@ export default function SackOrders() {
   const [made, setMade] = useState<string | null>(null)
 
   const [view, setView] = useState<SackRow | null>(null)
+  /** ใบที่กำลังแก้อยู่ · null = กล่องนี้กำลังใช้ตั้งรายการใหม่ */
+  const [editing, setEditing] = useState<SackRow | null>(null)
 
   /**
    * ส่งลง Google Sheet — คนละไฟล์กับของเบิก
@@ -79,6 +82,26 @@ export default function SackOrders() {
   const pendingCount = rows.filter((r) => r.status === 'pending').length
   const notify = targets.data ?? []
 
+  function openCreate() {
+    setEditing(null)
+    setBranch('')
+    setQty('')
+    setUnit('ชิ้น')
+    setNote('')
+    setErr(null)
+    setOpen(true)
+  }
+
+  function openEdit(row: SackRow) {
+    setEditing(row)
+    setBranch(row.branch)
+    setQty(String(row.qty))
+    setUnit(row.unit === 'กระสอบ' ? 'กระสอบ' : 'ชิ้น')
+    setNote(row.note ?? '')
+    setErr(null)
+    setOpen(true)
+  }
+
   async function submit() {
     const n = Number(qty)
     if (!branch.trim()) {
@@ -92,22 +115,36 @@ export default function SackOrders() {
     setBusy(true)
     setErr(null)
     try {
-      const res = await createSackOrder({
-        branch: branch.trim(),
-        qty: Math.round(n),
-        unit,
-        note: note.trim() || null,
-      })
-      setMade(res.ref_no)
+      if (editing) {
+        const res = await updateSackOrder({
+          id: editing.id,
+          branch: branch.trim(),
+          qty: Math.round(n),
+          unit,
+          // สตริงว่าง = ลบหมายเหตุทิ้ง ซึ่งต่างจากไม่ส่งมาเลย
+          note: note.trim(),
+        })
+        setMade(`แก้ ${res.ref_no} แล้ว · ${res.branch} ${res.qty.toLocaleString('th-TH')} ${res.unit}`)
+      } else {
+        const res = await createSackOrder({
+          branch: branch.trim(),
+          qty: Math.round(n),
+          unit,
+          note: note.trim() || null,
+        })
+        setMade(`ตั้งรายการ ${res.ref_no} แล้ว · แจ้งเตือนไปหา ${notify.length} คน`)
+        setTab('pending')
+      }
+      setOpen(false)
+      setEditing(null)
       setBranch('')
       setQty('')
       setNote('')
-      setTab('pending')
       list.reload()
       branches.reload()
       pendingPush.reload()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'ตั้งรายการไม่สำเร็จ')
+      setErr(e instanceof Error ? e.message : editing ? 'แก้รายการไม่สำเร็จ' : 'ตั้งรายการไม่สำเร็จ')
     } finally {
       setBusy(false)
     }
@@ -142,7 +179,7 @@ export default function SackOrders() {
                 </span>
               )}
             </button>
-            <button type="button" className="btn-primary" onClick={() => setOpen(true)}>
+            <button type="button" className="btn-primary" onClick={openCreate}>
               ตั้งรายการใหม่
             </button>
           </span>
@@ -160,7 +197,7 @@ export default function SackOrders() {
 
       {made && (
         <div className="mb-3 rounded-card border border-success/25 bg-success-bg p-3 text-sm text-success-txt">
-          ตั้งรายการ {made} แล้ว · แจ้งเตือนไปหา {notify.length} คน
+          {made}
           <button type="button" className="ml-2 underline" onClick={() => setMade(null)}>
             ปิด
           </button>
@@ -219,6 +256,12 @@ export default function SackOrders() {
                   <td className="px-3 py-2">
                     {r.branch}
                     {r.note && <span className="block text-xs text-ink-400">{r.note}</span>}
+                    {r.updated_by_name && (
+                      <span className="block text-xs text-warn-txt">
+                        แก้โดย {r.updated_by_name}
+                        {r.updated_at ? ` · ${fmtDateTime(r.updated_at)}` : ''}
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right font-display">
                     {r.qty.toLocaleString('th-TH')} {r.unit}
@@ -245,6 +288,15 @@ export default function SackOrders() {
                     <button type="button" className="btn-ghost h-9 px-3 text-sm" onClick={() => setView(r)}>
                       ฟอร์ม
                     </button>
+                    {mayCreate && (
+                      <button
+                        type="button"
+                        className="btn-ghost ml-2 h-9 px-3 text-sm"
+                        onClick={() => openEdit(r)}
+                      >
+                        แก้ไข
+                      </button>
+                    )}
                     {mayCreate && r.status === 'pending' && (
                       <button
                         type="button"
@@ -263,7 +315,14 @@ export default function SackOrders() {
       )}
 
       {/* ------------------------------------------------ ตั้งรายการใหม่ */}
-      <Modal open={open} onClose={() => setOpen(false)} title="ตั้งรายการกระสอบ">
+      <Modal
+        open={open}
+        onClose={() => {
+          setOpen(false)
+          setEditing(null)
+        }}
+        title={editing ? `แก้ ${editing.ref_no}` : 'ตั้งรายการกระสอบ'}
+      >
         <div className="space-y-3">
           <div>
             <label className="label" htmlFor="sack-branch">
@@ -332,7 +391,27 @@ export default function SackOrders() {
             />
           </div>
 
-          {/* ใครจะได้รับแจ้งเตือน — โชว์ก่อนกด จะได้รู้ว่าถึงมือใครจริง */}
+          {/*
+            แก้ใบที่หน้างานส่งของไปแล้ว ตัวเลขในระบบจะไม่ตรงกับใบที่เขาถือไปตอนนั้น
+            ไม่ได้ห้าม เพราะเคสที่เจอบ่อยคือตั้งไว้ผิดแล้วเขาส่งตามจำนวนจริง
+            แต่ต้องรู้ตัวว่ากำลังแก้อะไรอยู่
+          */}
+          {editing && editing.status !== 'pending' && (
+            <p className="rounded-card border border-warn/30 bg-warn-bg p-3 text-sm text-warn-txt">
+              ใบนี้หน้างานกดส่งไปแล้ว ({sackStatusLabel(editing)}) ·
+              แก้ได้ แต่ฟอร์มกับการ์ดที่เขาส่งออกไปแล้วจะไม่ตรงกับตัวเลขใหม่
+            </p>
+          )}
+
+          {editing?.updated_by_name && (
+            <p className="text-xs text-ink-400">
+              แก้ล่าสุดโดย {editing.updated_by_name}
+              {editing.updated_at ? ` · ${fmtDateTime(editing.updated_at)}` : ''}
+            </p>
+          )}
+
+          {/* ใครจะได้รับแจ้งเตือน — โชว์ก่อนกด · ตอนแก้ไม่ได้ยิงแจ้งเตือนซ้ำ */}
+          {!editing && (
           <div className="rounded-card border border-line bg-surface-2 p-3">
             <p className="text-sm font-medium text-ink-700">
               กดแล้วเด้งเตือน {notify.length} คน
@@ -349,11 +428,12 @@ export default function SackOrders() {
               เพิ่มคนในทีมซัพพอร์ต = ใส่ SPADMIN ในช่องแผนกย่อยของเขาที่หน้าผู้ใช้และสิทธิ์
             </p>
           </div>
+          )}
 
           {err && <ErrorBox message={err} />}
 
           <button type="button" className="btn-primary w-full" onClick={submit} disabled={busy}>
-            {busy ? <Spinner /> : 'ตั้งรายการและแจ้งเตือน'}
+            {busy ? <Spinner /> : editing ? 'บันทึกการแก้ไข' : 'ตั้งรายการและแจ้งเตือน'}
           </button>
         </div>
       </Modal>

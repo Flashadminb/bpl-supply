@@ -737,8 +737,11 @@ export interface SackRow {
   relay_via: string | null
   created_at: string
   sent_at: string | null
+  /** แก้ไขล่าสุดเมื่อไหร่ · ว่าง = ยังไม่เคยถูกแก้ */
+  updated_at: string | null
   created_by_name: string | null
   sent_by_name: string | null
+  updated_by_name: string | null
   photos: SackPhoto[]
   photo_count: number
 }

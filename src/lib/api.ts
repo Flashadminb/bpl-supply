@@ -1924,6 +1924,30 @@ export async function markSackSent(args: {
   return data as { ref_no: string; duplicate: boolean; status: 'direct' | 'relay'; relay_via: string | null }
 }
 
+/**
+ * แก้รายการที่ตั้งผิด — ไม่ต้องลบแล้วตั้งใหม่ให้ได้เลขที่ใหม่
+ *
+ * ช่องไหนไม่ส่งมา แปลว่าไม่แตะช่องนั้น
+ * ส่วนหมายเหตุส่งสตริงว่างมาได้ แปลว่าลบหมายเหตุทิ้ง
+ */
+export async function updateSackOrder(args: {
+  id: string
+  branch?: string
+  qty?: number
+  unit?: string
+  note?: string | null
+}): Promise<{ ref_no: string; qty: number; unit: string; branch: string; was_sent: boolean }> {
+  const { data, error } = await supabase.rpc('update_sack_order', {
+    p_id: args.id,
+    p_branch: args.branch ?? null,
+    p_qty: args.qty ?? null,
+    p_unit: args.unit ?? null,
+    p_note: args.note ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { ref_no: string; qty: number; unit: string; branch: string; was_sent: boolean }
+}
+
 /** ลบรายการที่ตั้งผิด — RLS เปิดให้เฉพาะเจ้าของระบบกับแอดมิน */
 export async function deleteSackOrder(id: string) {
   const { error } = await supabase.from('sack_orders').delete().eq('id', id)

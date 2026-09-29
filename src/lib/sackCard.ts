@@ -145,7 +145,9 @@ export async function buildSackCard(
   photos: SackCardPhoto[],
   sentBy?: string | null,
 ): Promise<Blob> {
-  const imgs = await Promise.all(photos.slice(0, 4).map((p) => loadImage(p.url)))
+  // หน้างานแนบได้ถึงหกใบ การ์ดจึงต้องโชว์ได้ครบหกใบ
+  // ถ้าตัดที่สี่ ใบที่เหลือจะหายไปเงียบ ๆ ทั้งที่ตัวเลขข้างบนบอกว่ามีหกใบ
+  const imgs = await Promise.all(photos.slice(0, 6).map((p) => loadImage(p.url)))
   const shown = imgs.filter((x): x is HTMLImageElement => Boolean(x))
 
   const measure = document.createElement('canvas').getContext('2d')
