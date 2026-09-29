@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { buildSackCard, sackCardFilename, sackFormText } from '../lib/sackCard'
+import { buildSackCards, sackCardFilename, sackFormText } from '../lib/sackCard'
 import { Spinner } from './ui'
 import type { SackRow } from '../lib/types'
 
@@ -26,11 +26,16 @@ export function SackResult({
   /** รูปยังโหลดไม่เสร็จ — รอก่อนค่อยวาด ไม่งั้นได้การ์ดที่รูปหาย */
   loadingPhotos?: boolean
 }) {
-  const [cardUrl, setCardUrl] = useState<string | null>(null)
-  const [blob, setBlob] = useState<Blob | null>(null)
+  /**
+   * การ์ดเป็นชุด ไม่ใช่ใบเดียวอีกต่อไป
+   *
+   * รูปละใบทำให้ทุกใบขนาดเท่ากันและเต็มจอมือถือพอดี ไม่ว่ารายการนั้นจะมีกี่รูป
+   * ใบที่ไม่มีรูปยังได้ใบเดียวเหมือนเดิม
+   */
+  const [cards, setCards] = useState<{ blob: Blob; url: string }[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const urlRef = useRef<string | null>(null)
+  const urlsRef = useRef<string[]>([])
 
   const text = sackFormText(row, sentBy)
 
@@ -38,13 +43,16 @@ export function SackResult({
     if (loadingPhotos) return
     let alive = true
     setErr(null)
-    buildSackCard(row, photoUrls.map((url) => ({ url })), sentBy)
-      .then((b) => {
-        if (!alive) return
-        if (urlRef.current) URL.revokeObjectURL(urlRef.current)
-        urlRef.current = URL.createObjectURL(b)
-        setBlob(b)
-        setCardUrl(urlRef.current)
+    buildSackCards(row, photoUrls.map((url) => ({ url })), sentBy)
+      .then((blobs) => {
+        const made = blobs.map((b) => ({ blob: b, url: URL.createObjectURL(b) }))
+        if (!alive) {
+          made.forEach((c) => URL.revokeObjectURL(c.url))
+          return
+        }
+        urlsRef.current.forEach((u) => URL.revokeObjectURL(u))
+        urlsRef.current = made.map((c) => c.url)
+        setCards(made)
       })
       .catch((e) => alive && setErr(e instanceof Error ? e.message : 'สร้างการ์ดไม่สำเร็จ'))
     return () => {
@@ -57,7 +65,8 @@ export function SackResult({
 
   useEffect(
     () => () => {
-      if (urlRef.current) URL.revokeObjectURL(urlRef.current)
+      urlsRef.current.forEach((u) => URL.revokeObjectURL(u))
+      urlsRef.current = []
     },
     [],
   )
@@ -75,21 +84,28 @@ export function SackResult({
     setTimeout(() => setCopied(false), 1800)
   }
 
+  /** หลายใบก็บันทึกให้ครบทุกใบ ไม่ใช่ให้กดทีละใบเอง */
   function download() {
-    if (!cardUrl) return
-    const a = document.createElement('a')
-    a.href = cardUrl
-    a.download = sackCardFilename(row, blob?.type)
-    a.click()
+    cards.forEach((c, i) => {
+      const a = document.createElement('a')
+      a.href = c.url
+      a.download = sackCardFilename(row, c.blob.type, cards.length > 1 ? i : undefined)
+      a.click()
+    })
   }
 
   async function share() {
-    if (!blob) return
-    const file = new File([blob], sackCardFilename(row, blob.type), { type: blob.type })
+    if (cards.length === 0) return
+    const files = cards.map(
+      (c, i) =>
+        new File([c.blob], sackCardFilename(row, c.blob.type, cards.length > 1 ? i : undefined), {
+          type: c.blob.type,
+        }),
+    )
     // navigator.share ส่งไฟล์ได้เฉพาะบางเครื่อง เช็คก่อนเสมอ ไม่งั้นจะขึ้น error เปล่า ๆ
-    if (navigator.canShare?.({ files: [file] })) {
+    if (navigator.canShare?.({ files })) {
       try {
-        await navigator.share({ files: [file], text })
+        await navigator.share({ files, text })
         return
       } catch {
         /* ผู้ใช้กดยกเลิก — ไม่ใช่ความผิดพลาด */
@@ -118,21 +134,23 @@ export function SackResult({
 
       <div>
         <div className="mb-1 flex items-end justify-between gap-2">
-          <p className="label mb-0">การ์ดรูป</p>
+          <p className="label mb-0">
+            การ์ดรูป{cards.length > 1 ? ` · ${cards.length} ใบ` : ''}
+          </p>
           <span className="flex gap-2">
             <button
               type="button"
               className="btn-ghost h-9 px-3 text-sm"
               onClick={download}
-              disabled={!cardUrl}
+              disabled={cards.length === 0}
             >
-              บันทึกรูป
+              {cards.length > 1 ? `บันทึก ${cards.length} รูป` : 'บันทึกรูป'}
             </button>
             <button
               type="button"
               className="btn-primary h-9 px-3 text-sm"
               onClick={share}
-              disabled={!blob}
+              disabled={cards.length === 0}
             >
               ส่งต่อ
             </button>
@@ -143,12 +161,17 @@ export function SackResult({
           <p className="rounded-card border border-danger/25 bg-danger-bg p-3 text-sm text-danger-txt">
             {err}
           </p>
-        ) : cardUrl ? (
-          <img
-            src={cardUrl}
-            alt={`การ์ดกระสอบ ${row.ref_no}`}
-            className="w-full rounded-card border border-line"
-          />
+        ) : cards.length > 0 ? (
+          <div className="space-y-2">
+            {cards.map((c, i) => (
+              <img
+                key={c.url}
+                src={c.url}
+                alt={`การ์ดกระสอบ ${row.ref_no} ใบที่ ${i + 1}`}
+                className="w-full rounded-card border border-line"
+              />
+            ))}
+          </div>
         ) : (
           <div className="flex min-h-[180px] items-center justify-center rounded-card border border-line bg-surface-2">
             <Spinner />
