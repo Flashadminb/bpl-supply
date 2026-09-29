@@ -63,7 +63,7 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
   },
   {
     title: 'Asset',
-    links: [{ to: '/admin/assets', label: 'ทะเบียนเครื่อง', icon: 'device' }],
+    links: [{ to: '/admin/assets', label: 'ทะเบียนเครื่อง', icon: 'device', audit: true }],
   },
   {
     title: 'รายงาน',
@@ -79,8 +79,8 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
       { to: '/admin/export', label: 'ส่งออก Google Sheet', icon: 'sheet', badge: 'exports' },
       { to: '/admin/users', label: 'ผู้ใช้และสิทธิ์', icon: 'users' },
       { to: '/admin/links', label: 'ลิงก์งาน', icon: 'sheet' },
-      { to: '/admin/notices', label: 'ประกาศและแจ้งเตือน', icon: 'clipboard' },
-      { to: '/admin/health', label: 'สถานะระบบ', icon: 'chart' },
+      { to: '/admin/notices', label: 'ประกาศและแจ้งเตือน', icon: 'clipboard', audit: true },
+      { to: '/admin/health', label: 'สถานะระบบ', icon: 'chart', audit: true },
     ],
   },
 ]
