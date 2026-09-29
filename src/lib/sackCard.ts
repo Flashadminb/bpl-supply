@@ -177,7 +177,7 @@ export async function buildSackCard(
 
   const headerH = 200
   const bodyH = rowHeights.reduce((a, b) => a + b, 0) + 40
-  const frames = layoutPhotos(shown.length, innerW)
+  const frames = layoutPhotos(shown)
   const gridH = frames.length === 0 ? 0 : Math.max(...frames.map((f) => f.y + f.h))
   const photosH = frames.length === 0 ? 0 : 74 + gridH
   const footerH = 96
@@ -246,21 +246,37 @@ export async function buildSackCard(
 
     shown.forEach((img, i) => {
       const f = frames[i]
-      const x = PAD + f.x
       const yy = y + f.y
-      ctx.save()
-      roundRect(ctx, x, yy, f.w, f.h, 14)
-      ctx.clip()
-      // ครอบให้เต็มกรอบโดยไม่บิดสัดส่วน — รูปกระสอบถ่ายมาหลายอัตราส่วน
-      const scale = Math.max(f.w / img.width, f.h / img.height)
-      const dw = img.width * scale
-      const dh = img.height * scale
-      ctx.drawImage(img, x + (f.w - dw) / 2, yy + (f.h - dh) / 2, dw, dh)
-      ctx.restore()
-      ctx.strokeStyle = 'rgba(245, 179, 1, 0.35)'
-      ctx.lineWidth = 2
-      roundRect(ctx, x, yy, f.w, f.h, 14)
-      ctx.stroke()
+
+      // ย่อให้พอดีกรอบทั้งใบ ไม่ครอบขอบทิ้ง
+      //
+      // ของเดิมครอบให้เต็มกรอบ ซึ่งกินขอบรูปหายไปทุกด้าน
+      // ป้ายสาขาหรือบาร์โค้ดที่ติดอยู่ริมกระสอบจึงหลุดเฟรมได้ทั้งที่ถ่ายติดมาแล้ว
+      // ตรงนี้คือรูปที่คนต้องเอาไปอ่านรายละเอียด ไม่ใช่รูปประกอบ
+      const scale = Math.min(f.w / img.width, f.h / img.height)
+      const dw = Math.round(img.width * scale)
+      const dh = Math.round(img.height * scale)
+      const dx = Math.round(f.x + (f.w - dw) / 2)
+      const dy = Math.round(yy + (f.h - dh) / 2)
+      ctx.drawImage(img, dx, dy, dw, dh)
+
+      // เลขกำกับใบ ไว้ให้ชี้กันรู้เรื่องว่าหมายถึงรูปไหน
+      const tag = `${i + 1}/${shown.length}`
+      ctx.font = font(26, '600')
+      const tw = ctx.measureText(tag).width + 26
+      ctx.fillStyle = YELLOW
+      roundRect(ctx, dx + 14, dy + 14, tw, 40, 10)
+      ctx.fill()
+      ctx.fillStyle = BLACK
+      ctx.textBaseline = 'middle'
+      ctx.fillText(tag, dx + 14 + 13, dy + 14 + 21)
+      ctx.textBaseline = 'top'
+
+      // เส้นคั่นบาง ๆ ให้รู้ว่าคนละใบ เวลารูปสองใบสีใกล้กัน
+      if (i < shown.length - 1) {
+        ctx.fillStyle = 'rgba(245, 179, 1, 0.45)'
+        ctx.fillRect(PAD, yy + f.h + PHOTO_GAP / 2 - 1, W - PAD * 2, 2)
+      }
     })
     y += gridH
   }
@@ -275,37 +291,44 @@ export async function buildSackCard(
   ctx.textAlign = 'right'
   ctx.fillText(fmtWhen(row.sent_at ?? row.created_at), W - PAD, H - 40)
 
-  const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'))
+  // มีรูปถ่ายอยู่ในนั้นให้ออกเป็น JPEG
+  //
+  // PNG เก็บรูปถ่ายแบบไม่สูญเสีย ซึ่งได้ไฟล์หลายเมกะไบต์โดยตาคนดูไม่ออกว่าต่าง
+  // การ์ดนี้ต้องวิ่งผ่านแชทในมือถือที่เน็ตฮับไม่นิ่ง ขนาดไฟล์คือเรื่องจริง
+  // ใบที่ไม่มีรูปยังเป็น PNG เพราะเป็นตัวอักษรล้วน ซึ่ง PNG คมกว่าและเล็กกว่าอยู่แล้ว
+  const type = shown.length > 0 ? 'image/jpeg' : 'image/png'
+  const blob = await new Promise<Blob | null>((res) =>
+    canvas.toBlob(res, type, type === "image/jpeg" ? 0.92 : undefined),
+  )
   if (!blob) throw new Error('สร้างรูปการ์ดไม่สำเร็จ')
   return blob
 }
 
 /**
- * ตำแหน่งกรอบรูปทั้งกอง คิดครั้งเดียวแล้วใช้ทั้งตอนวัดความสูงและตอนวาด
+ * กรอบรูป — ใบละแถว เต็มความกว้างการ์ด
  *
- * เรียงสองคอลัมน์ ยกเว้นใบสุดท้ายของจำนวนคี่ที่กินเต็มความกว้าง
- * ถ้าปล่อยให้เป็นครึ่งเดียว การ์ดจะเหลือช่องว่างข้างขวา ซึ่งดูเหมือนรูปหายไปหนึ่งใบ
+ * ของเดิมเรียงสองคอลัมน์ ซึ่งย่อรูปเหลือครึ่งเดียวของความกว้าง
+ * รูปที่ถ่ายมา 1024px จึงถูกย่อลงเหลือราว 530px ก่อนวาด
+ * รายละเอียดในรูปอย่างเลขที่ข้างกระสอบหรือป้ายสาขาเลยอ่านไม่ออก
+ *
+ * ใบละแถวได้ความกว้างเต็ม 1080px ซึ่งมากกว่าที่รูปมีมาอยู่แล้ว
+ * จึงไม่มีการย่อทิ้งรายละเอียดเลยสักพิกเซล การ์ดยาวขึ้นแต่แลกมาด้วยความชัด
+ *
+ * ความสูงคิดตามสัดส่วนรูปจริง มีเพดานกันรูปแนวตั้งยืดจนการ์ดยาวเกินไป
  */
-function layoutPhotos(n: number, width: number): { x: number; y: number; w: number; h: number }[] {
-  if (n <= 0) return []
-  const gap = 16
-  const half = Math.floor((width - gap) / 2)
+const PHOTO_MAX_H = 1180
+const PHOTO_GAP = 28
+
+function layoutPhotos(
+  imgs: HTMLImageElement[],
+): { x: number; y: number; w: number; h: number }[] {
   const out: { x: number; y: number; w: number; h: number }[] = []
   let y = 0
-  let i = 0
-  while (i < n) {
-    const alone = n - i === 1
-    const w = alone ? width : half
-    const h = Math.round(w * (alone ? 0.56 : 0.75))
-    if (alone) {
-      out.push({ x: 0, y, w, h })
-      i += 1
-    } else {
-      out.push({ x: 0, y, w, h })
-      out.push({ x: half + gap, y, w, h })
-      i += 2
-    }
-    y += h + gap
+  for (const img of imgs) {
+    const ratio = img.width > 0 ? img.height / img.width : 0.75
+    const h = Math.min(PHOTO_MAX_H, Math.round(W * ratio))
+    out.push({ x: 0, y, w: W, h })
+    y += h + PHOTO_GAP
   }
   return out
 }
@@ -324,6 +347,7 @@ function loadImage(url: string): Promise<HTMLImageElement | null> {
  * ชื่อไฟล์ของการ์ด — ขึ้นต้นด้วยเลขที่เสมอ
  * คนดาวน์โหลดหลายใบติดกันจะได้เรียงตามลำดับในโฟลเดอร์เอง
  */
-export function sackCardFilename(row: SackRow): string {
-  return `${row.ref_no}-${row.branch.replace(/[\\/:*?"<>|\s]+/g, '_')}.png`
+export function sackCardFilename(row: SackRow, mime = 'image/png'): string {
+  const ext = mime === 'image/jpeg' ? 'jpg' : 'png'
+  return `${row.ref_no}-${row.branch.replace(/[\\/:*?"<>|\s]+/g, '_')}.${ext}`
 }

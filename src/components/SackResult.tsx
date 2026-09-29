@@ -79,13 +79,13 @@ export function SackResult({
     if (!cardUrl) return
     const a = document.createElement('a')
     a.href = cardUrl
-    a.download = sackCardFilename(row)
+    a.download = sackCardFilename(row, blob?.type)
     a.click()
   }
 
   async function share() {
     if (!blob) return
-    const file = new File([blob], sackCardFilename(row), { type: 'image/png' })
+    const file = new File([blob], sackCardFilename(row, blob.type), { type: blob.type })
     // navigator.share ส่งไฟล์ได้เฉพาะบางเครื่อง เช็คก่อนเสมอ ไม่งั้นจะขึ้น error เปล่า ๆ
     if (navigator.canShare?.({ files: [file] })) {
       try {
