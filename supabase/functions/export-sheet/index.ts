@@ -7,16 +7,17 @@
 //   ชำรุด 2569-09      ใบแจ้งชำรุด 1 แถวต่อ 1 ใบ
 //   บาร์โค้ด BY 2569-09  ของที่หน้างานส่งบาร์โค้ดมาให้ตัดสต็อกในระบบ BY
 //   ประชุม 2569-09     เช็คอินเข้าประชุม — ลงคนละไฟล์ ดู GSHEET_MEETING_ID
+//   กระสอบ 2569-09     กระสอบที่กระจายไปสาขา — ลงคนละไฟล์ ดู GSHEET_SACK_ID
 //
 // กันแถวซ้ำโดยจำตำแหน่งไว้ในฐานข้อมูล (แท็บ + เลขแถว)
 // จึงไม่ต้องอ่านทั้งชีตมาเทียบทุกครั้ง — เร็วคงที่ไม่ว่าชีตจะใหญ่แค่ไหน
 //
 // ไฟล์นี้เขียนให้จบในตัวเอง ก๊อปวางใน Supabase Dashboard ได้ตรง ๆ
 // secrets: GOOGLE_SA_EMAIL, GOOGLE_SA_PRIVATE_KEY, GSHEET_ID
-// ไม่บังคับ: GSHEET_MEETING_ID (ไม่ตั้งก็ใช้ไฟล์ที่ฝังไว้ในโค้ด)
+// ไม่บังคับ: GSHEET_MEETING_ID, GSHEET_SACK_ID (ไม่ตั้งก็ใช้ไฟล์ที่ฝังไว้ในโค้ด)
 // =====================================================================
 
-const VERSION = 'attendance-v9'
+const VERSION = 'sack-v10'
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
 
 const HEADER = ['เลขที่คำขอ', 'วันเวลา', 'ผู้เบิก (ฮับ)', 'วัสดุ', 'จำนวน', 'หลักฐาน', 'Drive File ID']
@@ -67,6 +68,27 @@ const BY_HEADER = [
 
 // ไฟล์รายชื่อประชุมแยกจากไฟล์เบิก-คืน · ตั้ง GSHEET_MEETING_ID ทับได้ถ้าย้ายไฟล์
 const MEETING_SHEET_ID = '15_ES88gZhq8ZWBaAwoFekP-3o3HKnNW52jPimSIjHRY'
+const SACK_SHEET_ID = '1ZqSEG1dTPlCcC9mAJJSwcOQz8vdXyF9rF-RfzB5bvSI'
+
+// เรียงตามที่เจ้าของระบบขอมา: ฮับ จำนวน สาขา สถานะ แล้วค่อยรูป
+// ของที่ยังไม่ได้ส่งก็ลงชีตด้วย ส่วนกลางจะได้เห็นคิวที่ค้าง ไม่ใช่เห็นแต่ของที่ไปแล้ว
+const SACK_HEADER = [
+  'เลขที่',
+  'HUB ที่จัดส่ง',
+  'จำนวน',
+  'หน่วย',
+  'สาขาที่ขอ',
+  'สถานะการส่ง',
+  'ฝากผ่านสาขา',
+  'ผู้ส่ง',
+  'วันเวลาที่ส่ง',
+  'หมายเหตุ',
+  'จำนวนรูป',
+  'หลักฐาน',
+  'Drive File ID',
+  'ผู้ตั้งรายการ',
+  'วันเวลาที่ตั้ง',
+]
 
 /**
  * สถานะการเข้าประชุมเป็นภาษาคน
@@ -310,6 +332,24 @@ interface DbAssetItem {
   } | null
 }
 
+interface DbSack {
+  id: string
+  ref_no: string
+  hub_code: string
+  qty: number
+  unit: string
+  branch: string
+  note: string | null
+  status: string
+  relay_via: string | null
+  created_at: string
+  sent_at: string | null
+  created_by_name: string | null
+  sent_by_name: string | null
+  photos: { seq: number; file_id: string; web_link: string | null }[] | null
+  photo_count: number
+}
+
 interface DbBy {
   id: string
   ref_no: string
@@ -496,7 +536,7 @@ Deno.serve(async (req) => {
       from?: string
       to?: string
       hub?: string
-      /** 'all' (ค่าเริ่มต้น) | 'supply' | 'asset' */
+      /** 'all' (ค่าเริ่มต้น) | 'supply' | 'asset' | 'by' | 'meeting' | 'sack' */
       scope?: string
     }
 
@@ -837,6 +877,82 @@ Deno.serve(async (req) => {
             ),
           })
         }
+      }
+    }
+
+    /* --------------------------------------------- กระสอบที่กระจายไปสาขา */
+    // ลงคนละไฟล์กับของเบิก คนที่เปิดดูคือส่วนกลาง ไม่ใช่คนที่ดูยอดเบิกของฮับ
+    //
+    // แท็บผูกกับเดือนที่ "ตั้งรายการ" ไม่ใช่เดือนที่ส่ง
+    // เพราะใบที่ตั้งสิ้นเดือนแล้วส่งต้นเดือนถัดไปจะย้ายแท็บ
+    // แล้วแถวเดิมจะค้างอยู่ที่เก่าโดยไม่มีใครลบ
+    if (scope === 'all' || scope === 'sack') {
+      const sackSheet = Deno.env.get('GSHEET_SACK_ID') || SACK_SHEET_ID
+      const sqs = new URLSearchParams({
+        select:
+          'id,ref_no,hub_code,qty,unit,branch,note,status,relay_via,created_at,sent_at,' +
+          'created_by_name,sent_by_name,photos,photo_count',
+        order: 'created_at.asc',
+      })
+      if (payload.from) sqs.append('created_at', `gte.${payload.from}`)
+      if (payload.to) sqs.append('created_at', `lte.${payload.to}`)
+
+      const sacks = await db<DbSack[]>(`sack_rows?${sqs}`)
+      const srows: OutRow[] = sacks.map((s) => {
+        const ids = (s.photos ?? []).map((p) => p.file_id)
+        const mainId = ids[0] ?? null
+        const linkText = ids.length > 1 ? `ดูรูป (${ids.length} ใบ)` : 'ดูรูป'
+        return {
+          key: s.id,
+          tab: `กระสอบ ${monthOf(s.created_at)}`,
+          values: [
+            s.ref_no,
+            s.hub_code,
+            s.qty,
+            s.unit,
+            s.branch,
+            s.status === 'direct' ? 'ส่งตรง' : s.status === 'relay' ? 'ฝากส่ง' : 'รอส่ง',
+            s.relay_via ?? '',
+            s.sent_by_name ?? '',
+            s.sent_at ? thaiDateTime(s.sent_at) : '',
+            s.note ?? '',
+            s.photo_count,
+            mainId ? driveLink(mainId, linkText) : '',
+            ids.join(' '),
+            s.created_by_name ?? '',
+            thaiDateTime(s.created_at),
+          ],
+        }
+      })
+
+      if (srows.length > 0) {
+        const ids = srows.map((r) => `"${r.key}"`).join(',')
+        const known = await db<{ sack_id: string; tab: string; row_no: number }[]>(
+          `sack_sheet_exports?sack_id=in.(${ids})&select=sack_id,tab,row_no`,
+        )
+        const placed = new Map<RowKey, { tab: string; row_no: number }>(
+          known.map((k) => [k.sack_id, k]),
+        )
+        const out = await pushRows(sackSheet, token, srows, placed, SACK_HEADER)
+        updated += out.updated
+        appended += out.appended
+        out.tabs.forEach((t) => tabs.add(t))
+
+        // แถวที่เคยส่งแล้วก็ต้องอัปเวลาด้วย ไม่งั้นตัวนับ needs_push จะค้างอยู่ตลอด
+        const stamp = new Date().toISOString()
+        await db('sack_sheet_exports?on_conflict=sack_id', {
+          method: 'POST',
+          headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify(
+            srows.map((r, i) => {
+              const fresh = out.fresh.findIndex((f) => f.key === r.key)
+              const place = fresh >= 0 ? { tab: out.fresh[fresh].tab, row_no: out.rowNos[fresh] } : placed.get(r.key)
+              return place
+                ? { sack_id: r.key, tab: place.tab, row_no: place.row_no, exported_at: stamp }
+                : null
+            }).filter(Boolean),
+          ),
+        })
       }
     }
 

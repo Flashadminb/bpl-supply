@@ -762,6 +762,8 @@ export async function exportToSheet(payload: {
   from?: string
   to?: string
   hub?: string
+  /** ว่าง = ส่งทุกชุด · 'sack' = เฉพาะกระสอบ ซึ่งลงคนละไฟล์กับของเบิก */
+  scope?: 'all' | 'supply' | 'asset' | 'by' | 'meeting' | 'sack'
 }) {
   return callFunction<{ updated: number; appended: number; sheet: string }>(
     'export-sheet',
@@ -1952,6 +1954,21 @@ export async function countPendingSacks(): Promise<number> {
     .from('sack_orders')
     .select('id', { count: 'exact', head: true })
     .eq('status', 'pending')
+  if (error) throw new Error(readableError(error))
+  return count ?? 0
+}
+
+/**
+ * ยังมีกระสอบกี่ใบที่ชีตยังไม่ตรงกับความจริง
+ *
+ * นับทั้งใบที่ไม่เคยส่ง และใบที่ส่งไปแล้วแต่สถานะเปลี่ยนทีหลัง
+ * (ตั้งรายการวันนี้ ส่งพรุ่งนี้ — แถวในชีตต้องอัปตาม)
+ */
+export async function countSackExportRows(): Promise<number> {
+  const { count, error } = await supabase
+    .from('sack_export_rows')
+    .select('id', { count: 'exact', head: true })
+    .eq('needs_push', true)
   if (error) throw new Error(readableError(error))
   return count ?? 0
 }

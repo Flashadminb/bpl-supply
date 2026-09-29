@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import {
+  countSackExportRows,
   createSackOrder,
   deleteSackOrder,
+  exportToSheet,
   listSackOrders,
   sackBranches,
   sackNotifyTargets,
@@ -47,6 +49,31 @@ export default function SackOrders() {
 
   const [view, setView] = useState<SackRow | null>(null)
 
+  /**
+   * ส่งลง Google Sheet — คนละไฟล์กับของเบิก
+   *
+   * ใบที่ยังไม่ได้ส่งของก็ลงไปด้วย ส่วนกลางจะได้เห็นคิวที่ค้าง
+   * พอหน้างานกดส่ง กดปุ่มนี้อีกทีจะเขียนทับแถวเดิม สถานะในชีตขยับตามเอง
+   */
+  const pendingPush = useAsync(() => (mayCreate ? countSackExportRows() : Promise.resolve(0)), [mayCreate])
+  const [pushing, setPushing] = useState(false)
+  const [pushed, setPushed] = useState<string | null>(null)
+
+  async function pushSheet() {
+    setPushing(true)
+    setErr(null)
+    setPushed(null)
+    try {
+      const res = await exportToSheet({ scope: 'sack' })
+      setPushed(`เพิ่มใหม่ ${res.appended} แถว · อัปของเดิม ${res.updated} แถว · ${res.sheet}`)
+      pendingPush.reload()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'ส่งลงชีตไม่สำเร็จ')
+    } finally {
+      setPushing(false)
+    }
+  }
+
   const rows = list.data ?? []
   const shown = rows.filter((r) => (tab === 'pending' ? r.status === 'pending' : r.status !== 'pending'))
   const pendingCount = rows.filter((r) => r.status === 'pending').length
@@ -78,6 +105,7 @@ export default function SackOrders() {
       setTab('pending')
       list.reload()
       branches.reload()
+      pendingPush.reload()
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'ตั้งรายการไม่สำเร็จ')
     } finally {
@@ -105,11 +133,30 @@ export default function SackOrders() {
           </p>
         </div>
         {mayCreate && (
-          <button type="button" className="btn-primary" onClick={() => setOpen(true)}>
-            ตั้งรายการใหม่
-          </button>
+          <span className="flex flex-wrap gap-2">
+            <button type="button" className="btn-ghost" onClick={pushSheet} disabled={pushing}>
+              {pushing ? <Spinner /> : 'ส่งลง Google Sheet'}
+              {!pushing && (pendingPush.data ?? 0) > 0 && (
+                <span className="rounded-pill bg-brand-500 px-2 font-display text-xs text-ink">
+                  {(pendingPush.data ?? 0) > 99 ? '99+' : pendingPush.data}
+                </span>
+              )}
+            </button>
+            <button type="button" className="btn-primary" onClick={() => setOpen(true)}>
+              ตั้งรายการใหม่
+            </button>
+          </span>
         )}
       </div>
+
+      {pushed && (
+        <div className="mb-3 rounded-card border border-success/25 bg-success-bg p-3 text-sm text-success-txt">
+          ส่งลงชีตแล้ว · {pushed}
+          <button type="button" className="ml-2 underline" onClick={() => setPushed(null)}>
+            ปิด
+          </button>
+        </div>
+      )}
 
       {made && (
         <div className="mb-3 rounded-card border border-success/25 bg-success-bg p-3 text-sm text-success-txt">
