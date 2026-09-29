@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
+import { usePendingExports } from '../../lib/usePendingExports'
 import {
   countAssetExportRows,
   listAssetExportRows,
@@ -83,10 +84,22 @@ export default function ExportSheet() {
   const meetDone = meetTally.data?.done ?? 0
   const totalPending = pending + assetPending + meetPending
 
+  /**
+   * ของที่ค้างอยู่นอกช่วงวันที่ที่เลือก
+   *
+   * ปุ่มส่งทำงานกับช่วงที่เลือกเท่านั้น แต่เลขบนเมนูข้างนับย้อนหลังสองปี
+   * สองตัวนี้ไม่ตรงกันเมื่อไหร่ คนจะเห็นหน้านี้บอกว่า "ส่งครบแล้ว"
+   * ทั้งที่ยังมีของค้างอยู่จริง แล้วปล่อยทิ้งไว้โดยไม่รู้ตัว
+   * เลยบอกตรง ๆ ไปเลยว่ามีเท่าไหร่ และต้องทำอะไรถึงจะส่งได้
+   */
+  const allPending = usePendingExports()
+  const outsideRange = Math.max(allPending.count - totalPending, 0)
+
   async function send() {
     setBusy(true)
     try {
       const res = await exportToSheet({ from: range.fromISO, to: range.toISO })
+      allPending.reload()
       setRuns((r) => [
         {
           at: new Date().toISOString(),
@@ -195,6 +208,13 @@ export default function ExportSheet() {
             {busy ? 'กำลังส่ง…' : totalPending === 0 ? 'ส่งครบแล้ว' : `ส่ง ${totalPending} บรรทัดที่ยังไม่ส่ง`}
           </button>
         </div>
+
+        {outsideRange > 0 && (
+          <p className="mt-3 rounded-btn border border-warn/30 bg-warn-bg px-3 py-2 text-sm text-warn-txt">
+            ยังมีอีก <b>{outsideRange} บรรทัด</b> ที่ค้างส่งอยู่<b>นอกช่วงวันที่ที่เลือก</b> ·
+            ขยายช่วงวันที่ให้ครอบแล้วกดส่งอีกครั้ง ปุ่มนี้ส่งเฉพาะช่วงที่เลือกเท่านั้น
+          </p>
+        )}
 
         <p className="mt-3 rounded-btn bg-surface-2 px-3 py-2 text-xs text-ink-500">
           ปุ่มส่งจะทำงานกับ<b>ทั้งช่วงวันที่ที่เลือก</b> ไม่ขึ้นกับตัวกรองแผนก ·

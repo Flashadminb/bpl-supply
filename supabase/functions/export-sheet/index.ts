@@ -17,7 +17,7 @@
 // ไม่บังคับ: GSHEET_MEETING_ID, GSHEET_SACK_ID (ไม่ตั้งก็ใช้ไฟล์ที่ฝังไว้ในโค้ด)
 // =====================================================================
 
-const VERSION = 'sack-v10'
+const VERSION = 'paged-v11'
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
 
 const HEADER = ['เลขที่คำขอ', 'วันเวลา', 'ผู้เบิก (ฮับ)', 'วัสดุ', 'จำนวน', 'หลักฐาน', 'Drive File ID']
@@ -257,6 +257,69 @@ async function requireUser(req: Request): Promise<void> {
     headers: { Authorization: `Bearer ${jwt}`, apikey: publicKey() },
   })
   if (!res.ok) throw new Error('เซสชันหมดอายุ เข้าสู่ระบบใหม่')
+}
+
+/**
+ * PostgREST ส่งกลับมาสูงสุดพันแถวต่อครั้ง (db-max-rows) ไม่ว่าจะขออะไรไป
+ * ไม่ได้แจ้งว่าตัดนะ ตอบ 200 มาเฉย ๆ เหมือนดึงมาครบแล้ว
+ *
+ * ผลคือพอ Asset เกินพันบรรทัด การส่งออกจะวนส่งพันบรรทัดแรกซ้ำ ๆ ทุกครั้ง
+ * ส่วนบรรทัดใหม่ไม่เคยถูกดึงมาเลย ตัวเลข "ยังไม่ส่ง" จึงไม่มีวันลด
+ * และหน้าจอก็บอกว่าสำเร็จทุกครั้ง เพราะฝั่งเซิร์ฟเวอร์ไม่ได้ผิดพลาดอะไร
+ *
+ * ไล่ทีละหน้าจนกว่าจะหมดจริง ต้องมี order ที่ไม่ซ้ำกันกำกับเสมอ
+ * ไม่งั้นแถวจะสลับหน้ากันแล้วหายหรือซ้ำ
+ */
+const PAGE = 1000
+
+async function dbPaged<T>(path: string): Promise<T[]> {
+  const key = serviceKey()
+  const out: T[] = []
+  for (let from = 0; ; from += PAGE) {
+    const res = await fetch(`${envOrThrow('SUPABASE_URL')}/rest/v1/${path}`, {
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        'Range-Unit': 'items',
+        Range: `${from}-${from + PAGE - 1}`,
+      },
+    })
+    // ขอเลยแถวสุดท้ายพอดีจะได้ 416 กลับมา ซึ่งแปลว่าหมดแล้ว ไม่ใช่ว่าพัง
+    if (res.status === 416) break
+    const text = await res.text()
+    if (!res.ok) throw new Error(text || `ฐานข้อมูลตอบกลับ HTTP ${res.status}`)
+    const page = (text ? JSON.parse(text) : []) as T[]
+    if (!Array.isArray(page) || page.length === 0) break
+    out.push(...page)
+    if (page.length < PAGE) break
+  }
+  return out
+}
+
+/**
+ * หาว่าแถวไหนเคยลงชีตไว้ตรงไหนแล้ว
+ *
+ * เดิมยัดคีย์ทั้งหมดลง in.(...) ทีเดียว ซึ่งพังสองทางเมื่อของเยอะขึ้น
+ * URL ยาวเกินจนโดนปฏิเสธ และผลลัพธ์ก็โดนตัดที่พันแถวอีกชั้น
+ * แบ่งเป็นก้อนละสองร้อยแล้วรวมกัน ใช้ได้ทั้งคีย์ตัวเลขและ uuid
+ */
+async function lookupPlaced(
+  table: string,
+  keyCol: string,
+  keys: RowKey[],
+): Promise<Map<RowKey, { tab: string; row_no: number }>> {
+  const placed = new Map<RowKey, { tab: string; row_no: number }>()
+  const quote = (k: RowKey) => (typeof k === 'number' ? String(k) : `"${k}"`)
+  for (let i = 0; i < keys.length; i += 200) {
+    const batch = keys.slice(i, i + 200).map(quote).join(',')
+    const rows = await dbPaged<Record<string, unknown>>(
+      `${table}?${keyCol}=in.(${batch})&select=${keyCol},tab,row_no`,
+    )
+    for (const r of rows) {
+      placed.set(r[keyCol] as RowKey, { tab: r.tab as string, row_no: r.row_no as number })
+    }
+  }
+  return placed
 }
 
 async function db<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -564,9 +627,9 @@ Deno.serve(async (req) => {
         if (payload.to) qs.append('created_at', `lte.${payload.to}`)
         if (payload.hub) qs.set('hub_code', `eq.${payload.hub}`)
       }
-      qs.set('order', 'created_at.asc')
+      qs.set('order', 'created_at.asc,id.asc')
 
-      const reqs = await db<DbReq[]>(`requisitions?${qs}`)
+      const reqs = await dbPaged<DbReq>(`requisitions?${qs}`)
       const rows: OutRow[] = []
       for (const r of reqs) {
         const photos = (r.requisition_photos ?? []).map((p) => p.file_id)
@@ -593,12 +656,7 @@ Deno.serve(async (req) => {
       }
 
       if (rows.length > 0) {
-        const known = await db<{ requisition_item_id: number; tab: string; row_no: number }[]>(
-          `sheet_exports?requisition_item_id=in.(${rows.map((r) => r.key).join(',')})&select=requisition_item_id,tab,row_no`,
-        )
-        const placed = new Map<RowKey, { tab: string; row_no: number }>(
-          known.map((k) => [k.requisition_item_id, k]),
-        )
+        const placed = await lookupPlaced('sheet_exports', 'requisition_item_id', rows.map((r) => r.key))
         const out = await pushRows(sheetId, token, rows, placed, HEADER)
         updated += out.updated
         appended += out.appended
@@ -640,7 +698,7 @@ Deno.serve(async (req) => {
       if (payload.from) qs.append('asset_txns.created_at', `gte.${payload.from}`)
       if (payload.to) qs.append('asset_txns.created_at', `lte.${payload.to}`)
 
-      const items = await db<DbAssetItem[]>(`asset_txn_items?${qs}`)
+      const items = await dbPaged<DbAssetItem>(`asset_txn_items?${qs}`)
       const rows: OutRow[] = []
       for (const it of items) {
         const t = it.asset_txns
@@ -671,12 +729,7 @@ Deno.serve(async (req) => {
       }
 
       if (rows.length > 0) {
-        const known = await db<{ asset_txn_item_id: number; tab: string; row_no: number }[]>(
-          `asset_sheet_exports?asset_txn_item_id=in.(${rows.map((r) => r.key).join(',')})&select=asset_txn_item_id,tab,row_no`,
-        )
-        const placed = new Map<RowKey, { tab: string; row_no: number }>(
-          known.map((k) => [k.asset_txn_item_id, k]),
-        )
+        const placed = await lookupPlaced('asset_sheet_exports', 'asset_txn_item_id', rows.map((r) => r.key))
         const out = await pushRows(sheetId, token, rows, placed, ASSET_HEADER)
         updated += out.updated
         appended += out.appended
@@ -704,12 +757,12 @@ Deno.serve(async (req) => {
           'assets(asset_types(name)),' +
           'profiles!asset_issues_reported_by_fkey(full_name,employee_code),' +
           'asset_txns(ref_no)',
-        order: 'reported_at.asc',
+        order: 'reported_at.asc,id.asc',
       })
       if (payload.from) iqs.append('reported_at', `gte.${payload.from}`)
       if (payload.to) iqs.append('reported_at', `lte.${payload.to}`)
 
-      const issues = await db<DbIssue[]>(`asset_issues?${iqs}`)
+      const issues = await dbPaged<DbIssue>(`asset_issues?${iqs}`)
       const irows: OutRow[] = issues.map((i) => ({
         key: i.id,
         tab: `ชำรุด ${monthOf(i.reported_at)}`,
@@ -728,12 +781,7 @@ Deno.serve(async (req) => {
       }))
 
       if (irows.length > 0) {
-        const known = await db<{ issue_id: number; tab: string; row_no: number }[]>(
-          `asset_issue_exports?issue_id=in.(${irows.map((r) => r.key).join(',')})&select=issue_id,tab,row_no`,
-        )
-        const placed = new Map<RowKey, { tab: string; row_no: number }>(
-          known.map((k) => [k.issue_id, k]),
-        )
+        const placed = await lookupPlaced('asset_issue_exports', 'issue_id', irows.map((r) => r.key))
         const out = await pushRows(sheetId, token, irows, placed, ISSUE_HEADER)
         updated += out.updated
         appended += out.appended
@@ -757,12 +805,12 @@ Deno.serve(async (req) => {
         select:
           'id,ref_no,created_at,reason,note,status,dept_code,sub_dept,shift_start,shift_end,handled_at,' +
           'profiles!by_barcodes_user_id_fkey(full_name,employee_code),by_barcode_photos(file_id)',
-        order: 'created_at.asc',
+        order: 'created_at.asc,id.asc',
       })
       if (payload.from) bqs.append('created_at', `gte.${payload.from}`)
       if (payload.to) bqs.append('created_at', `lte.${payload.to}`)
 
-      const list = await db<DbBy[]>(`by_barcodes?${bqs}`)
+      const list = await dbPaged<DbBy>(`by_barcodes?${bqs}`)
       const brows: OutRow[] = list.map((b) => {
         const photos = (b.by_barcode_photos ?? []).map((p) => p.file_id)
         const mainId = photos[0] ?? null
@@ -789,13 +837,7 @@ Deno.serve(async (req) => {
       })
 
       if (brows.length > 0) {
-        const ids = brows.map((r) => `"${r.key}"`).join(',')
-        const known = await db<{ by_id: string; tab: string; row_no: number }[]>(
-          `by_sheet_exports?by_id=in.(${ids})&select=by_id,tab,row_no`,
-        )
-        const placed = new Map<RowKey, { tab: string; row_no: number }>(
-          known.map((k) => [k.by_id, k]),
-        )
+        const placed = await lookupPlaced('by_sheet_exports', 'by_id', brows.map((r) => r.key))
         const out = await pushRows(sheetId, token, brows, placed, BY_HEADER)
         updated += out.updated
         appended += out.appended
@@ -823,12 +865,12 @@ Deno.serve(async (req) => {
           'id,ref_no,created_at,full_name,employee_code,dept_code,sub_dept,' +
           'shift_start,shift_end,note,file_id,status,decided_by_name,decided_at,decide_note,' +
           'event_title,attend_state,late_min,attend_reason,attend_by_name,attend_at',
-        order: 'created_at.asc',
+        order: 'created_at.asc,id.asc',
       })
       if (payload.from) mqs.append('created_at', `gte.${payload.from}`)
       if (payload.to) mqs.append('created_at', `lte.${payload.to}`)
 
-      const meets = await db<DbMeeting[]>(`meeting_rows?${mqs}`)
+      const meets = await dbPaged<DbMeeting>(`meeting_rows?${mqs}`)
       const mrows: OutRow[] = meets.map((m) => ({
         key: m.id,
         tab: `ประชุม ${monthOf(m.created_at)}`,
@@ -856,13 +898,7 @@ Deno.serve(async (req) => {
       }))
 
       if (mrows.length > 0) {
-        const ids = mrows.map((r) => `"${r.key}"`).join(',')
-        const known = await db<{ meeting_id: string; tab: string; row_no: number }[]>(
-          `meeting_sheet_exports?meeting_id=in.(${ids})&select=meeting_id,tab,row_no`,
-        )
-        const placed = new Map<RowKey, { tab: string; row_no: number }>(
-          known.map((k) => [k.meeting_id, k]),
-        )
+        const placed = await lookupPlaced('meeting_sheet_exports', 'meeting_id', mrows.map((r) => r.key))
         const out = await pushRows(meetSheet, token, mrows, placed, MEETING_HEADER)
         updated += out.updated
         appended += out.appended
@@ -892,12 +928,12 @@ Deno.serve(async (req) => {
         select:
           'id,ref_no,hub_code,qty,unit,branch,note,status,relay_via,created_at,sent_at,' +
           'created_by_name,sent_by_name,photos,photo_count',
-        order: 'created_at.asc',
+        order: 'created_at.asc,id.asc',
       })
       if (payload.from) sqs.append('created_at', `gte.${payload.from}`)
       if (payload.to) sqs.append('created_at', `lte.${payload.to}`)
 
-      const sacks = await db<DbSack[]>(`sack_rows?${sqs}`)
+      const sacks = await dbPaged<DbSack>(`sack_rows?${sqs}`)
       const srows: OutRow[] = sacks.map((s) => {
         const ids = (s.photos ?? []).map((p) => p.file_id)
         const mainId = ids[0] ?? null
@@ -926,13 +962,7 @@ Deno.serve(async (req) => {
       })
 
       if (srows.length > 0) {
-        const ids = srows.map((r) => `"${r.key}"`).join(',')
-        const known = await db<{ sack_id: string; tab: string; row_no: number }[]>(
-          `sack_sheet_exports?sack_id=in.(${ids})&select=sack_id,tab,row_no`,
-        )
-        const placed = new Map<RowKey, { tab: string; row_no: number }>(
-          known.map((k) => [k.sack_id, k]),
-        )
+        const placed = await lookupPlaced('sack_sheet_exports', 'sack_id', srows.map((r) => r.key))
         const out = await pushRows(sackSheet, token, srows, placed, SACK_HEADER)
         updated += out.updated
         appended += out.appended
