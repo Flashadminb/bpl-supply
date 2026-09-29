@@ -704,3 +704,55 @@ export interface MeetingEvent {
   cancelled_at: string | null
   day: string
 }
+
+/* ------------------------------------------------- กระจายกระสอบไปสาขา */
+
+export interface SackPhoto {
+  seq: number
+  file_id: string
+  web_link: string | null
+}
+
+/**
+ * รายการกระสอบหนึ่งใบ
+ *
+ * pending = ตั้งไว้แล้วยังไม่มีใครกดส่ง
+ * direct  = ส่งตรงถึงสาขาปลายทาง
+ * relay   = ฝากสาขาอื่นส่งต่อ — relay_via จะมีค่าเสมอในกรณีนี้
+ */
+export interface SackRow {
+  id: string
+  ref_no: string
+  hub_code: string
+  qty: number
+  unit: string
+  branch: string
+  note: string | null
+  status: 'pending' | 'direct' | 'relay'
+  relay_via: string | null
+  created_at: string
+  sent_at: string | null
+  created_by_name: string | null
+  sent_by_name: string | null
+  photos: SackPhoto[]
+  photo_count: number
+}
+
+export interface SackBranch {
+  branch: string
+  used: number
+  last_at: string
+}
+
+export interface SackRelay {
+  via: string
+  used: number
+}
+
+/** ใครจะได้รับแจ้งเตือนเมื่อมีรายการเข้าคิว — โชว์ให้คนตั้งรายการเห็นก่อนกด */
+export interface SackNotifyTarget {
+  full_name: string
+  employee_code: string
+  reason: string
+  has_push: boolean
+}

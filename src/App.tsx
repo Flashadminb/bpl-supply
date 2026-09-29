@@ -27,6 +27,8 @@ const AssetPick = lazy(() => import('./pages/staff/AssetPick'))
 const AssetBasket = lazy(() => import('./pages/staff/AssetBasket'))
 const AssetDone = lazy(() => import('./pages/staff/AssetDone'))
 const BySend = lazy(() => import('./pages/staff/BySend'))
+// กระสอบรอส่ง — เปิดเมื่อมีงานเข้าคิวเท่านั้น ไม่ควรถ่วงหน้าแรก
+const Ship = lazy(() => import('./pages/staff/Ship'))
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'))
 const Dashboard = lazy(() => import('./pages/admin/Dashboard'))
 const Stock = lazy(() => import('./pages/admin/Stock'))
@@ -49,6 +51,7 @@ const Meetings = lazy(() => import('./pages/admin/Meetings'))
 const SupplyHistory = lazy(() => import('./pages/admin/SupplyHistory'))
 const MeetingEvidence = lazy(() => import('./pages/admin/MeetingEvidence'))
 const MeetingReport = lazy(() => import('./pages/admin/MeetingReport'))
+const SackOrders = lazy(() => import('./pages/admin/SackOrders'))
 
 function Guard({
   children,
@@ -158,6 +161,7 @@ export default function App() {
       <Route path="/success/:refNo" element={<Guard><Success /></Guard>} />
       <Route path="/returns" element={<Guard><Returns /></Guard>} />
       <Route path="/by" element={<Guard><BySend /></Guard>} />
+      <Route path="/ship" element={<Guard><Ship /></Guard>} />
       <Route path="/assets" element={<Guard><AssetBasket /></Guard>} />
       <Route path="/assets/done/:refNo" element={<Guard><AssetDone /></Guard>} />
       <Route path="/assets/:typeCode" element={<Guard><AssetPick /></Guard>} />
@@ -193,6 +197,14 @@ export default function App() {
         />
         <Route path="assets-out" element={<Guard roles={MANAGER_ROLES} allowDispatch><AssetOutstanding /></Guard>} />
         <Route path="by" element={<Guard roles={MANAGER_ROLES}><ByInbox /></Guard>} />
+        {/*
+          ผู้ตรวจสอบเห็นหน้านี้ แต่ปุ่มตั้งรายการซ่อนไว้ในหน้านั้นเอง
+          และ create_sack_order ในฐานข้อมูลก็ปฏิเสธเขาอยู่แล้วอีกชั้น
+        */}
+        <Route
+          path="sacks"
+          element={<Guard roles={MANAGER_ROLES} allowDispatch><SackOrders /></Guard>}
+        />
         <Route path="report/supply" element={<Guard roles={MANAGER_ROLES}><SupplyReport /></Guard>} />
         <Route path="report/asset" element={<Guard roles={MANAGER_ROLES}><AssetReport /></Guard>} />
         <Route path="export" element={<Guard roles={MANAGER_ROLES}><ExportSheet /></Guard>} />

@@ -59,6 +59,7 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
       { to: '/admin/stock', label: 'สต็อกวัสดุ', icon: 'box' },
       { to: '/admin/approvals', label: 'คำขอเบิก', icon: 'inbox', badge: 'approvals' },
       { to: '/admin/by', label: 'บาร์โค้ดจาก BY', icon: 'barcode' },
+      { to: '/admin/sacks', label: 'กระจายกระสอบ', icon: 'box', audit: true },
     ],
   },
   {

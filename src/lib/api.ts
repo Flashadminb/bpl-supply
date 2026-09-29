@@ -28,6 +28,10 @@ import type {
   AssetExportRow,
   BorrowSet,
   ReturnCard,
+  SackRow,
+  SackBranch,
+  SackRelay,
+  SackNotifyTarget,
   TransferNotice,
   LinkAudience,
   LinkRoleKey,
@@ -1847,4 +1851,107 @@ export async function renameEmployee(args: {
     }),
     { 'Content-Type': 'application/json' },
   )
+}
+
+/* --------------------------------------------------- กระจายกระสอบไปสาขา */
+
+/**
+ * รายการกระสอบ
+ *
+ * หน้างานเปิดมาต้องเห็น "รอส่ง" ก่อนเสมอ เพราะนั่นคืองานที่ต้องทำ
+ * ส่วนที่ส่งแล้วเก็บไว้ให้ย้อนดูฟอร์มเดิมได้ ไม่ได้ลบทิ้ง
+ */
+export async function listSackOrders(
+  opts: { status?: 'pending' | 'sent' | 'all'; limit?: number } = {},
+): Promise<SackRow[]> {
+  const status = opts.status ?? 'all'
+  let q = supabase.from('sack_rows').select('*').order('created_at', { ascending: false })
+  if (status === 'pending') q = q.eq('status', 'pending')
+  if (status === 'sent') q = q.neq('status', 'pending')
+  return unwrap(await q.limit(opts.limit ?? 200)) as unknown as SackRow[]
+}
+
+export async function createSackOrder(args: {
+  branch: string
+  qty: number
+  unit?: string
+  note?: string | null
+  hub?: string | null
+}): Promise<{ id: string; ref_no: string }> {
+  const { data, error } = await supabase.rpc('create_sack_order', {
+    p_branch: args.branch,
+    p_qty: args.qty,
+    p_unit: args.unit ?? 'ชิ้น',
+    p_note: args.note ?? null,
+    p_hub: args.hub ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { id: string; ref_no: string }
+}
+
+/**
+ * กดว่าส่งแล้ว
+ *
+ * กดซ้ำไม่ถือว่าผิด ฐานข้อมูลตอบ duplicate:true กลับมาเฉย ๆ
+ * เน็ตในฮับไม่นิ่ง คนกดค้างแล้วกดซ้ำเป็นเรื่องปกติ
+ */
+export async function markSackSent(args: {
+  id: string
+  mode: 'direct' | 'relay'
+  relayVia?: string | null
+  photos?: { file_id: string; web_link: string | null; bytes: number | null }[]
+}): Promise<{
+  ref_no: string
+  duplicate: boolean
+  status: 'direct' | 'relay'
+  relay_via: string | null
+}> {
+  const { data, error } = await supabase.rpc('mark_sack_sent', {
+    p_id: args.id,
+    p_mode: args.mode,
+    p_relay: args.mode === 'relay' ? (args.relayVia ?? null) : null,
+    p_photos: args.photos ?? [],
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { ref_no: string; duplicate: boolean; status: 'direct' | 'relay'; relay_via: string | null }
+}
+
+/** ลบรายการที่ตั้งผิด — RLS เปิดให้เฉพาะเจ้าของระบบกับแอดมิน */
+export async function deleteSackOrder(id: string) {
+  const { error } = await supabase.from('sack_orders').delete().eq('id', id)
+  if (error) throw new Error(readableError(error))
+}
+
+/** สาขาที่เคยใช้ — รายการโตเองจากการใช้งาน ไม่ต้องมีใครมาตั้งล่วงหน้า */
+export async function sackBranches(): Promise<SackBranch[]> {
+  const { data, error } = await supabase.rpc('sack_branches')
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as SackBranch[]
+}
+
+export async function sackRelays(): Promise<SackRelay[]> {
+  const { data, error } = await supabase.rpc('sack_relays')
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as SackRelay[]
+}
+
+export async function sackNotifyTargets(): Promise<SackNotifyTarget[]> {
+  const { data, error } = await supabase.rpc('sack_notify_targets')
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as SackNotifyTarget[]
+}
+
+/**
+ * นับใบที่ยังรอส่ง — ใช้โชว์ตัวเลขบนหน้าแรกของหน้างาน
+ *
+ * head:true คือขอแต่จำนวน ไม่ดึงแถวกลับมาสักแถว
+ * หน้าแรกถูกเปิดวันละหลายร้อยครั้งรวมทุกคน ต้องเบาที่สุด
+ */
+export async function countPendingSacks(): Promise<number> {
+  const { count, error } = await supabase
+    .from('sack_orders')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending')
+  if (error) throw new Error(readableError(error))
+  return count ?? 0
 }

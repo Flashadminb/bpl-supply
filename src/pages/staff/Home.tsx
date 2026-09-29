@@ -7,6 +7,7 @@ import {
   listAssetHoldings,
   listMyHistory,
   listOpenBorrowings,
+  countPendingSacks,
 } from '../../lib/api'
 import { StaffPage } from '../../components/Shell'
 import { EmptyState, ErrorBox, Loading } from '../../components/ui'
@@ -43,6 +44,9 @@ export default function Home() {
   )
   const hubOthers = Math.max((hubHeld.data ?? 0) - assetCount, 0)
   const approvals = usePendingApprovals()
+  // กระสอบรอส่ง — ทุกคนกดได้ ใครว่างก็หยิบไปส่งได้
+  const sacks = useAsync(() => countPendingSacks(), [])
+  const sackCount = sacks.data ?? 0
 
   return (
     <div className="bg-canvas">
@@ -129,6 +133,33 @@ export default function Home() {
             </span>
           </Link>
         )}
+
+        <Link
+          to="/ship"
+          className={`card mt-3 flex items-center gap-3 p-4 ${
+            sackCount > 0 ? 'border-brand-300 bg-brand-50' : ''
+          }`}
+        >
+          <span aria-hidden className="text-md">
+            ▦
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-display text-md">กระสอบรอส่ง</span>
+            <span className="block text-sm text-ink-400">
+              {sackCount > 0
+                ? `มี ${sackCount} รายการรอส่ง · กดส่งแล้วได้ฟอร์มไปแปะในแชท`
+                : 'ตอนนี้ไม่มีรายการรอส่ง'}
+            </span>
+          </span>
+          {sackCount > 0 && (
+            <span className="rounded-pill bg-brand-500 px-2 font-display text-xs text-ink">
+              {sackCount > 99 ? '99+' : sackCount}
+            </span>
+          )}
+          <span aria-hidden className="text-ink-400">
+            ›
+          </span>
+        </Link>
 
         <Link to="/by" className="card mt-3 flex items-center gap-3 p-4">
           <span aria-hidden className="text-md">

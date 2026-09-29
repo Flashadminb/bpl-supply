@@ -16,7 +16,7 @@
 // secrets: GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REFRESH_TOKEN
 // =====================================================================
 
-const VERSION = 'audit-v2'
+const VERSION = 'sack-v3'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -89,8 +89,21 @@ async function getAccessToken(): Promise<string> {
   return cached.token
 }
 
-/** ผู้เรียกต้องเป็นแอดมินขึ้นไป ไม่ใช่พนักงานหน้างาน */
-async function requireManager(req: Request): Promise<void> {
+/**
+ * ใครเปิดรูปใบนี้ได้
+ *
+ * รูปหลักฐานเบิก-คืน  แอดมินขึ้นไป และผู้ตรวจสอบ — ตามกฎข้อ 4 ใน CLAUDE.md
+ * รูปกระสอบ          ทุกคนที่ล็อกอินและยังไม่ถูกระงับ
+ *
+ * ทำไมรูปกระสอบถึงเปิดกว้างกว่า
+ *   มันไม่ใช่หลักฐานการเบิกของใคร แต่เป็นของที่หน้างานถ่ายเองเพื่อเอาไปแปะในแชท
+ *   ถ้าเขาเปิดดูของตัวเองไม่ได้ ต้องมาขอแอดมินทุกครั้งที่จะส่งฟอร์มซ้ำ
+ *   ตาราง sack_order_photos ก็เปิดให้ทุกคนที่ล็อกอินอ่านอยู่แล้วใน RLS
+ *
+ * เช็คจาก file_id จริงในตาราง ไม่ได้เชื่อสิ่งที่ผู้เรียกบอกมา
+ * รูปเบิก-คืนจึงยังปิดเหมือนเดิมทุกใบ
+ */
+async function requireViewer(req: Request, fileId: string): Promise<void> {
   const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
   if (!jwt) throw new Error('ต้องเข้าสู่ระบบก่อน')
 
@@ -112,10 +125,20 @@ async function requireManager(req: Request): Promise<void> {
     can_dispatch?: boolean
   }[]
   const me = rows[0]
-  const maySee = Boolean(me?.is_active) && (me?.role === 'supervisor' || me?.role === 'admin' || me?.can_dispatch === true)
-  if (!maySee) {
-    throw new Error('บัญชีนี้เปิดดูรูปหลักฐานไม่ได้')
-  }
+  if (!me?.is_active) throw new Error('บัญชีนี้ถูกระงับการใช้งาน')
+
+  const isManager =
+    me.role === 'supervisor' || me.role === 'admin' || me.can_dispatch === true
+  if (isManager) return
+
+  const sres = await fetch(
+    `${envOrThrow('SUPABASE_URL')}/rest/v1/sack_order_photos?file_id=eq.${encodeURIComponent(fileId)}&select=id&limit=1`,
+    { headers: { apikey: key, Authorization: `Bearer ${key}` } },
+  )
+  const hit = (await sres.json()) as { id?: number }[]
+  if (Array.isArray(hit) && hit.length > 0) return
+
+  throw new Error('บัญชีนี้เปิดดูรูปหลักฐานไม่ได้')
 }
 
 Deno.serve(async (req) => {
@@ -127,7 +150,7 @@ Deno.serve(async (req) => {
   if (!fileId) return json({ name: 'evidence-image', version: VERSION })
 
   try {
-    await requireManager(req)
+    await requireViewer(req, fileId)
 
     const token = await getAccessToken()
     const res = await fetch(
