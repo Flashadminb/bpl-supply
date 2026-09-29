@@ -176,6 +176,8 @@ export async function createRequisition(args: {
   evidenceFileId?: string | null
   evidenceLink?: string | null
   evidenceBytes?: number | null
+  /** เบิกให้คนอื่น — ของจะไปค้างชื่อคนนี้ ไม่ใช่ชื่อคนกด */
+  forUserId?: string | null
 }): Promise<CreateReqResult> {
   const { data, error } = await supabase.rpc('create_requisition', {
     p_lines: args.lines.map((l) => ({ item_id: l.item_id, qty: l.qty })),
@@ -184,6 +186,7 @@ export async function createRequisition(args: {
     p_evidence_file_id: args.evidenceFileId ?? null,
     p_evidence_link: args.evidenceLink ?? null,
     p_evidence_bytes: args.evidenceBytes ?? null,
+    p_for_user: args.forUserId ?? null,
   })
   if (error) throw new Error(readableError(error))
   return data as CreateReqResult
@@ -1448,8 +1451,9 @@ export async function meetingStats(fromDay: string, toDay: string): Promise<Meet
  * แค่เปิดหน้าแรกครั้งเดียวก็ 1.2 MB ทั้งที่หน้านั้นใช้แค่ชื่อกับจำนวนรายการ
  */
 const REQ_SLIM =
-  'id,ref_no,status,created_at,requester_id,' +
+  'id,ref_no,status,created_at,requester_id,acted_by,' +
   'profiles!requisitions_requester_id_fkey(id,full_name,employee_code,dept_code),' +
+  'actor:profiles!requisitions_acted_by_fkey(full_name,employee_code),' +
   'requisition_items(id)'
 
 /** ใบเบิกล่าสุดไม่กี่ใบ สำหรับตารางบนหน้าแรก */
@@ -1506,8 +1510,9 @@ export async function listRequisitionHistory(
     await supabase
       .from('requisitions')
       .select(
-        'id,ref_no,status,created_at,requester_id,' +
+        'id,ref_no,status,created_at,requester_id,acted_by,' +
           'profiles!requisitions_requester_id_fkey(id,full_name,employee_code,dept_code),' +
+          'actor:profiles!requisitions_acted_by_fkey(full_name,employee_code),' +
           'requisition_items(id,item_id,qty_requested,qty_approved,status,items(name,unit))',
       )
       .gte('created_at', fromISO)
@@ -1788,7 +1793,8 @@ export async function listMyHistory(limit = 100): Promise<Requisition[]> {
     await supabase
       .from('requisitions')
       .select(
-        'id,ref_no,status,purpose,reject_reason,created_at,' +
+        'id,ref_no,status,purpose,reject_reason,created_at,acted_by,' +
+          'actor:profiles!requisitions_acted_by_fkey(full_name,employee_code),' +
           'requisition_items(id,item_id,qty_requested,qty_approved,status,items(name,unit)),' +
           'sync_log(channel,state)',
       )

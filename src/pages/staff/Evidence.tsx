@@ -87,10 +87,14 @@ export default function Evidence() {
       for (const file of picked) {
         const img = await compressImage(file, {
           stamp: stampLines(
-            profile?.full_name ?? '—',
-            profile?.employee_code ?? '—',
+            cart.forUser?.full_name ?? profile?.full_name ?? '—',
+            cart.forUser?.employee_code ?? profile?.employee_code ?? '—',
             profile?.hub_code ?? '—',
-            from === 'gallery' ? 'BPL SUPPLY · เลือกจากคลังรูป' : 'BPL SUPPLY',
+            cart.forUser
+              ? `BPL SUPPLY · ${profile?.full_name ?? ''} เบิกให้`
+              : from === 'gallery'
+                ? 'BPL SUPPLY · เลือกจากคลังรูป'
+                : 'BPL SUPPLY',
           ),
         })
         setShots((s) => [
@@ -199,6 +203,7 @@ export default function Evidence() {
           evidenceFileId: main?.fileId ?? null,
           evidenceLink: main?.webLink ?? null,
           evidenceBytes: main?.bytes ?? null,
+          forUserId: cart.forUser?.id ?? null,
         })
         setCreated(result)
         mark({ SPB: 'done' })
@@ -269,6 +274,32 @@ export default function Evidence() {
     <>
       <TopBar title="ถ่ายรูปหลักฐาน" back="/cart" />
       <StaffPage nav={false}>
+        {/*
+          ป้ายนี้อยู่หน้าสุดท้ายก่อนกดยืนยัน ไม่ใช่แค่หน้าตะกร้า
+          เพราะระหว่างเลือกของกับกดส่งมีหลายจังหวะให้ลืม
+          และถ้าเบิกเข้าชื่อผิดคน กว่าจะรู้คือตอนตามของไม่เจอ
+          กดแก้ได้จากตรงนี้เลย ไม่ต้องย้อนกลับไปหาเอง
+        */}
+        {cart.forUser && (
+          <div className="mb-3 rounded-card border border-warn/40 bg-warn-bg p-3">
+            <p className="font-display text-base text-warn-txt">
+              กำลังเบิกให้ {cart.forUser.full_name}
+            </p>
+            <p className="mt-[2px] text-xs text-warn-txt">
+              <span className="font-mono">{cart.forUser.employee_code}</span>
+              {cart.forUser.dept_code ? ` · ${cart.forUser.dept_code}` : ''} ·
+              ของจะไปค้างชื่อเขา ไม่ใช่ชื่อคุณ
+            </p>
+            <button
+              type="button"
+              className="btn-ghost mt-2 h-9 px-3 text-sm"
+              onClick={() => cart.setForUser(null)}
+            >
+              ไม่ใช่ เบิกให้ตัวเอง
+            </button>
+          </div>
+        )}
+
         {shots.length === 0 ? (
           <div className="card flex min-h-[180px] items-center justify-center p-6 text-center">
             <p className="text-sm text-ink-400">

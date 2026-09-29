@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import type { ProxyTarget } from './api'
 import type { CartLine, Item } from './types'
 
 const KEY = 'bpl.cart.v1'
@@ -7,6 +8,9 @@ interface CartValue {
   lines: CartLine[]
   purpose: string
   note: string
+  /** เบิกให้ใคร · null = เบิกเอง ซึ่งเป็นค่าตั้งต้นเสมอ */
+  forUser: ProxyTarget | null
+  setForUser: (t: ProxyTarget | null) => void
   count: number
   units: number
   setPurpose: (v: string) => void
@@ -43,6 +47,17 @@ function load(): Persisted {
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<Persisted>(load)
+
+  /**
+   * "เบิกให้ใคร" ไม่เก็บลงเครื่อง ต่างจากตัวตะกร้าเอง
+   *
+   * ตะกร้าค้างข้ามวันได้ไม่เป็นไร ของยังไม่ออกจากชั้น
+   * แต่ถ้าจำ "เบิกให้สมชาย" ไว้ข้ามกะ แล้ววันรุ่งขึ้นแอดมินเปิดแอพมากดเบิกของตัวเอง
+   * ของจะไปค้างชื่อสมชายโดยไม่มีใครตั้งใจ และกว่าจะรู้ก็ตอนตามของไม่เจอ
+   *
+   * ปิดแอพแล้วเปิดใหม่จึงกลับไปเป็น "เบิกเอง" เสมอ ซึ่งเป็นด้านที่ผิดแล้วเสียหายน้อยกว่า
+   */
+  const [forUser, setForUser] = useState<ProxyTarget | null>(null)
 
   // ปิดแอปแล้วเปิดใหม่ตะกร้าต้องยังอยู่
   useEffect(() => {
@@ -99,6 +114,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       lines: state.lines,
       purpose: state.purpose,
       note: state.note,
+      forUser,
+      setForUser,
       count,
       units,
       setPurpose: (v) => setState((s) => ({ ...s, purpose: v })),
@@ -106,10 +123,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
       add,
       setQty,
       remove: (itemId) => setState((s) => ({ ...s, lines: s.lines.filter((l) => l.item_id !== itemId) })),
-      clear: () => setState({ lines: [], purpose: '', note: '' }),
+      clear: () => {
+        setState({ lines: [], purpose: '', note: '' })
+        setForUser(null)
+      },
       qtyOf: (itemId) => state.lines.find((l) => l.item_id === itemId)?.qty ?? 0,
     }
-  }, [state, add, setQty])
+  }, [state, add, setQty, forUser])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

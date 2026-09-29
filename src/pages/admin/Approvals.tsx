@@ -122,6 +122,9 @@ export default function Approvals() {
                       </div>
                       <p className="mt-1 text-sm text-ink-500">
                         {r.requisition_items?.length ?? 0} รายการ · {r.profiles?.full_name ?? '—'}
+                        {r.actor && (
+                          <span className="text-warn-txt"> · {r.actor.full_name} เบิกให้</span>
+                        )}
                       </p>
                       <p className="text-xs text-ink-400">{fmtDateTime(r.created_at)}</p>
                     </button>
@@ -140,6 +143,12 @@ export default function Approvals() {
                     {active.profiles?.full_name} ({active.profiles?.employee_code}) · {active.hub_code} ·{' '}
                     {fmtDateTime(active.created_at)}
                   </p>
+                  {active.actor && (
+                    <p className="mt-1 text-sm text-warn-txt">
+                      ใบนี้ <b>{active.actor.full_name}</b> ({active.actor.employee_code}) เป็นคนกดเบิกให้
+                      — ของจะไปค้างชื่อ {active.profiles?.full_name}
+                    </p>
+                  )}
                   {active.purpose && <p className="mt-1 text-sm">วัตถุประสงค์: {active.purpose}</p>}
                   {active.note && <p className="text-sm text-ink-500">หมายเหตุ: {active.note}</p>}
                 </div>

@@ -1,5 +1,8 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useCart } from '../../lib/cart'
+import { useAuth } from '../../lib/auth'
+import { canProxy } from '../../lib/roles'
+import { ProxyPicker } from '../../components/ProxyPicker'
 import { StaffPage, TopBar } from '../../components/Shell'
 import { EmptyState, QtyStepper } from '../../components/ui'
 
@@ -8,8 +11,11 @@ const PURPOSES = ['งานหน้างาน', 'งานในออฟฟ
 export default function Cart() {
   const cart = useCart()
   const nav = useNavigate()
+  const { profile } = useAuth()
 
   const blocked = cart.lines.some((l) => l.view_only)
+  // ชุดเดียวกับฝั่ง Asset — ฐานข้อมูลกันอีกชั้นด้วย my_can_proxy() ไม่ได้กันแค่ซ่อนปุ่ม
+  const mayProxy = canProxy(profile)
 
   return (
     <>
@@ -48,6 +54,19 @@ export default function Cart() {
           />
         ) : (
           <>
+            {/*
+              วางไว้บนสุดก่อนรายการของ เหมือนหน้าเบิกอุปกรณ์
+              ถ้าอยู่ล่างสุดติดปุ่มส่ง คนจะเลือกของครบแล้วค่อยเห็น
+              ซึ่งสายไปแล้วสำหรับการตัดสินใจว่าจะเบิกให้ใคร
+            */}
+            {mayProxy && (
+              <ProxyPicker
+                value={cart.forUser}
+                onChange={cart.setForUser}
+                myName={profile?.full_name ?? 'ตัวเอง'}
+              />
+            )}
+
             <ul className="space-y-2">
               {cart.lines.map((l) => (
                 <li key={l.item_id} className="card p-3">

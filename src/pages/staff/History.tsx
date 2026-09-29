@@ -115,6 +115,11 @@ export default function History() {
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-mono text-sm">{r.ref_no}</span>
                     <span className={statusClass(r.status)}>{STATUS_TH[r.status]}</span>
+                    {r.actor && (
+                      <span className="badge bg-warn-bg text-warn-txt">
+                        {r.actor.full_name} เบิกให้
+                      </span>
+                    )}
                   </div>
                   <p className="mt-[2px] text-xs text-ink-400">
                     {fmtTime(r.created_at)} · {r.requisition_items?.length ?? 0} รายการ ·{' '}

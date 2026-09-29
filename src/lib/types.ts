@@ -90,6 +90,9 @@ export interface Requisition {
   decided_by: string | null
   decided_at: string | null
   reject_reason: string | null
+  /** คนที่กดเบิกให้ ถ้าไม่ใช่เจ้าตัว · ว่าง = เบิกเอง */
+  acted_by?: string | null
+  actor?: Pick<Profile, 'full_name' | 'employee_code'> | null
   requisition_items?: RequisitionItem[]
   profiles?: Pick<Profile, 'id' | 'full_name' | 'employee_code' | 'dept_code'> | null
   sync_log?: SyncRow[]
@@ -132,6 +135,8 @@ export interface CreateReqResult {
   ref_no: string
   id: string
   status: ReqStatus
+  /** ชื่อคนที่ของไปอยู่ด้วย ถ้าเบิกแทน · ว่าง = เบิกให้ตัวเอง */
+  for_name?: string | null
 }
 
 /** บรรทัดในตะกร้า — เก็บ snapshot ไว้พอแสดงผลได้ตอนออฟไลน์ */

@@ -47,6 +47,8 @@ export default function Success() {
       qty: ri.qty_requested,
     }))
   const syncStates: SyncMap = state.sync ?? syncMapFromRows(req?.sync_log)
+  // มาจากฐานข้อมูล ไม่ได้มาจากสิ่งที่หน้าจอเดาเอง จึงเชื่อได้ว่าตรงกับที่บันทึกไปจริง
+  const forName = state.result?.for_name ?? null
 
   return (
     <StaffPage nav={false}>
@@ -86,9 +88,22 @@ export default function Success() {
       </ul>
 
       <div className="card mt-3 p-3 text-sm text-ink-500">
-        <p>
-          ผู้เบิก <b className="text-ink">{profile?.full_name}</b> · {profile?.hub_code}
-        </p>
+        {/*
+          ใบที่เบิกแทนต้องขึ้นชื่อคนรับเป็นหลัก ไม่ใช่ชื่อคนกด
+          คนกดมักส่งหน้าจอนี้ให้เจ้าตัวดูเป็นหลักฐานว่าเบิกเข้าชื่อถูกคนแล้ว
+        */}
+        {forName ? (
+          <p>
+            ของเข้าชื่อ <b className="text-ink">{forName}</b> · {profile?.hub_code}
+            <span className="block text-xs text-warn-txt">
+              {profile?.full_name} เป็นคนกดเบิกให้
+            </span>
+          </p>
+        ) : (
+          <p>
+            ผู้เบิก <b className="text-ink">{profile?.full_name}</b> · {profile?.hub_code}
+          </p>
+        )}
         <p className="mt-1">เวลา {fmtDateTime(req?.created_at ?? new Date().toISOString())}</p>
         <div className="mt-3">
           <SyncBar states={syncStates} refNo={refNo} at={req?.created_at ?? new Date().toISOString()} />
