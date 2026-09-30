@@ -175,30 +175,32 @@ function fieldsOf(row: SackRow, sentBy?: string | null): Field[] {
   return out
 }
 
-/** หัวการ์ด — ป้ายเหลืองซ้าย เลขที่ขวา สูงคงที่ */
-const HEADER_H = 168
+/**
+ * หัวการ์ด — ป้ายเหลืองซ้าย ชื่องานขวา สูงคงที่
+ *
+ * เลขที่ลงไปอยู่ท้ายการ์ดแล้ว คนหน้างานไม่ได้ใช้ ใช้ตอนแอดมินตามเรื่องย้อนหลัง
+ * ที่หัวการ์ดมีแต่ของที่ต้องเห็นทันทีตอนเลื่อนผ่านในแชท
+ */
+const HEADER_H = 148
 
-function drawHeader(ctx: CanvasRenderingContext2D, row: SackRow, badge?: string) {
+function drawHeader(ctx: CanvasRenderingContext2D, row: SackRow, badge?: string, w = W) {
   ctx.fillStyle = YELLOW
-  ctx.fillRect(0, 0, W, 12)
+  ctx.fillRect(0, 0, w, 12)
 
   ctx.font = font(52, '600')
   const hubW = ctx.measureText(row.hub_code).width + 44
-  roundRect(ctx, PAD, 40, hubW, 80, 16)
+  roundRect(ctx, PAD, 38, hubW, 80, 16)
   ctx.fillStyle = YELLOW
   ctx.fill()
   ctx.fillStyle = BLACK
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText(row.hub_code, PAD + 22, 40 + 42)
+  ctx.fillText(row.hub_code, PAD + 22, 38 + 42)
 
   ctx.textAlign = 'right'
-  ctx.font = font(32, '500')
+  ctx.font = font(30, '500')
   ctx.fillStyle = YELLOW_SOFT
-  ctx.fillText(row.ref_no, W - PAD, 62)
-  ctx.font = font(26, '500')
-  ctx.fillStyle = GREY
-  ctx.fillText(badge ?? 'กระจายกระสอบ', W - PAD, 104)
+  ctx.fillText(badge ?? 'กระจายกระสอบ', w - PAD, 38 + 42)
   ctx.textAlign = 'left'
   ctx.textBaseline = 'top'
 }
@@ -288,19 +290,88 @@ function drawFields(
   }
 }
 
-/** ท้ายการ์ด — แถบเหลืองบาง ๆ กับบรรทัดเล็ก */
-const FOOTER_H = 74
+/**
+ * ข้อมูลเรียงลงมาคอลัมน์เดียว — ใช้กับการ์ดที่ยกฝั่งขวาให้รูปไปหมดแล้ว
+ *
+ * ของเดิมเป็นสองช่องต่อแถวเต็มความกว้างการ์ด ซึ่งกินฝั่งขวาไปด้วย
+ * พอรูปมาอยู่ขวา ข้อมูลจึงต้องมุดมาอยู่คอลัมน์เดียวทางซ้าย
+ * แคบลงแปลว่าค่ายาว ๆ ขึ้นบรรทัดสองบ่อยขึ้น ต้องวัดความสูงจริงทุกช่อง
+ */
+interface StackItem {
+  f: Field
+  lines: string[]
+}
 
-function drawFooterAt(ctx: CanvasRenderingContext2D, row: SackRow, bottom: number) {
+const stackMetrics = (big: boolean, scale: number) => ({
+  label: Math.round(26 * scale),
+  value: Math.round((big ? 46 : 36) * scale),
+  lineH: Math.round((big ? 54 : 44) * scale),
+  labelH: Math.round(34 * scale),
+  gap: Math.round(22 * scale),
+})
+
+function layoutStack(
+  ctx: CanvasRenderingContext2D,
+  fields: Field[],
+  w: number,
+  scale = 1,
+): { items: StackItem[]; height: number } {
+  const items: StackItem[] = []
+  let height = 0
+  for (const f of fields) {
+    const m = stackMetrics(Boolean(f.big), scale)
+    ctx.font = font(m.value, f.big ? '600' : '500')
+    const lines = wrap(ctx, f.value, w)
+    items.push({ f, lines })
+    height += m.labelH + lines.length * m.lineH + m.gap
+  }
+  const tailGap = items.length ? stackMetrics(false, scale).gap : 0
+  return { items, height: Math.max(0, height - tailGap) }
+}
+
+function drawStack(
+  ctx: CanvasRenderingContext2D,
+  laid: { items: StackItem[] },
+  x: number,
+  top: number,
+  scale = 1,
+) {
+  let y = top
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+  for (const it of laid.items) {
+    const m = stackMetrics(Boolean(it.f.big), scale)
+    ctx.font = font(m.label, '500')
+    ctx.fillStyle = GREY
+    ctx.fillText(it.f.label, x, y)
+
+    ctx.font = font(m.value, it.f.big ? '600' : '500')
+    ctx.fillStyle = it.f.big ? YELLOW : WHITE
+    it.lines.forEach((line, k) => ctx.fillText(line, x, y + m.labelH + k * m.lineH))
+
+    y += m.labelH + it.lines.length * m.lineH + m.gap
+  }
+}
+
+/**
+ * ท้ายการ์ด — แถบเหลืองบาง ๆ กับบรรทัดเล็ก
+ *
+ * เลขที่มาอยู่ตรงนี้ ไม่ได้อยู่หัวการ์ดเหมือนเดิม
+ * หน้างานดูแค่จำนวนกับสาขา ส่วนเลขที่ใช้ตอนแอดมินตามเรื่องย้อนหลัง
+ * เอาไว้ล่างสุดตัวเล็กจึงพอ และคืนที่หัวการ์ดให้ของที่ต้องเห็นก่อน
+ */
+const FOOTER_H = 82
+
+function drawFooterAt(ctx: CanvasRenderingContext2D, row: SackRow, bottom: number, w = W) {
   ctx.fillStyle = YELLOW
-  ctx.fillRect(0, bottom - 10, W, 10)
-  ctx.font = font(26, '500')
+  ctx.fillRect(0, bottom - 10, w, 10)
+  ctx.font = font(25, '500')
   ctx.fillStyle = '#6B6558'
   ctx.textBaseline = 'alphabetic'
   ctx.textAlign = 'left'
-  ctx.fillText('BPL SUPPLY', PAD, bottom - 32)
+  ctx.fillText(`BPL SUPPLY · ${row.ref_no}`, PAD, bottom - 34)
   ctx.textAlign = 'right'
-  ctx.fillText(fmtWhen(row.sent_at ?? row.created_at), W - PAD, bottom - 32)
+  ctx.fillText(fmtWhen(row.sent_at ?? row.created_at), w - PAD, bottom - 34)
   ctx.textAlign = 'left'
   ctx.textBaseline = 'top'
 }
@@ -337,14 +408,14 @@ function drawTag(ctx: CanvasRenderingContext2D, text: string, x: number, y: numb
   ctx.textBaseline = 'top'
 }
 
-function newCanvas(h = H): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+function newCanvas(h = H, w = W): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
   const canvas = document.createElement('canvas')
-  canvas.width = W
+  canvas.width = w
   canvas.height = h
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('เบราว์เซอร์นี้วาดรูปลง canvas ไม่ได้')
   ctx.fillStyle = BLACK
-  ctx.fillRect(0, 0, W, h)
+  ctx.fillRect(0, 0, w, h)
   ctx.textBaseline = 'top'
   return { canvas, ctx }
 }
@@ -400,16 +471,28 @@ export async function buildSackCards(
   return out
 }
 
+/** คอลัมน์ข้อมูลฝั่งซ้าย ที่เหลือเป็นของรูปทั้งหมด */
+const INFO_W = 330
+const GUTTER = 28
+
 async function buildTextOnly(row: SackRow, fields: Field[]): Promise<Blob> {
   const probe = document.createElement('canvas').getContext('2d')
   if (!probe) throw new Error('เบราว์เซอร์นี้วาดรูปลง canvas ไม่ได้')
-  const laid = layoutFields(probe, fields)
-  const h = HEADER_H + 40 + laid.height + 40 + FOOTER_H
 
-  const { canvas, ctx } = newCanvas(h)
-  drawHeader(ctx, row)
-  drawFields(ctx, laid, HEADER_H + 40)
-  drawFooterAt(ctx, row, h)
+  // ไม่มีรูปก็ไม่ต้องหวงที่ให้รูป คอลัมน์กว้างได้ ค่ายาว ๆ จะได้ไม่ตกบรรทัด
+  //
+  // และย่อความกว้างการ์ดลงตามคอลัมน์ด้วย
+  // คงไว้ 1080 เท่าใบที่มีรูป จะเหลือพื้นดำเปล่าฝั่งขวาเกือบครึ่งใบ
+  // ซึ่งดูเหมือนรูปโหลดไม่ขึ้น มากกว่าดูเหมือนใบที่ตั้งใจไม่มีรูป
+  const colW = 640
+  const cardW = colW + PAD * 2
+  const laid = layoutStack(probe, fields, colW)
+  const h = HEADER_H + 36 + laid.height + 44 + FOOTER_H
+
+  const { canvas, ctx } = newCanvas(h, cardW)
+  drawHeader(ctx, row, undefined, cardW)
+  drawStack(ctx, laid, PAD, HEADER_H + 36)
+  drawFooterAt(ctx, row, h, cardW)
   return toBlob(canvas, false)
 }
 
@@ -456,49 +539,72 @@ async function buildSplit(
   return toBlob(canvas, true)
 }
 
+/**
+ * ข้อมูลซ้าย รูปขวา
+ *
+ * ของเดิมข้อมูลกินเต็มความกว้างด้านบน แล้วรูปได้แถบล่างที่เหลือ
+ * ซึ่งแปลว่ารูปสูงได้ไม่เกินราวครึ่งการ์ด ทั้งที่รูปคือของที่คนเปิดมาดู
+ * ยกฝั่งขวาทั้งแถบให้รูปแทน รูปจึงสูงได้เกือบเต็มการ์ด
+ *
+ * ส่วนสูงของแต่ละรูปแบ่งตามสัดส่วนจริงของรูปนั้น ไม่ได้หารเท่า ๆ กัน
+ * หารเท่ากันแล้วรูปแนวนอนจะเหลือขอบดำบนล่างเป็นแถบใหญ่
+ * ขณะที่รูปแนวตั้งในช่องเดียวกันกลับถูกบีบจนเล็กทั้งที่มีที่ว่างอยู่ข้าง ๆ
+ */
 async function buildGrid(row: SackRow, fields: Field[], imgs: HTMLImageElement[]): Promise<Blob> {
   const { canvas, ctx } = newCanvas()
   drawHeader(ctx, row)
 
-  // ข้อมูลย่อลงหน่อยเพื่อคืนพื้นที่ให้รูป ซึ่งเป็นของที่คนเปิดมาดูจริง
-  const laid = layoutFields(ctx, fields, 0.86)
-  drawFields(ctx, laid, HEADER_H + 24, 0.86)
+  const laid = layoutStack(ctx, fields, INFO_W)
+  const infoTop = HEADER_H + 30
+  drawStack(ctx, laid, PAD, infoTop)
 
-  const top = HEADER_H + 24 + laid.height + 28
-  const areaH = H - top - FOOTER_H
+  const gap = 14
   const n = imgs.length
-  const gap = 12
 
   /**
-   * หนึ่งคอลัมน์หรือสอง เลือกจากขนาดที่รูปจะได้จริง ไม่ใช่ตั้งไว้ตายตัว
+   * รูปวางได้สองที่ เลือกที่ที่รูปออกมาใหญ่กว่าจริง ๆ
    *
-   * สองรูปแนวนอนเรียงลงมาได้กว้างราว 840px ต่อใบ
-   * แต่ถ้าวางข้างกันเหลือ 534px ทั้งที่พื้นที่เท่ากัน — ต่างกันเกือบเท่าตัว
-   * พอสี่รูปขึ้นไปสลับกัน สองคอลัมน์ถึงจะได้เปรียบ
+   *   ขวา  คอลัมน์ข้างข้อมูล สูงเกือบเต็มการ์ด แต่กว้างแค่ 610
+   *   ล่าง เต็มความกว้างใต้บล็อกข้อมูล กว้าง 968 แต่เตี้ยกว่า
    *
-   * วัดเป็นพื้นที่รวมที่รูปกินจริงหลังย่อให้พอดีกรอบ แล้วเอาแบบที่ได้มากกว่า
-   * คิดจากรูปจริงในใบนั้น แนวตั้งแนวนอนปนกันก็ยังเลือกถูก
+   * สองรูปขึ้นไปคอลัมน์ขวาชนะเสมอ เพราะมีความสูงให้ซ้อนกันเยอะ
+   * แต่รูปเดียวจะเหลือพื้นดำเกือบทั้งคอลัมน์ ทั้งที่ข้างล่างว่างอยู่
+   * ให้มันวัดเอาเองดีกว่าตั้งกฎตายตัว เพราะขึ้นกับว่ารูปตั้งหรือนอนด้วย
    */
-  const score = (cols: number) => {
-    const rows = Math.ceil(n / cols)
-    const cw = Math.floor((W - gap * (cols - 1)) / cols)
-    const ch = Math.floor((areaH - gap * (rows - 1)) / rows)
-    if (cw <= 0 || ch <= 0) return -1
-    return imgs.reduce((sum, img) => {
-      const k = Math.min(cw / img.width, ch / img.height)
-      return sum + k * k * img.width * img.height
-    }, 0)
-  }
-  const cols = n === 1 || score(1) >= score(2) ? 1 : 2
-  const rows = Math.ceil(n / cols)
-  const cw = Math.floor((W - gap * (cols - 1)) / cols)
-  const ch = Math.floor((areaH - gap * (rows - 1)) / rows)
+  const infoBottom = infoTop + laid.height
+  const regions = [
+    { x: PAD + INFO_W + GUTTER, y: HEADER_H + 20, w: W - (PAD + INFO_W + GUTTER) - PAD },
+    { x: PAD, y: infoBottom + 32, w: W - PAD * 2 },
+  ].map((r) => ({ ...r, h: H - r.y - FOOTER_H - 16 }))
 
+  /** รูปแต่ละใบอยากได้ความสูงเท่าไหร่ ถ้าได้กว้างเต็มกรอบนี้ */
+  const wants = (w: number) =>
+    imgs.map((im) => (im.width > 0 ? (w * im.height) / im.width : w * 0.75))
+
+  const plan = (r: { x: number; y: number; w: number; h: number }) => {
+    const natural = wants(r.w)
+    const wanted = natural.reduce((a, b) => a + b, 0)
+    const room = r.h - gap * (n - 1)
+    if (room <= 0 || wanted <= 0) return { r, natural, k: 0, area: -1 }
+    const k = Math.min(1, room / wanted)
+    // พื้นที่ที่รูปกินจริงหลังย่อ เป็นตัวตัดสิน ไม่ใช่ขนาดกรอบ
+    const area = imgs.reduce((sum, im, i) => {
+      const hgt = natural[i] * k
+      const wid = im.height > 0 ? (hgt * im.width) / im.height : r.w
+      return sum + hgt * Math.min(wid, r.w)
+    }, 0)
+    return { r, natural, k, area }
+  }
+
+  const best = regions.map(plan).reduce((a, b) => (b.area > a.area ? b : a))
+  const used = best.natural.reduce((a, b) => a + b, 0) * best.k + gap * (n - 1)
+
+  let y = best.r.y + Math.round((best.r.h - used) / 2)
   imgs.forEach((img, i) => {
-    const cx = (i % cols) * (cw + gap)
-    const cy = top + Math.floor(i / cols) * (ch + gap)
-    const box = drawContained(ctx, img, cx, cy, cw, ch)
+    const slotH = Math.round(best.natural[i] * best.k)
+    const box = drawContained(ctx, img, best.r.x, y, best.r.w, slotH)
     if (n > 1) drawTag(ctx, String(i + 1), box.x + 10, box.y + 10, 24)
+    y += slotH + gap
   })
 
   drawFooterAt(ctx, row, H)
