@@ -2086,7 +2086,29 @@ export async function importOsPeople(rows: OsImportRow[]): Promise<{
       (r.os_code ? byCode.get(r.os_code) : undefined) ??
       byName.get(r.full_name.trim().toLowerCase())
 
-    await saveOsPerson({ ...r, id: hit?.id, is_active: hit?.is_active ?? true })
+    /**
+     * ช่องว่างในชีตแปลว่า "ไม่รู้" ไม่ได้แปลว่า "ลบทิ้ง"
+     *
+     * สิบสามคนในชีตยังไม่มีรหัส OS เจ้าของระบบจะทยอยเติมในแอพ
+     * ถ้าวางทับรอบหน้าแล้วช่องว่างไปล้างของที่เติมไว้ งานที่ทำไปจะหายเงียบ
+     * และจะไม่มีใครรู้จนกว่าจะพิมพ์บัตรออกมาแล้วเห็นว่ารหัสหายไป
+     *
+     * ของใหม่ทับได้เสมอ ของว่างไม่ทับของที่มีอยู่
+     */
+    const keep = <T,>(incoming: T | null | undefined, current: T | null | undefined) =>
+      incoming ?? current ?? null
+
+    await saveOsPerson({
+      ...r,
+      id: hit?.id,
+      os_code: keep(r.os_code, hit?.os_code),
+      affiliation: keep(r.affiliation, hit?.affiliation),
+      shift: keep(r.shift, hit?.shift),
+      phone_model: keep(r.phone_model, hit?.phone_model),
+      imei: keep(r.imei, hit?.imei),
+      nickname: keep(r.nickname, hit?.nickname),
+      is_active: hit?.is_active ?? true,
+    })
     if (hit) updated++
     else added++
   }

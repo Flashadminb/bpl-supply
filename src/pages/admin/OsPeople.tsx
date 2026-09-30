@@ -15,7 +15,7 @@ import {
 import { useAsync } from '../../lib/useAsync'
 import { readableError } from '../../lib/supabase'
 import { compressImage, prettyBytes, releaseImage } from '../../lib/image'
-import { osRowWarnings, parseOsPaste, photoKeyOf } from '../../lib/osImport'
+import { imeiProblem, osRowWarnings, parseOsPaste, photoKeyOf } from '../../lib/osImport'
 import { EvidenceImg } from '../../components/EvidenceThumbs'
 import { EmptyState, ErrorBox, Loading, Modal, Spinner } from '../../components/ui'
 import { fmtDateTime } from '../../lib/format'
@@ -604,6 +604,16 @@ export default function OsPeople() {
                     ))}
                   </datalist>
                 )}
+                {k === 'imei' && imeiProblem(edit.imei) && (
+                  <span className="mt-1 block text-xs text-danger-txt">
+                    {imeiProblem(edit.imei)}
+                  </span>
+                )}
+                {k === 'os_code' && !edit.os_code?.trim() && (
+                  <span className="mt-1 block text-xs text-warn-txt">
+                    ยังไม่มีรหัส · เติมทีหลังได้ บัตรที่ออกไปแล้วยังใช้ได้เหมือนเดิม
+                  </span>
+                )}
               </span>
             ))}
 
@@ -677,6 +687,15 @@ export default function OsPeople() {
                   ไม่มีที่ต้องการก็พิมพ์ลงช่องข้างบนได้เลย ครั้งหน้าจะมีให้เลือกเอง
                 </p>
               </div>
+            )}
+
+            {edit.full_name?.trim() && osRowWarnings(edit).length > 0 && (
+              <p className="col-span-2 rounded-card border border-warn/30 bg-warn-bg p-3 text-sm text-warn-txt">
+                ยังขาด: {osRowWarnings(edit).join(" · ")}
+                <span className="mt-1 block text-xs">
+                  บันทึกได้เลย ไม่ได้บังคับ · แต่จะขึ้นป้ายเตือนในตารางจนกว่าจะเติมครบ
+                </span>
+              </p>
             )}
 
             <button
