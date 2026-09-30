@@ -59,7 +59,7 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
       { to: '/admin/stock', label: 'สต็อกวัสดุ', icon: 'box' },
       { to: '/admin/approvals', label: 'คำขอเบิก', icon: 'inbox', badge: 'approvals' },
       { to: '/admin/by', label: 'บาร์โค้ดจาก BY', icon: 'barcode' },
-      { to: '/admin/sacks', label: 'กระจายกระสอบ', icon: 'box', audit: true },
+      { to: '/admin/sacks', label: 'กระจายกระสอบ', icon: 'box' },
     ],
   },
   {
@@ -76,6 +76,7 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
   {
     title: 'บัตร OS',
     links: [
+      { to: '/guard', label: 'สแกนบัตร (หน้างาน)', icon: 'qr', audit: true },
       { to: '/admin/os', label: 'รายชื่อและบัตร', icon: 'users', audit: true, end: true },
       { to: '/admin/os/scans', label: 'ประวัติการสแกน', icon: 'history', audit: true },
       { to: '/admin/os/print', label: 'พิมพ์บัตร', icon: 'qr', audit: true },

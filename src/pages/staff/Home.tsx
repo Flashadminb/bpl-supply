@@ -12,7 +12,7 @@ import {
 import { StaffPage } from '../../components/Shell'
 import { EmptyState, ErrorBox, Loading } from '../../components/ui'
 import { STATUS_TH, fmtDateTime, statusClass } from '../../lib/format'
-import { MANAGER_ROLES, canProxy, roleLabel } from '../../lib/roles'
+import { MANAGER_ROLES, canOsAdmin, canProxy, roleLabel } from '../../lib/roles'
 import { usePendingApprovals } from '../../lib/usePendingApprovals'
 import { NotifyBell } from '../../components/NotifyBell'
 import { WorkLinks } from '../../components/WorkLinks'
@@ -44,9 +44,21 @@ export default function Home() {
   )
   const hubOthers = Math.max((hubHeld.data ?? 0) - assetCount, 0)
   const approvals = usePendingApprovals()
-  // กระสอบรอส่ง — ทุกคนกดได้ ใครว่างก็หยิบไปส่งได้
-  const sacks = useAsync(() => countPendingSacks(), [])
+  /**
+   * กระสอบรอส่ง — หน้างานทุกคนกดได้ ใครว่างก็หยิบไปส่งได้
+   *
+   * ยกเว้นผู้ตรวจสอบ งานเขาคือตามว่าของถึงหรือยัง ไม่ใช่ขนของเอง
+   * ไม่ถามฐานข้อมูลด้วยซ้ำถ้าเขาไม่ได้จะเห็น จะได้ไม่เปลืองโควต้าฟรี ๆ
+   */
+  const seesSacks = !profile?.can_dispatch
+  const sacks = useAsync(
+    () => (seesSacks ? countPendingSacks() : Promise.resolve(0)),
+    [seesSacks],
+  )
   const sackCount = sacks.data ?? 0
+
+  // สแกนบัตร OS — เจ้าของระบบ แอดมิน ผู้ตรวจสอบ ไว้สุ่มเช็คเองที่หน้างาน
+  const mayScan = canOsAdmin(profile)
 
   /**
    * รปภ ได้หน้าแรกคนละหน้า ไม่ใช่หน้าเดิมที่ซ่อนเมนูไปครึ่งหนึ่ง
@@ -197,6 +209,24 @@ export default function Home() {
           </Link>
         )}
 
+        {mayScan && (
+          <Link to="/guard" className="card mt-3 flex items-center gap-3 p-4">
+            <span aria-hidden className="text-md">
+              ▣
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-display text-md">สแกนบัตร OS</span>
+              <span className="block text-sm text-ink-400">
+                เช็คมือถือที่ OS นำเข้าพื้นที่ · หน้าจอเดียวกับที่ รปภ ใช้
+              </span>
+            </span>
+            <span aria-hidden className="text-ink-400">
+              ›
+            </span>
+          </Link>
+        )}
+
+        {seesSacks && (
         <Link
           to="/ship"
           className={`card mt-3 flex items-center gap-3 p-4 ${
@@ -223,6 +253,7 @@ export default function Home() {
             ›
           </span>
         </Link>
+        )}
 
         <Link to="/by" className="card mt-3 flex items-center gap-3 p-4">
           <span aria-hidden className="text-md">

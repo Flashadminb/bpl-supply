@@ -181,7 +181,7 @@ export default function App() {
       <Route
         path="/guard"
         element={
-          <Guard roles={['staff', 'supervisor', 'admin']} allowGuard allowDispatch>
+          <Guard roles={MANAGER_ROLES} allowGuard allowDispatch>
             <GuardScan />
           </Guard>
         }
@@ -225,10 +225,8 @@ export default function App() {
           ผู้ตรวจสอบเห็นหน้านี้ แต่ปุ่มตั้งรายการซ่อนไว้ในหน้านั้นเอง
           และ create_sack_order ในฐานข้อมูลก็ปฏิเสธเขาอยู่แล้วอีกชั้น
         */}
-        <Route
-          path="sacks"
-          element={<Guard roles={MANAGER_ROLES} allowDispatch><SackOrders /></Guard>}
-        />
+        {/* กระสอบเป็นงานของเจ้าของระบบกับแอดมิน ผู้ตรวจสอบไม่เกี่ยว */}
+        <Route path="sacks" element={<Guard roles={MANAGER_ROLES}><SackOrders /></Guard>} />
         {/* บัตร OS — ผู้ตรวจสอบจัดการได้เต็ม ตรงกับ my_can_os_admin() ในฐานข้อมูล */}
         <Route path="os" element={<Guard roles={MANAGER_ROLES} allowDispatch><OsPeople /></Guard>} />
         <Route path="os/print" element={<Guard roles={MANAGER_ROLES} allowDispatch><OsCards /></Guard>} />
