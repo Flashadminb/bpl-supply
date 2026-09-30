@@ -8,8 +8,14 @@ const fs = require('fs')
 const QRCode = require('qrcode')
 
 const src = fs.readFileSync('src/pages/admin/OsCards.tsx', 'utf8')
+
+// --print = เอากฎของหน้าพิมพ์มาแสดงบนจอเลย จะได้ตรวจหน้าพิมพ์โดยไม่ต้องสั่งพิมพ์จริง
+// ดูได้ทุกอย่างยกเว้นเรื่องสีพื้น ซึ่งต้องเปิดหน้าตัวอย่างก่อนพิมพ์ในเบราว์เซอร์ดูเอง
+const asPrint = process.argv.includes('--print')
+
 const css = src
   .slice(src.indexOf('<style>{`') + 9, src.indexOf('`}</style>'))
+  .replace(/@media print/g, asPrint ? '@media all' : '@media print')
   .replace(/\$\{Y\}/g, '#FFED00')
   .replace(/\$\{NAVY\}/g, '#16304C')
 

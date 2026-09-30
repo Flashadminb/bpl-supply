@@ -31,17 +31,24 @@ export function OsCardStyles() {
   return <style>{`
         .os-sheet { display:grid; grid-template-columns:repeat(2,204px); gap:10px; }
         @media print {
-          .no-print { display:none !important; }
+          /* เบราว์เซอร์ตัดสีพื้นทิ้งตอนพิมพ์ ถือว่าช่วยประหยัดหมึก
+             บัตรนี้สีพื้นคือตัวบัตร ตัดทิ้งแล้วเหลือแต่ตัวหนังสือลอยบนกระดาษเปล่า */
+          body { background:#fff; }
+          .no-print, aside, header, nav { display:none !important; }
+          main { padding:0 !important; }
           .os-sheet { grid-template-columns:repeat(3,54mm); gap:4mm; }
-          .os-card { break-inside:avoid; page-break-inside:avoid; }
+          .os-card { break-inside:avoid; page-break-inside:avoid;
+                     width:54mm; height:86mm; border-radius:2mm; }
           @page { size:A4; margin:8mm; }
         }
         .os-card {
           position:relative; width:204px; height:325px; overflow:hidden;
           background:#EDEAE4; border:1px dashed #b9b3a6; border-radius:8px;
           font-family:Kanit,system-ui,sans-serif; color:#111;
+          /* สั่งให้พิมพ์สีพื้นออกมาด้วย เป็นคุณสมบัติที่ลูกในกรอบสืบทอดต่อได้
+             ครอบทั้งแถบกรมท่า ลายเหลือง และป้ายสังกัดในคราวเดียว */
+          -webkit-print-color-adjust:exact; print-color-adjust:exact;
         }
-        @media print { .os-card { width:54mm; height:86mm; border-radius:2mm; } }
         .os-top { position:absolute; left:0; right:0; top:0; height:8%; overflow:hidden; }
         .os-navy,.os-navy2 { position:absolute; inset:0; background:${NAVY}; }
         .os-navy  { clip-path:polygon(0 0,100% 0,100% 60%,48% 100%,0 55%); }
