@@ -74,6 +74,14 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
     ],
   },
   {
+    title: 'บัตร OS',
+    links: [
+      { to: '/admin/os', label: 'รายชื่อและบัตร', icon: 'users', audit: true, end: true },
+      { to: '/admin/os/scans', label: 'ประวัติการสแกน', icon: 'history', audit: true },
+      { to: '/admin/os/print', label: 'พิมพ์บัตร', icon: 'qr', audit: true },
+    ],
+  },
+  {
     title: 'ทั่วไป',
     links: [
       { to: '/admin/qr', label: 'พิมพ์ QR', icon: 'qr' },

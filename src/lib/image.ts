@@ -12,6 +12,13 @@ const MAX_EDGE = 1024
 
 export interface CompressOptions {
   quality?: number
+  /**
+   * ด้านยาวสุดที่ต้องการ · ไม่ส่งมาใช้ 1024 เหมือนเดิม
+   *
+   * รูปหน้าคนของ OS ใช้ดูว่าใช่คนนี้ไหม ไม่ได้ใช้อ่านตัวหนังสือในรูป
+   * 1024 จึงใหญ่เกินความจำเป็นและกิน egress ฟรี ๆ ทุกครั้งที่ รปภ สแกน
+   */
+  maxEdge?: number
   /** ข้อความประทับมุมล่างซ้ายของรูป บรรทัดแรกตัวใหญ่สุด */
   stamp?: string[]
 }
@@ -27,8 +34,9 @@ export async function compressImage(
   opts: CompressOptions = {},
 ): Promise<CompressedImage> {
   const quality = opts.quality ?? 0.72
-  const bitmap = await loadBitmap(file)
-  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height))
+  const edge = Math.max(160, opts.maxEdge ?? MAX_EDGE)
+  const bitmap = await loadBitmap(file, edge)
+  const scale = Math.min(1, edge / Math.max(bitmap.width, bitmap.height))
   const width = Math.round(bitmap.width * scale)
   const height = Math.round(bitmap.height * scale)
 
@@ -115,7 +123,10 @@ export function stampLines(who: string, code: string, hub: string, note?: string
   return [at, `${who} · ${code} · ${hub}`, note ?? 'BPL SUPPLY'].filter(Boolean)
 }
 
-async function loadBitmap(file: File | Blob): Promise<ImageBitmap | HTMLImageElement> {
+async function loadBitmap(
+  file: File | Blob,
+  edge = MAX_EDGE,
+): Promise<ImageBitmap | HTMLImageElement> {
   if ('createImageBitmap' in window) {
     // ย่อ "ระหว่าง" ถอดรหัส ไม่ใช่ถอดเต็มแล้วค่อยย่อ
     //
@@ -128,7 +139,7 @@ async function loadBitmap(file: File | Blob): Promise<ImageBitmap | HTMLImageEle
     // ใส่ resizeWidth ให้ตัวถอดรหัสย่อให้ตั้งแต่ต้นทาง ความสูงจะถูกย่อตามสัดส่วนเอง
     // หน่วยความจำสูงสุดต่อรูปเหลือระดับไม่กี่เมกะไบต์
     try {
-      return await createImageBitmap(file, { resizeWidth: MAX_EDGE, resizeQuality: 'high' })
+      return await createImageBitmap(file, { resizeWidth: edge, resizeQuality: 'high' })
     } catch {
       /* บางเบราว์เซอร์ไม่รับตัวเลือกย่อ — ลองแบบธรรมดา */
     }

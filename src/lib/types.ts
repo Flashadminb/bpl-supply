@@ -24,6 +24,8 @@ export interface Profile {
   can_assets: boolean
   /** ผู้ตรวจสอบ — เห็นเครื่องทุกแผนก เบิกแทนและโอนเครื่องได้ */
   can_dispatch: boolean
+  /** รปภ — เห็นเฉพาะหน้าสแกนบัตร OS ไม่เห็นเมนูเบิกของเลย */
+  can_guard: boolean
   extra_depts: string[]
   shift_start: string | null
   shift_end: string | null
@@ -763,4 +765,80 @@ export interface SackNotifyTarget {
   employee_code: string
   reason: string
   has_push: boolean
+}
+
+/* ------------------------------------ บัตรนำโทรศัพท์เข้าพื้นที่ของ OS */
+
+export interface OsPerson {
+  id: string
+  os_code: string | null
+  full_name: string
+  affiliation: string | null
+  shift: string | null
+  phone_model: string | null
+  imei: string | null
+  nickname: string | null
+  photo_file_id: string | null
+  photo_link: string | null
+  is_active: boolean
+  note: string | null
+  created_at: string
+  updated_at: string | null
+  /* จากวิว os_person_rows */
+  card_id: string | null
+  card_token: string | null
+  card_rev: number | null
+  card_issued_at: string | null
+  has_card: boolean
+  has_photo: boolean
+  scan_count: number
+  last_scan_at: string | null
+}
+
+export type OsScanResult = 'ok' | 'revoked' | 'unknown' | 'inactive'
+
+/** สิ่งที่ รปภ เห็นทันทีหลังสแกน — ตอบครบในครั้งเดียว ไม่ต้องยิงต่อ */
+export interface OsScanHit {
+  scan_id: number
+  result: OsScanResult
+  person_id: string | null
+  os_code: string | null
+  full_name: string | null
+  affiliation: string | null
+  shift: string | null
+  phone_model: string | null
+  imei: string | null
+  nickname: string | null
+  photo_file_id: string | null
+  card_rev: number | null
+  revoked_at: string | null
+  revoked_by_name: string | null
+}
+
+export interface OsScanRow {
+  id: number
+  scanned_at: string
+  result: OsScanResult
+  flag_reason: string | null
+  flagged_at: string | null
+  token: string
+  person_id: string | null
+  os_code: string | null
+  full_name: string | null
+  affiliation: string | null
+  phone_model: string | null
+  imei: string | null
+  guard_name: string | null
+  guard_code: string | null
+}
+
+/** แถวที่แกะได้จากการวางข้อมูลจากชีต — ยังไม่ได้บันทึก */
+export interface OsImportRow {
+  shift: string | null
+  os_code: string | null
+  full_name: string
+  affiliation: string | null
+  phone_model: string | null
+  imei: string | null
+  nickname: string | null
 }

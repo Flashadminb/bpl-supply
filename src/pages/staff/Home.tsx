@@ -48,6 +48,69 @@ export default function Home() {
   const sacks = useAsync(() => countPendingSacks(), [])
   const sackCount = sacks.data ?? 0
 
+  /**
+   * รปภ ได้หน้าแรกคนละหน้า ไม่ใช่หน้าเดิมที่ซ่อนเมนูไปครึ่งหนึ่ง
+   *
+   * ซ่อนทีละอันแปลว่าทุกครั้งที่เพิ่มเมนูใหม่ ต้องจำไปซ่อนให้เขาด้วย
+   * วันไหนลืมสักอัน รปภ จะเห็นเมนูเบิกของโดยไม่มีใครตั้งใจ
+   * แยกหน้าไปเลยแปลว่าเขาเห็นเฉพาะสิ่งที่เขียนไว้ให้เขาเห็นเท่านั้น
+   *
+   * คนที่เป็นทั้ง รปภ และอย่างอื่นจะได้หน้าปกติ เพราะเขามีงานอื่นต้องทำด้วย
+   */
+  const guardOnly =
+    profile?.can_guard === true && profile.role === 'staff' && !profile.can_dispatch
+
+  if (guardOnly) {
+    return (
+      <div className="bg-canvas">
+        <header className="safe-t bg-brand-500 text-ink">
+          <div className="mx-auto flex max-w-phone items-start gap-3 px-4 pb-5 pt-4">
+            <div className="flex-1">
+              <p className="text-sm">สวัสดี</p>
+              <p className="font-display text-lg font-semibold">{profile.full_name}</p>
+              <p className="mt-[2px] font-mono text-xs">
+                {profile.employee_code} · {hubName} · {roleLabel(profile)}
+              </p>
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              <span className="flex items-center gap-2">
+                <MeetingCheckIn />
+                <WorkLinks />
+              </span>
+              <Link to="/account" className="min-h-tap px-1 py-2 text-sm underline">
+                บัญชีของฉัน
+              </Link>
+            </div>
+          </div>
+        </header>
+
+        <StaffPage className="-mt-3" nav={false}>
+          <NoticeBoard />
+
+          <button
+            type="button"
+            className="mt-3 w-full rounded-panel bg-ink px-4 py-9 text-center text-white"
+            onClick={() => nav('/guard')}
+          >
+            <span aria-hidden className="block text-[44px] leading-none">
+              ▣
+            </span>
+            <span className="mt-2 block font-display text-xl">สแกนบัตร OS</span>
+            <span className="mt-1 block text-sm text-dark-text">
+              ตรวจมือถือที่นำเข้าพื้นที่
+            </span>
+          </button>
+
+          <p className="mt-4 text-center text-xs text-ink-400">
+            เทียบหน้ากับรูปในระบบ และเทียบเครื่องกับ IMEI ก่อนปล่อยเข้า
+            <br />
+            ถ้าไม่ตรง กดปุ่มแจ้งในหน้าสแกน ผู้ตรวจสอบจะรู้ทันที
+          </p>
+        </StaffPage>
+      </div>
+    )
+  }
+
   return (
     <div className="bg-canvas">
       <header className="safe-t bg-brand-500 text-ink">

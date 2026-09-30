@@ -29,6 +29,8 @@ const AssetDone = lazy(() => import('./pages/staff/AssetDone'))
 const BySend = lazy(() => import('./pages/staff/BySend'))
 // กระสอบรอส่ง — เปิดเมื่อมีงานเข้าคิวเท่านั้น ไม่ควรถ่วงหน้าแรก
 const Ship = lazy(() => import('./pages/staff/Ship'))
+// หน้าสแกนของ รปภ — ลากกล้องมาด้วย จึงไม่ควรอยู่ในก้อนหน้าแรก
+const GuardScan = lazy(() => import('./pages/staff/GuardScan'))
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'))
 const Dashboard = lazy(() => import('./pages/admin/Dashboard'))
 const Stock = lazy(() => import('./pages/admin/Stock'))
@@ -52,16 +54,22 @@ const SupplyHistory = lazy(() => import('./pages/admin/SupplyHistory'))
 const MeetingEvidence = lazy(() => import('./pages/admin/MeetingEvidence'))
 const MeetingReport = lazy(() => import('./pages/admin/MeetingReport'))
 const SackOrders = lazy(() => import('./pages/admin/SackOrders'))
+const OsPeople = lazy(() => import('./pages/admin/OsPeople'))
+const OsCards = lazy(() => import('./pages/admin/OsCards'))
+const OsScans = lazy(() => import('./pages/admin/OsScans'))
 
 function Guard({
   children,
   roles,
   allowDispatch,
+  allowGuard,
 }: {
   children: ReactNode
   roles?: UserRole[]
   /** ผู้ตรวจสอบเข้าได้ด้วย แม้ role จริงจะเป็น staff */
   allowDispatch?: boolean
+  /** รปภ เข้าได้ด้วย — ใช้กับหน้าสแกนบัตร OS หน้าเดียวเท่านั้น */
+  allowGuard?: boolean
 }) {
   const { session, profile, loading } = useAuth()
   const loc = useLocation()
@@ -92,7 +100,11 @@ function Guard({
   }
   // รหัสที่แอดมินตั้งให้เป็นของชั่วคราว ต้องตั้งเองก่อนถึงเข้าหน้าอื่นได้ กดข้ามไม่ได้
   if (profile.must_change_password) return <FirstPassword />
-  const roleOk = !roles || roles.includes(profile.role) || (allowDispatch && profile.can_dispatch)
+  const roleOk =
+    !roles ||
+    roles.includes(profile.role) ||
+    (allowDispatch && profile.can_dispatch) ||
+    (allowGuard && profile.can_guard)
   if (!roleOk) return <Navigate to="/" replace />
   return <>{children}</>
 }
@@ -162,6 +174,18 @@ export default function App() {
       <Route path="/returns" element={<Guard><Returns /></Guard>} />
       <Route path="/by" element={<Guard><BySend /></Guard>} />
       <Route path="/ship" element={<Guard><Ship /></Guard>} />
+      {/*
+        หน้าเดียวที่ รปภ เข้าได้ และคนที่จัดการรายชื่อ OS ก็เข้าได้
+        ฐานข้อมูลกันซ้ำอีกชั้นใน os_scan() ไม่ได้กันแค่เส้นทาง
+      */}
+      <Route
+        path="/guard"
+        element={
+          <Guard roles={['staff', 'supervisor', 'admin']} allowGuard allowDispatch>
+            <GuardScan />
+          </Guard>
+        }
+      />
       <Route path="/assets" element={<Guard><AssetBasket /></Guard>} />
       <Route path="/assets/done/:refNo" element={<Guard><AssetDone /></Guard>} />
       <Route path="/assets/:typeCode" element={<Guard><AssetPick /></Guard>} />
@@ -205,6 +229,10 @@ export default function App() {
           path="sacks"
           element={<Guard roles={MANAGER_ROLES} allowDispatch><SackOrders /></Guard>}
         />
+        {/* บัตร OS — ผู้ตรวจสอบจัดการได้เต็ม ตรงกับ my_can_os_admin() ในฐานข้อมูล */}
+        <Route path="os" element={<Guard roles={MANAGER_ROLES} allowDispatch><OsPeople /></Guard>} />
+        <Route path="os/print" element={<Guard roles={MANAGER_ROLES} allowDispatch><OsCards /></Guard>} />
+        <Route path="os/scans" element={<Guard roles={MANAGER_ROLES} allowDispatch><OsScans /></Guard>} />
         <Route path="report/supply" element={<Guard roles={MANAGER_ROLES}><SupplyReport /></Guard>} />
         <Route path="report/asset" element={<Guard roles={MANAGER_ROLES}><AssetReport /></Guard>} />
         <Route path="export" element={<Guard roles={MANAGER_ROLES}><ExportSheet /></Guard>} />

@@ -32,6 +32,10 @@ import type {
   SackBranch,
   SackRelay,
   SackNotifyTarget,
+  OsPerson,
+  OsImportRow,
+  OsScanHit,
+  OsScanRow,
   TransferNotice,
   LinkAudience,
   LinkRoleKey,
@@ -425,6 +429,7 @@ export async function updateProfile(
       | 'sub_dept'
       | 'can_assets'
       | 'can_dispatch'
+      | 'can_guard'
       | 'extra_depts'
       | 'shift_start'
       | 'shift_end'
@@ -454,6 +459,7 @@ export async function createEmployee(args: {
   subDept?: string | null
   canAssets?: boolean
   canDispatch?: boolean
+  canGuard?: boolean
   shiftStart?: string | null
   shiftEnd?: string | null
   extraDepts?: string[]
@@ -471,6 +477,7 @@ export async function createEmployee(args: {
       sub_dept: args.subDept ?? null,
       can_assets: args.canAssets ?? true,
       can_dispatch: args.canDispatch ?? false,
+      can_guard: args.canGuard ?? false,
       shift_start: args.shiftStart ?? null,
       shift_end: args.shiftEnd ?? null,
       extra_depts: args.extraDepts ?? [],
@@ -2001,4 +2008,154 @@ export async function countSackExportRows(): Promise<number> {
     .eq('needs_push', true)
   if (error) throw new Error(readableError(error))
   return count ?? 0
+}
+
+/* ------------------------------------ บัตรนำโทรศัพท์เข้าพื้นที่ของ OS */
+
+/** รายชื่อ OS ทั้งหมด พ่วงบัตรที่ใช้งานอยู่ — เฉพาะคนที่จัดการได้ */
+export async function listOsPeople(): Promise<OsPerson[]> {
+  return unwrap(
+    await supabase.from('os_person_rows').select('*').order('full_name'),
+  ) as unknown as OsPerson[]
+}
+
+export async function saveOsPerson(row: Partial<OsPerson> & { full_name: string }) {
+  const patch = {
+    os_code: row.os_code?.trim() || null,
+    full_name: row.full_name.trim(),
+    affiliation: row.affiliation?.trim() || null,
+    shift: row.shift?.trim() || null,
+    phone_model: row.phone_model?.trim() || null,
+    imei: row.imei?.trim() || null,
+    nickname: row.nickname?.trim() || null,
+    note: row.note?.trim() || null,
+    is_active: row.is_active ?? true,
+    updated_at: new Date().toISOString(),
+  }
+  if (row.id) {
+    const { error } = await supabase.from('os_people').update(patch).eq('id', row.id)
+    if (error) throw new Error(readableError(error))
+    return row.id
+  }
+  const { data, error } = await supabase.from('os_people').insert(patch).select('id').single()
+  if (error) throw new Error(readableError(error))
+  return (data as { id: string }).id
+}
+
+export async function setOsPersonActive(id: string, on: boolean) {
+  const { error } = await supabase
+    .from('os_people')
+    .update({ is_active: on, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw new Error(readableError(error))
+}
+
+export async function deleteOsPerson(id: string) {
+  const { error } = await supabase.from('os_people').delete().eq('id', id)
+  if (error) throw new Error(readableError(error))
+}
+
+/**
+ * วางข้อมูลจากชีตทีเดียวทั้งกอง
+ *
+ * คนมีรหัส OS แล้วจะอัปเดตทับ ไม่สร้างซ้ำ — วางซ้ำได้ทุกเดือนโดยไม่ต้องกลัว
+ * คนไม่มีรหัสจับคู่จากชื่อแทน ซึ่งพลาดได้ถ้าชื่อพิมพ์ต่างกันนิดเดียว
+ * จึงคืนมาว่าแถวไหนเพิ่มใหม่แถวไหนทับของเดิม ให้คนกดตรวจเองก่อนไปต่อ
+ */
+export async function importOsPeople(rows: OsImportRow[]): Promise<{
+  added: number
+  updated: number
+  skipped: number
+}> {
+  const existing = await listOsPeople()
+  const byCode = new Map(
+    existing.filter((p) => p.os_code).map((p) => [p.os_code as string, p]),
+  )
+  const byName = new Map(existing.map((p) => [p.full_name.trim().toLowerCase(), p]))
+
+  let added = 0
+  let updated = 0
+  let skipped = 0
+
+  for (const r of rows) {
+    if (!r.full_name.trim()) {
+      skipped++
+      continue
+    }
+    const hit =
+      (r.os_code ? byCode.get(r.os_code) : undefined) ??
+      byName.get(r.full_name.trim().toLowerCase())
+
+    await saveOsPerson({ ...r, id: hit?.id, is_active: hit?.is_active ?? true })
+    if (hit) updated++
+    else added++
+  }
+  return { added, updated, skipped }
+}
+
+/** แนบรูปหน้าที่อัปขึ้น Drive แล้วเข้ากับคนคนหนึ่ง */
+export async function setOsPersonPhoto(
+  id: string,
+  photo: { file_id: string; web_link: string | null },
+) {
+  const { error } = await supabase
+    .from('os_people')
+    .update({
+      photo_file_id: photo.file_id,
+      photo_link: photo.web_link,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+  if (error) throw new Error(readableError(error))
+}
+
+export async function issueOsCard(personId: string) {
+  const { data, error } = await supabase.rpc('os_issue_card', { p_person: personId })
+  if (error) throw new Error(readableError(error))
+  return data as { id: string; token: string; rev: number; full_name: string }
+}
+
+export async function revokeOsCard(personId: string, reason?: string) {
+  const { error } = await supabase.rpc('os_revoke_card', {
+    p_person: personId,
+    p_reason: reason ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+}
+
+/**
+ * สแกนบัตร — ตอบครบในครั้งเดียวและบันทึกให้เอง
+ * ไม่โยน error แม้โค้ดจะใช้ไม่ได้ หน้าจอ รปภ ต้องมีคำตอบเสมอ
+ */
+export async function scanOsCard(token: string): Promise<OsScanHit> {
+  const { data, error } = await supabase.rpc('os_scan', { p_token: token })
+  if (error) throw new Error(readableError(error))
+  const rows = (data ?? []) as OsScanHit[]
+  if (rows.length === 0) throw new Error('ระบบไม่ตอบกลับ ลองสแกนใหม่อีกครั้ง')
+  return rows[0]
+}
+
+export async function flagOsScan(scanId: number, reason: string) {
+  const { error } = await supabase.rpc('os_flag_scan', { p_scan: scanId, p_reason: reason })
+  if (error) throw new Error(readableError(error))
+}
+
+export async function listOsScans(args: {
+  fromISO?: string
+  toISO?: string
+  onlyFlagged?: boolean
+  limit?: number
+}): Promise<OsScanRow[]> {
+  let q = supabase.from('os_scan_rows').select('*').order('scanned_at', { ascending: false })
+  if (args.fromISO) q = q.gte('scanned_at', args.fromISO)
+  if (args.toISO) q = q.lte('scanned_at', args.toISO)
+  if (args.onlyFlagged) q = q.not('flagged_at', 'is', null)
+  return unwrap(await q.limit(args.limit ?? 300)) as unknown as OsScanRow[]
+}
+
+/** ใครจะได้รับตอน รปภ กดแจ้งว่าไม่ตรง */
+export async function osFlagTargets(): Promise<SackNotifyTarget[]> {
+  const { data, error } = await supabase.rpc('os_flag_targets')
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as SackNotifyTarget[]
 }

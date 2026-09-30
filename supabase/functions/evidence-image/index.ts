@@ -16,7 +16,7 @@
 // secrets: GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REFRESH_TOKEN
 // =====================================================================
 
-const VERSION = 'sack-v3'
+const VERSION = 'os-v4'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -94,6 +94,7 @@ async function getAccessToken(): Promise<string> {
  *
  * รูปหลักฐานเบิก-คืน  แอดมินขึ้นไป และผู้ตรวจสอบ — ตามกฎข้อ 4 ใน CLAUDE.md
  * รูปกระสอบ          ทุกคนที่ล็อกอินและยังไม่ถูกระงับ
+ * รูปหน้าพนักงาน OS   ทุกคนที่ล็อกอิน — รปภ ต้องเปิดดูได้ ไม่งั้นเทียบหน้าไม่ได้
  *
  * ทำไมรูปกระสอบถึงเปิดกว้างกว่า
  *   มันไม่ใช่หลักฐานการเบิกของใคร แต่เป็นของที่หน้างานถ่ายเองเพื่อเอาไปแปะในแชท
@@ -131,12 +132,23 @@ async function requireViewer(req: Request, fileId: string): Promise<void> {
     me.role === 'supervisor' || me.role === 'admin' || me.can_dispatch === true
   if (isManager) return
 
-  const sres = await fetch(
-    `${envOrThrow('SUPABASE_URL')}/rest/v1/sack_order_photos?file_id=eq.${encodeURIComponent(fileId)}&select=id&limit=1`,
-    { headers: { apikey: key, Authorization: `Bearer ${key}` } },
-  )
-  const hit = (await sres.json()) as { id?: number }[]
-  if (Array.isArray(hit) && hit.length > 0) return
+  // รูปที่เปิดกว้างได้ อยู่แค่สองตารางนี้เท่านั้น
+  //
+  // เช็คจากตารางจริงทีละที่ ไม่ได้ดูจากรูปแบบของ file_id
+  // เพราะ file_id ของ Drive หน้าตาเหมือนกันหมดไม่ว่าจะเป็นรูปอะไร
+  // ถ้าเดาจากชื่อ วันหนึ่งรูปหลักฐานเบิกจะหลุดออกไปโดยไม่มีใครรู้
+  const open = [
+    'sack_order_photos?file_id=eq.',
+    'os_people?photo_file_id=eq.',
+  ]
+  for (const path of open) {
+    const res2 = await fetch(
+      `${envOrThrow('SUPABASE_URL')}/rest/v1/${path}${encodeURIComponent(fileId)}&select=id&limit=1`,
+      { headers: { apikey: key, Authorization: `Bearer ${key}` } },
+    )
+    const hit = (await res2.json()) as unknown[]
+    if (Array.isArray(hit) && hit.length > 0) return
+  }
 
   throw new Error('บัญชีนี้เปิดดูรูปหลักฐานไม่ได้')
 }
