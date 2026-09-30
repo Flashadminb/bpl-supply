@@ -64,7 +64,9 @@ export function OsCardStyles() {
         /* แถบล่างบางลงและดันลายไปอยู่สองมุม ตรงกลางจึงว่างพอให้ QR ยืนเต็มใบ
            ของเดิมหนา 14% พาดขวางทั้งใบ เลยกิน QR ไปจนสแกนไม่ติด */
         .os-bot { position:absolute; left:0; right:0; bottom:0; height:8%; overflow:hidden; }
-        .os-navy2 { clip-path:polygon(0 52%,30% 14%,100% 40%,100% 100%,0 100%); }
+        /* ฝั่งขวาของแถบต้องเป็นกรมท่าเต็มความสูงที่ชื่อฮับไปยืนอยู่
+           ไม่งั้นตัวหนังสือสีขาวจะไปตกบนพื้นบัตรสีอ่อนแล้วหายไปเลย */
+        .os-navy2 { clip-path:polygon(0 52%,30% 14%,100% 18%,100% 100%,0 100%); }
         .os-ytri2 { position:absolute; left:0; bottom:0; width:46%; height:100%; background:${Y};
                     clip-path:polygon(0 34%,48% 0,86% 30%,30% 100%,0 100%); }
 
@@ -72,21 +74,33 @@ export function OsCardStyles() {
            ถ้าเว้นไม่เท่ากันเมื่อไหร่ ป้ายสังกัดกับชื่อจะเยื้องออกข้างทันที */
         .os-inner { position:absolute; inset:0; display:flex; flex-direction:column;
                     align-items:center; justify-content:space-between; text-align:center;
-                    padding:46px 9px 36px; }
+                    padding:46px 9px 34px; }
         .os-tag { flex:0 0 auto; background:${Y}; color:#111; border-radius:4px; padding:0 10px;
                   font-weight:700; font-size:10px; line-height:1.5; }
         .os-mid { display:flex; flex-direction:column; align-items:center; width:100%;
                   min-height:0; }
         .os-name { font-weight:700; line-height:1.12; }
         .os-id { font-size:9px; color:#3b3b3b; margin-top:1px; }
-        .os-model { font-weight:700; font-size:9.5px; margin-top:4px; text-transform:uppercase;
-                    line-height:1.2; }
-        .os-imeiL { font-weight:700; font-size:10px; margin-top:3px; }
+
+        /* QR กับข้อมูลเครื่องอยู่แถวเดียวกัน
+           เรียงลงมาตรง ๆ แล้ว QR ได้ที่แค่ 14 มม. ซึ่งกล้องจับไม่ค่อยติด
+           จับมาเข้าแถวเดียวกันได้คืนมา 47px พอให้ QR โตเป็น 20 มม.
+           โดยที่รูปหน้ายังใหญ่ขึ้นกว่าเดิมด้วย ซึ่งเป็นของที่ รปภ ใช้จริง */
+        .os-row { display:flex; align-items:center; gap:7px; width:100%; }
+        .os-side { display:flex; flex-direction:column; min-width:0; flex:1;
+                   text-align:left; line-height:1.25; }
+        .os-model { font-weight:700; font-size:9px; text-transform:uppercase; }
+        .os-imeiL { font-weight:700; font-size:9.5px; margin-top:4px; }
         .os-imeiV { font-size:8.5px; letter-spacing:.01em; }
-        .os-hub { position:absolute; right:9px; bottom:29px; text-align:right;
-                  line-height:1.2; }
-        .os-hub b { display:block; font-size:6px; color:#111; }
-        .os-hub span { font-size:5px; color:#333; }
+
+        /* ชื่อฮับลงไปอยู่บนแถบกรมท่า เพราะ QR ที่ใหญ่ขึ้นกินมุมล่างขวาไปแล้ว
+           ต้องกำหนด font-size ที่กรอบนอกด้วย ไม่ใช่แค่ที่ลูกสองตัว
+           ไม่งั้นกรอบยังสูงตามขนาดตัวอักษรที่สืบทอดมา แล้วดันบรรทัดแรก
+           ขึ้นไปพ้นแถบ กลายเป็นตัวขาวบนพื้นบัตรสีอ่อน คือหายไปเฉย ๆ */
+        .os-hub { position:absolute; right:9px; bottom:5px; text-align:right;
+                  font-size:6px; line-height:1.05; }
+        .os-hub b { display:block; font-size:6px; color:#fff; }
+        .os-hub span { display:block; font-size:5px; color:#d6dbe2; }
       `}</style>
 }
 
@@ -94,7 +108,10 @@ function QrImg({ token, size = 150 }: { token: string; size?: number }) {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
     let alive = true
-    QRCode.toDataURL(token, { width: size * 2, margin: 0, errorCorrectionLevel: 'M' })
+    // กันรอยระดับ Q ทนลายเลือนได้ราวหนึ่งในสี่ของภาพ
+    // บัตรคล้องคอโดนขีดข่วนแน่นอน และโค้ด 16 ตัวยังอยู่ในตาราง 21x21 เท่าเดิม
+    // ความทนจึงได้มาฟรี ไม่ได้แลกกับช่องที่เล็กลง
+    QRCode.toDataURL(token, { width: size * 3, margin: 0, errorCorrectionLevel: 'Q' })
       .then((u) => alive && setUrl(u))
       .catch(() => alive && setUrl(null))
     return () => {
@@ -119,7 +136,7 @@ function Face({ fileId }: { fileId: string | null }) {
       className="block overflow-hidden"
       style={{
         width: 84,
-        height: 92,
+        height: 98,
         // ยอมให้รูปหดได้ เป็นวาล์วกันล้นของบัตร
         // ชื่อยาวสองบรรทัดหรือชื่อรุ่นยาว ๆ จะดันของข้างล่างตกขอบ
         // หดรูปลงสองสามพิกเซลไม่มีใครดูออก แต่ QR หลุดขอบนี่สแกนไม่ได้เลย
@@ -173,11 +190,15 @@ export function Card({ p }: { p: OsPerson }) {
             {p.full_name}
           </span>
           <span className="os-id">ID: {p.os_code ?? '—'}</span>
-          <span className="os-model">{p.phone_model ?? '—'}</span>
-          <span className="os-imeiL">IMEI</span>
-          <span className="os-imeiV">{p.imei ?? '—'}</span>
         </div>
-        {p.card_token && <QrImg token={p.card_token} size={52} />}
+        <div className="os-row">
+          {p.card_token && <QrImg token={p.card_token} size={76} />}
+          <span className="os-side">
+            <span className="os-model">{p.phone_model ?? '—'}</span>
+            <span className="os-imeiL">IMEI</span>
+            <span className="os-imeiV">{p.imei ?? '—'}</span>
+          </span>
+        </div>
       </div>
 
       <div className="os-bot">

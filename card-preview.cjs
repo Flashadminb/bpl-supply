@@ -21,16 +21,20 @@ const css = src
 
 const PEOPLE = [
   { tag: 'PW', name: 'Zaw Mg San', id: '4821930', model: 'REDMI NOTE 13', imei: '869726074524281' },
-  { tag: 'AK', name: 'AUNG KO LIN', id: '5890039', model: 'SAMSUNG GALAXY A15', imei: '352233119375526' },
+  { tag: 'AK', name: 'AUNG KO LIN', id: '5890039', model: 'SAMSUNG GALAXY A15', imei: '352233119375526/01' },
   { tag: 'SCG', name: 'สมชาย ประเสริฐวงศ์ไพบูลย์', id: '751810', model: 'OPPO RENO 11F 5G', imei: '860765075146156' },
   { tag: 'PW', name: 'Htet', id: null, model: null, imei: null },
 ]
 
+// โค้ดยาวเท่าของจริงที่ os_new_token() ออกให้ ไม่งั้นจะดู QR ที่ละเอียดไม่เท่าของจริง
+const TOKENS = ['K7QX2MRV9TB4HZNP', 'W3D8NKTQ5RJM2VXB', 'H9FZ4PCN7QMR3KTW', 'T5BXR2QK8NVJ9MHZ']
+
 async function main() {
   const cards = []
-  for (const p of PEOPLE) {
-    const qr = await QRCode.toDataURL('os_' + (p.id ?? 'x') + '_demo_token_abcdef', {
-      width: 104, margin: 0, errorCorrectionLevel: 'M',
+  for (let i = 0; i < PEOPLE.length; i++) {
+    const p = PEOPLE[i]
+    const qr = await QRCode.toDataURL(TOKENS[i], {
+      width: 228, margin: 0, errorCorrectionLevel: 'Q',
     })
     const nameSize = p.name.length > 22 ? 12 : p.name.length > 16 ? 14 : 17
     cards.push(`
@@ -44,11 +48,15 @@ async function main() {
     <div class="os-mid">
       <span class="os-name" style="font-size:${nameSize}px">${p.name}</span>
       <span class="os-id">ID: ${p.id ?? '—'}</span>
-      <span class="os-model">${p.model ?? '—'}</span>
-      <span class="os-imeiL">IMEI</span>
-      <span class="os-imeiV">${p.imei ?? '—'}</span>
     </div>
-    <span class="os-qr"><img src="${qr}" alt=""></span>
+    <div class="os-row">
+      <span class="os-qr"><img src="${qr}" alt=""></span>
+      <span class="os-side">
+        <span class="os-model">${p.model ?? '—'}</span>
+        <span class="os-imeiL">IMEI</span>
+        <span class="os-imeiV">${p.imei ?? '—'}</span>
+      </span>
+    </div>
   </div>
   <div class="os-bot"><span class="os-navy2"></span><span class="os-ytri2"></span></div>
   <span class="os-hub"><b>21BPL_BHUB-บางพลี</b><span>Hub Standardization</span></span>
@@ -59,12 +67,12 @@ async function main() {
   const extra = `
     body { margin:0; padding:16px; background:#fff;
            font-family:Kanit,system-ui,sans-serif; }
-    .os-face { display:block; overflow:hidden; width:84px; height:92px; flex:0 1 auto;
+    .os-face { display:block; overflow:hidden; width:84px; height:98px; flex:0 1 auto;
                min-height:62px; background:#d8d3c7; border-radius:4px; }
     .os-facetxt { display:flex; height:100%; align-items:center; justify-content:center;
                   font-size:9px; color:#7a7466; }
-    .os-qr { display:block; background:#fff; width:52px; height:52px; padding:4px;
-             box-sizing:border-box; }
+    .os-qr { display:block; background:#fff; width:76px; height:76px; padding:4px;
+             box-sizing:border-box; flex:0 0 auto; }
     .os-qr img { width:100%; height:100%; }
   `
 
