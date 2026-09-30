@@ -772,8 +772,11 @@ export async function exportToSheet(payload: {
   from?: string
   to?: string
   hub?: string
-  /** ว่าง = ส่งทุกชุด · 'sack' = เฉพาะกระสอบ ซึ่งลงคนละไฟล์กับของเบิก */
-  scope?: 'all' | 'supply' | 'asset' | 'by' | 'meeting' | 'sack'
+  /**
+   * ว่าง = ส่งทุกชุด · 'sack' = เฉพาะกระสอบ ซึ่งลงคนละไฟล์กับของเบิก
+   * 'osscan' = ประวัติสแกนบัตร OS ซึ่งไม่อยู่ใน 'all' เพราะโตวันละหลายร้อยแถว
+   */
+  scope?: 'all' | 'supply' | 'asset' | 'by' | 'meeting' | 'sack' | 'osscan'
 }) {
   return callFunction<{ updated: number; appended: number; sheet: string }>(
     'export-sheet',
@@ -2006,6 +2009,28 @@ export async function countSackExportRows(): Promise<number> {
     .from('sack_export_rows')
     .select('id', { count: 'exact', head: true })
     .eq('needs_push', true)
+  if (error) throw new Error(readableError(error))
+  return count ?? 0
+}
+
+/**
+ * ยังมีการสแกนกี่ครั้งที่ชีตยังไม่ตรงกับความจริง
+ *
+ * นับทั้งครั้งที่ไม่เคยส่ง และครั้งที่ส่งไปแล้วแต่ รปภ มาติดธงทีหลัง
+ *
+ * ไม่ใส่ช่วงวันที่ = นับทั้งหมดตั้งแต่ต้น หน้าจอใช้เทียบกับจำนวนในช่วงที่เลือก
+ * เพื่อเตือนว่ายังมีของค้างอยู่นอกช่วง ซึ่งกดส่งเท่าไหร่ก็ไม่มีวันไป
+ */
+export async function countOsScanExportRows(range?: {
+  fromISO: string
+  toISO: string
+}): Promise<number> {
+  let q = supabase
+    .from('os_scan_export_rows')
+    .select('id', { count: 'exact', head: true })
+    .eq('needs_push', true)
+  if (range) q = q.gte('scanned_at', range.fromISO).lte('scanned_at', range.toISO)
+  const { count, error } = await q
   if (error) throw new Error(readableError(error))
   return count ?? 0
 }

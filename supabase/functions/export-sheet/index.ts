@@ -8,16 +8,18 @@
 //   บาร์โค้ด BY 2569-09  ของที่หน้างานส่งบาร์โค้ดมาให้ตัดสต็อกในระบบ BY
 //   ประชุม 2569-09     เช็คอินเข้าประชุม — ลงคนละไฟล์ ดู GSHEET_MEETING_ID
 //   กระสอบ 2569-09     กระสอบที่กระจายไปสาขา — ลงคนละไฟล์ ดู GSHEET_SACK_ID
+//   สแกนบัตร OS 2569-09  ประวัติ รปภ สแกนบัตร — ลงคนละไฟล์ ดู GSHEET_OSSCAN_ID
+//                        ไม่อยู่ใน scope 'all' ต้องขอ scope 'osscan' โดยเฉพาะ
 //
 // กันแถวซ้ำโดยจำตำแหน่งไว้ในฐานข้อมูล (แท็บ + เลขแถว)
 // จึงไม่ต้องอ่านทั้งชีตมาเทียบทุกครั้ง — เร็วคงที่ไม่ว่าชีตจะใหญ่แค่ไหน
 //
 // ไฟล์นี้เขียนให้จบในตัวเอง ก๊อปวางใน Supabase Dashboard ได้ตรง ๆ
 // secrets: GOOGLE_SA_EMAIL, GOOGLE_SA_PRIVATE_KEY, GSHEET_ID
-// ไม่บังคับ: GSHEET_MEETING_ID, GSHEET_SACK_ID (ไม่ตั้งก็ใช้ไฟล์ที่ฝังไว้ในโค้ด)
+// ไม่บังคับ: GSHEET_MEETING_ID, GSHEET_SACK_ID, GSHEET_OSSCAN_ID (ไม่ตั้งก็ใช้ไฟล์ที่ฝังไว้ในโค้ด)
 // =====================================================================
 
-const VERSION = 'paged-v11'
+const VERSION = 'osscan-v12'
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
 
 const HEADER = ['เลขที่คำขอ', 'วันเวลา', 'ผู้เบิก (ฮับ)', 'วัสดุ', 'จำนวน', 'หลักฐาน', 'Drive File ID']
@@ -69,6 +71,42 @@ const BY_HEADER = [
 // ไฟล์รายชื่อประชุมแยกจากไฟล์เบิก-คืน · ตั้ง GSHEET_MEETING_ID ทับได้ถ้าย้ายไฟล์
 const MEETING_SHEET_ID = '15_ES88gZhq8ZWBaAwoFekP-3o3HKnNW52jPimSIjHRY'
 const SACK_SHEET_ID = '1ZqSEG1dTPlCcC9mAJJSwcOQz8vdXyF9rF-RfzB5bvSI'
+const OSSCAN_SHEET_ID = '1Suklni1sHj_waOIRMnu4TU71D8Cdujju6eJbFSddQ74'
+
+/**
+ * ประวัติการสแกนบัตร OS ที่ป้อม
+ *
+ * ชีตนี้ทำหน้าที่เป็นที่เก็บระยะยาวด้วย ไม่ใช่แค่สำเนาไว้ดู
+ * เพราะ os_scans_rollup ยุบรายละเอียดรายครั้งทิ้งหลังผ่านไปอย่างน้อย 30 วัน
+ * เหลือไว้แค่สรุปรายวัน ของที่ไม่ได้ส่งลงชีตก่อนถึงรอบยุบจึงหายไปเลย
+ *
+ * ใส่ IMEI กับรุ่นเครื่อง ณ ตอนที่ส่งออก ไม่ใช่ ณ ตอนที่สแกน
+ * ถ้าคนเปลี่ยนเครื่องแล้วแก้ทะเบียน แถวเก่าในชีตจะเปลี่ยนตามตอนส่งซ้ำ
+ * ซึ่งยอมรับได้ เพราะสิ่งที่ต้องตรวจย้อนหลังคือใครเข้าเมื่อไหร่และติดธงไหม
+ */
+const OSSCAN_HEADER = [
+  'วันเวลาที่สแกน',
+  'ผล',
+  'รหัส OS',
+  'ชื่อ-นามสกุล',
+  'สังกัด',
+  'รุ่นเครื่อง',
+  'IMEI',
+  'ติดธง',
+  'เหตุผลที่ติดธง',
+  'เวลาที่ติดธง',
+  'รปภ ที่สแกน',
+  'รหัส รปภ',
+]
+
+/** ผลการสแกนเป็นภาษาคน — ตรงกับที่ รปภ เห็นบนจอตอนสแกน */
+function scanResultText(result: string | null): string {
+  if (result === 'ok') return 'ผ่าน'
+  if (result === 'revoked') return 'บัตรถูกยกเลิก'
+  if (result === 'unknown') return 'ไม่รู้จักบัตรนี้'
+  if (result === 'inactive') return 'คนนี้ถูกปิดการใช้งาน'
+  return result ?? ''
+}
 
 // เรียงตามที่เจ้าของระบบขอมา: ฮับ จำนวน สาขา สถานะ แล้วค่อยรูป
 // ของที่ยังไม่ได้ส่งก็ลงชีตด้วย ส่วนกลางจะได้เห็นคิวที่ค้าง ไม่ใช่เห็นแต่ของที่ไปแล้ว
@@ -413,6 +451,21 @@ interface DbSack {
   photo_count: number
 }
 
+interface DbOsScan {
+  id: number
+  scanned_at: string
+  result: string | null
+  flag_reason: string | null
+  flagged_at: string | null
+  os_code: string | null
+  full_name: string | null
+  affiliation: string | null
+  phone_model: string | null
+  imei: string | null
+  guard_name: string | null
+  guard_code: string | null
+}
+
 interface DbBy {
   id: string
   ref_no: string
@@ -599,7 +652,7 @@ Deno.serve(async (req) => {
       from?: string
       to?: string
       hub?: string
-      /** 'all' (ค่าเริ่มต้น) | 'supply' | 'asset' | 'by' | 'meeting' | 'sack' */
+      /** 'all' (ค่าเริ่มต้น) | 'supply' | 'asset' | 'by' | 'meeting' | 'sack' | 'osscan' */
       scope?: string
     }
 
@@ -979,6 +1032,69 @@ Deno.serve(async (req) => {
               const place = fresh >= 0 ? { tab: out.fresh[fresh].tab, row_no: out.rowNos[fresh] } : placed.get(r.key)
               return place
                 ? { sack_id: r.key, tab: place.tab, row_no: place.row_no, exported_at: stamp }
+                : null
+            }).filter(Boolean),
+          ),
+        })
+      }
+    }
+
+    /* ------------------------------------ ประวัติสแกนบัตร OS ที่ป้อม */
+    // ลงคนละไฟล์กับของเบิกและของกระสอบ คนที่เปิดดูคือฝ่ายมาตรฐานกับผู้ตรวจสอบ
+    //
+    // ไม่อยู่ใน scope 'all' ตั้งใจ — ประวัติสแกนโตวันละหลายร้อยแถว
+    // ถ้าพ่วงไปกับการส่งยอดเบิกประจำวัน จะดึงของที่ไม่มีใครขอดูทุกครั้ง
+    // ต้องกดจากหน้าประวัติการสแกนโดยตรงเท่านั้น
+    if (scope === 'osscan') {
+      const osSheet = Deno.env.get('GSHEET_OSSCAN_ID') || OSSCAN_SHEET_ID
+      const oqs = new URLSearchParams({
+        select:
+          'id,scanned_at,result,flag_reason,flagged_at,os_code,full_name,affiliation,' +
+          'phone_model,imei,guard_name,guard_code',
+        order: 'scanned_at.asc,id.asc',
+      })
+      if (payload.from) oqs.append('scanned_at', `gte.${payload.from}`)
+      if (payload.to) oqs.append('scanned_at', `lte.${payload.to}`)
+
+      const scans = await dbPaged<DbOsScan>(`os_scan_rows?${oqs}`)
+      const orows: OutRow[] = scans.map((s) => ({
+        key: s.id,
+        tab: `สแกนบัตร OS ${monthOf(s.scanned_at)}`,
+        values: [
+          thaiDateTime(s.scanned_at),
+          scanResultText(s.result),
+          s.os_code ?? '',
+          s.full_name ?? '',
+          s.affiliation ?? '',
+          s.phone_model ?? '',
+          // นำหน้าด้วยเครื่องหมายคำพูดกัน Sheets แปลง 15 หลักเป็นเลขวิทยาศาสตร์
+          s.imei ? `'${s.imei}` : '',
+          s.flagged_at ? 'ติดธง' : '',
+          s.flag_reason ?? '',
+          s.flagged_at ? thaiDateTime(s.flagged_at) : '',
+          s.guard_name ?? '',
+          s.guard_code ?? '',
+        ],
+      }))
+
+      if (orows.length > 0) {
+        const placed = await lookupPlaced('os_scan_exports', 'scan_id', orows.map((r) => r.key))
+        const out = await pushRows(osSheet, token, orows, placed, OSSCAN_HEADER)
+        updated += out.updated
+        appended += out.appended
+        out.tabs.forEach((t) => tabs.add(t))
+
+        // แถวที่เคยส่งแล้วก็ต้องอัปเวลาด้วย ไม่งั้นตัวนับ needs_push จะค้างอยู่ตลอด
+        const stamp = new Date().toISOString()
+        await db('os_scan_exports?on_conflict=scan_id', {
+          method: 'POST',
+          headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify(
+            orows.map((r, i) => {
+              const fresh = out.fresh.findIndex((f) => f.key === r.key)
+              const place = fresh >= 0 ? { tab: out.fresh[fresh].tab, row_no: out.rowNos[fresh] } : placed.get(r.key)
+              return place
+                ? { scan_id: r.key, tab: place.tab, row_no: place.row_no, exported_at: stamp }
                 : null
             }).filter(Boolean),
           ),

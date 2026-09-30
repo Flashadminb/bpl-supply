@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { listOsScans } from '../../lib/api'
+import { countOsScanExportRows, exportToSheet, listOsScans } from '../../lib/api'
 import { useAsync } from '../../lib/useAsync'
 import { DateRangePicker } from '../../components/DateRangePicker'
-import { EmptyState, ErrorBox, Loading } from '../../components/ui'
+import { EmptyState, ErrorBox, Loading, Spinner } from '../../components/ui'
 import { fmtDateTime } from '../../lib/format'
 import type { OsScanResult } from '../../lib/types'
 
@@ -60,6 +60,39 @@ export default function OsScans() {
   const ok = rows.filter((r) => r.result === 'ok').length
   const flagged = rows.filter((r) => r.flagged_at).length
 
+  /**
+   * ส่งลงชีต — ส่งเฉพาะช่วงวันที่ที่เลือกอยู่ ไม่ได้ส่งทั้งหมดทุกครั้ง
+   *
+   * ประวัติสแกนโตวันละหลายร้อยแถว ยิงทั้งก้อนทุกครั้งจะช้าขึ้นเรื่อย ๆ
+   * และชน quota ของ Sheets ในที่สุด
+   *
+   * แต่การส่งเฉพาะช่วงมีกับดัก คือของที่ค้างอยู่นอกช่วงจะไม่มีวันถูกส่ง
+   * โดยที่หน้าจอไม่ได้บอกอะไรเลย จึงนับของค้างทั้งหมดมาเทียบแล้วขึ้นป้ายเตือน
+   */
+  const pendingRange = useAsync(() => countOsScanExportRows(range), [range])
+  const pendingAll = useAsync(() => countOsScanExportRows(), [])
+  const outside = Math.max(0, (pendingAll.data ?? 0) - (pendingRange.data ?? 0))
+
+  const [pushing, setPushing] = useState(false)
+  const [pushed, setPushed] = useState<string | null>(null)
+  const [pushErr, setPushErr] = useState<string | null>(null)
+
+  async function pushSheet() {
+    setPushing(true)
+    setPushed(null)
+    setPushErr(null)
+    try {
+      const res = await exportToSheet({ scope: 'osscan', from: range.fromISO, to: range.toISO })
+      setPushed(`เพิ่มใหม่ ${res.appended} แถว · อัปของเดิม ${res.updated} แถว · ${res.sheet}`)
+      pendingRange.reload()
+      pendingAll.reload()
+    } catch (e) {
+      setPushErr(e instanceof Error ? e.message : 'ส่งลงชีตไม่สำเร็จ')
+    } finally {
+      setPushing(false)
+    }
+  }
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -70,10 +103,38 @@ export default function OsScans() {
             {flagged > 0 && ` · รปภ แจ้งไม่ตรง ${flagged}`}
           </p>
         </div>
-        <Link to="/admin/os" className="btn-ghost">
-          กลับไปรายชื่อ
-        </Link>
+        <span className="flex flex-wrap gap-2">
+          <button type="button" className="btn-ghost" onClick={pushSheet} disabled={pushing}>
+            {pushing ? <Spinner /> : 'ส่งลง Google Sheet'}
+            {!pushing && (pendingRange.data ?? 0) > 0 && (
+              <span className="rounded-pill bg-brand-500 px-2 font-display text-xs text-ink">
+                {(pendingRange.data ?? 0) > 99 ? '99+' : pendingRange.data}
+              </span>
+            )}
+          </button>
+          <Link to="/admin/os" className="btn-ghost">
+            กลับไปรายชื่อ
+          </Link>
+        </span>
       </div>
+
+      {pushed && (
+        <div className="mb-3 rounded-card border border-success/25 bg-success-bg p-3 text-sm text-success-txt">
+          ส่งลงชีตแล้ว · {pushed}
+          <button type="button" className="ml-2 underline" onClick={() => setPushed(null)}>
+            ปิด
+          </button>
+        </div>
+      )}
+
+      {pushErr && <ErrorBox message={pushErr} onRetry={pushSheet} />}
+
+      {outside > 0 && (
+        <p className="mb-3 rounded-card border border-warn/30 bg-warn-bg p-3 text-sm text-warn-txt">
+          ยังมีอีก {outside} ครั้งที่ยังไม่ได้ส่งลงชีต แต่อยู่นอกช่วงวันที่ที่เลือกอยู่ —
+          ต้องขยายช่วงวันที่ก่อน ถึงจะกดส่งของพวกนั้นได้
+        </p>
+      )}
 
       <div className="mb-3 flex flex-wrap items-end gap-3">
         <DateRangePicker from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />
