@@ -17,6 +17,7 @@ const SAMPLES = [
   ['__s1.jpg', 1600, 1200, '#3d5a3a', 'LANDSCAPE 4:3'],
   ['__s2.jpg', 1200, 1600, '#4a3a5a', 'PORTRAIT 3:4'],
   ['__s3.jpg', 1440, 1440, '#5a4a3a', 'SQUARE 1:1'],
+  ['__s4.jpg', 1600, 1200, '#2f4a5a', 'LANDSCAPE 2'],
 ]
 
 const svg = (w, h, label) =>
@@ -99,6 +100,84 @@ const PAGE = `<!doctype html>
 </script>
 `
 
+/**
+ * หน้าเทียบวิธีแบ่งช่องรูป — ไว้ตอบคำถามว่าจำเป็นต้องแบ่งตามแนวตั้งแนวนอนไหม
+ *
+ * แถวบนเป็นรูปนอนสองใบ ซึ่งเป็นเคสปกติเพราะคนเดิมถ่ายด้วยมือถือเครื่องเดิม
+ * แถวล่างเป็นนอนปนตั้ง ซึ่งเป็นเคสเดียวที่ทั้งสามแบบออกมาไม่เหมือนกัน
+ */
+const FIT_PAGE = `<!doctype html>
+<meta charset="utf-8" />
+<title>เทียบวิธีแบ่งช่องรูป</title>
+<style>
+  body { margin:0; padding:18px; background:#fff; font-family:Kanit,system-ui,sans-serif; }
+  h2 { font-size:15px; margin:18px 0 8px; }
+  .row { display:flex; gap:16px; flex-wrap:wrap; }
+  .cap { font-size:12px; font-weight:700; margin:0 0 5px; }
+  img.card { width:238px; display:block; box-shadow:0 2px 10px #0003; }
+  #err { color:#a00; font-size:13px; white-space:pre-wrap; }
+</style>
+<div id="out"></div>
+<p id="err"></p>
+<script type="module">
+  import { buildSackCards } from '/src/lib/sackCard.ts'
+
+  const row = {
+    id: 'x', ref_no: 'SH-260930-009', hub_code: '21BPL',
+    qty: 1000, unit: 'ชิ้น', branch: 'ตัวอย่าง', note: 'เทส',
+    status: 'direct', relay_via: null,
+    created_at: '2026-09-30T03:12:00Z', sent_at: '2026-09-30T03:12:00Z', updated_at: null,
+    created_by_name: 'ธนวัฒน์ พุฒฤทธิ์', sent_by_name: 'ธนวัฒน์ พุฒฤทธิ์', updated_by_name: null,
+    photos: [], photo_count: 0,
+  }
+
+  const shot = async (u) => ({ url: URL.createObjectURL(await (await fetch(u)).blob()) })
+
+  try {
+    const l1 = await shot('/__s1.jpg')
+    const l2 = await shot('/__s4.jpg')
+    const port = await shot('/__s2.jpg')
+
+    const fits = [
+      ['ก · ตามสัดส่วนรูป (ของตอนนี้)', 'proportional'],
+      ['ข · ช่องเท่ากัน ไม่ครอบขอบ', 'equal'],
+      ['ค · ช่องเท่ากัน ครอบขอบ', 'equalCrop'],
+    ]
+    const scenes = [
+      ['รูปนอนสองใบ — เคสปกติ ถ่ายจากเครื่องเดิมถือแนวเดียวกัน', [l1, l2]],
+      ['นอนปนตั้ง — เคสเดียวที่ทั้งสามแบบไม่เหมือนกัน', [l1, port]],
+    ]
+
+    for (const [title, ph] of scenes) {
+      const h = document.createElement('h2')
+      h.textContent = title
+      out.appendChild(h)
+      const band = document.createElement('div')
+      band.className = 'row'
+      for (const [cap, fit] of fits) {
+        const col = document.createElement('div')
+        const p = document.createElement('p')
+        p.className = 'cap'
+        p.textContent = cap
+        col.appendChild(p)
+        for (const b of await buildSackCards(row, ph, row.sent_by_name, 'grid', fit)) {
+          const img = document.createElement('img')
+          img.className = 'card'
+          img.src = URL.createObjectURL(b)
+          col.appendChild(img)
+        }
+        band.appendChild(col)
+      }
+      out.appendChild(band)
+    }
+    window.__done = true
+  } catch (e) {
+    document.getElementById('err').textContent = e.stack || String(e)
+    window.__done = 'error'
+  }
+</script>
+`
+
 async function main() {
   for (const [name, w, h, bg, label] of SAMPLES) {
     await sharp({ create: { width: w, height: h, channels: 3, background: bg } })
@@ -107,7 +186,8 @@ async function main() {
       .toFile('public/' + name)
   }
   fs.writeFileSync('public/__sack-preview.html', PAGE)
-  console.log('เปิด /__sack-preview.html บน dev server ได้เลย')
+  fs.writeFileSync('public/__sack-fit.html', FIT_PAGE)
+  console.log('เปิด /__sack-preview.html หรือ /__sack-fit.html บน dev server ได้เลย')
 }
 
 main().catch((e) => {

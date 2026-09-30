@@ -148,6 +148,19 @@ export interface SackCardPhoto {
  */
 export type SackCardLayout = 'split' | 'grid'
 
+/**
+ * รูปหลายใบในคอลัมน์เดียว แบ่งที่กันยังไง
+ *
+ * proportional  ช่องของใครของมันตามสัดส่วนรูปนั้น ทุกใบได้ใหญ่ที่สุดเท่าที่ได้
+ * equal         ช่องเท่ากันทุกใบ วางรูปไว้กลางช่อง ไม่ครอบขอบ
+ * equalCrop     ช่องเท่ากันและครอบขอบให้เต็มช่อง ทุกใบจึงดูเท่ากันเป๊ะ
+ *
+ * ถ้ารูปทุกใบถ่ายจากมือถือเครื่องเดิมโดยถือแนวเดียวกัน ซึ่งเป็นเรื่องปกติ
+ * ทั้งสามแบบให้รูปขนาดเท่ากันหมด ต่างกันแค่ระยะห่างระหว่างรูป
+ * ความต่างจะโผล่ก็ต่อเมื่อมีทั้งรูปตั้งและรูปนอนปนกันในใบเดียว
+ */
+export type SackPhotoFit = 'proportional' | 'equal' | 'equalCrop'
+
 /* ------------------------------------------------------ ชิ้นส่วนที่ใช้ร่วมกัน */
 
 /** ข้อมูลหนึ่งช่อง — ป้ายเล็กอยู่บน ค่าตัวใหญ่อยู่ล่าง */
@@ -376,6 +389,29 @@ function drawFooterAt(ctx: CanvasRenderingContext2D, row: SackRow, bottom: numbe
   ctx.textBaseline = 'top'
 }
 
+/**
+ * วาดรูปให้เต็มกรอบโดยยอมครอบขอบทิ้ง
+ *
+ * ใช้เฉพาะตอนที่ต้องการให้ทุกรูปดูเท่ากันเป๊ะ
+ * ซึ่งทำไม่ได้เลยถ้าไม่ครอบ เพราะรูปตั้งกับรูปนอนสัดส่วนไม่เท่ากันอยู่แล้ว
+ */
+function drawCover(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): { x: number; y: number; w: number; h: number } {
+  const scale = Math.max(w / img.width, h / img.height)
+  const sw = w / scale
+  const sh = h / scale
+  const sx = (img.width - sw) / 2
+  const sy = (img.height - sh) / 2
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h)
+  return { x, y, w, h }
+}
+
 /** วาดรูปให้พอดีกรอบโดยไม่ครอบขอบทิ้ง แล้วคืนกรอบจริงที่รูปกิน */
 function drawContained(
   ctx: CanvasRenderingContext2D,
@@ -456,13 +492,14 @@ export async function buildSackCards(
   photos: SackCardPhoto[],
   sentBy?: string | null,
   layout: SackCardLayout = 'grid',
+  fit: SackPhotoFit = 'equal',
 ): Promise<Blob[]> {
   const loaded = await Promise.all(photos.slice(0, MAX_PHOTOS).map((p) => loadImage(p.url)))
   const shown = loaded.filter((x): x is HTMLImageElement => Boolean(x))
   const fields = fieldsOf(row, sentBy)
 
   if (shown.length === 0) return [await buildTextOnly(row, fields)]
-  if (layout === 'grid') return [await buildGrid(row, fields, shown)]
+  if (layout === 'grid') return [await buildGrid(row, fields, shown, fit)]
 
   const out: Blob[] = []
   for (let i = 0; i < shown.length; i++) {
@@ -550,7 +587,12 @@ async function buildSplit(
  * หารเท่ากันแล้วรูปแนวนอนจะเหลือขอบดำบนล่างเป็นแถบใหญ่
  * ขณะที่รูปแนวตั้งในช่องเดียวกันกลับถูกบีบจนเล็กทั้งที่มีที่ว่างอยู่ข้าง ๆ
  */
-async function buildGrid(row: SackRow, fields: Field[], imgs: HTMLImageElement[]): Promise<Blob> {
+async function buildGrid(
+  row: SackRow,
+  fields: Field[],
+  imgs: HTMLImageElement[],
+  fit: SackPhotoFit,
+): Promise<Blob> {
   const { canvas, ctx } = newCanvas()
   drawHeader(ctx, row)
 
@@ -577,32 +619,46 @@ async function buildGrid(row: SackRow, fields: Field[], imgs: HTMLImageElement[]
     { x: PAD, y: infoBottom + 32, w: W - PAD * 2 },
   ].map((r) => ({ ...r, h: H - r.y - FOOTER_H - 16 }))
 
-  /** รูปแต่ละใบอยากได้ความสูงเท่าไหร่ ถ้าได้กว้างเต็มกรอบนี้ */
-  const wants = (w: number) =>
-    imgs.map((im) => (im.width > 0 ? (w * im.height) / im.width : w * 0.75))
+  /** ความสูงของแต่ละช่องในกรอบนี้ ตามวิธีแบ่งที่เลือกไว้ */
+  const slotsFor = (r: { w: number; h: number }): number[] => {
+    const room = r.h - gap * (n - 1)
+    if (room <= 0) return imgs.map(() => 0)
+    if (fit === 'proportional') {
+      const natural = imgs.map((im) => (im.width > 0 ? (r.w * im.height) / im.width : r.w * 0.75))
+      const wanted = natural.reduce((a, b) => a + b, 0)
+      const k = wanted > 0 ? Math.min(1, room / wanted) : 1
+      return natural.map((v) => v * k)
+    }
+    // ช่องเท่ากันทุกใบ แต่ไม่ยอมสูงเกินรูปที่เตี้ยที่สุดต้องการ
+    // ไม่งั้นรูปนอนสองใบจะถูกดันให้ห่างกันจนมีแถบดำคั่นเปล่า ๆ
+    const even = room / n
+    if (fit === 'equalCrop') return imgs.map(() => even)
+    const tallest = Math.max(
+      ...imgs.map((im) => (im.width > 0 ? (r.w * im.height) / im.width : r.w * 0.75)),
+    )
+    const cap = Math.min(even, tallest)
+    return imgs.map(() => cap)
+  }
 
   const plan = (r: { x: number; y: number; w: number; h: number }) => {
-    const natural = wants(r.w)
-    const wanted = natural.reduce((a, b) => a + b, 0)
-    const room = r.h - gap * (n - 1)
-    if (room <= 0 || wanted <= 0) return { r, natural, k: 0, area: -1 }
-    const k = Math.min(1, room / wanted)
+    const slots = slotsFor(r)
     // พื้นที่ที่รูปกินจริงหลังย่อ เป็นตัวตัดสิน ไม่ใช่ขนาดกรอบ
     const area = imgs.reduce((sum, im, i) => {
-      const hgt = natural[i] * k
-      const wid = im.height > 0 ? (hgt * im.width) / im.height : r.w
-      return sum + hgt * Math.min(wid, r.w)
+      if (fit === 'equalCrop') return sum + slots[i] * r.w
+      const wid = im.height > 0 ? (slots[i] * im.width) / im.height : r.w
+      return sum + slots[i] * Math.min(wid, r.w)
     }, 0)
-    return { r, natural, k, area }
+    return { r, slots, area }
   }
 
   const best = regions.map(plan).reduce((a, b) => (b.area > a.area ? b : a))
-  const used = best.natural.reduce((a, b) => a + b, 0) * best.k + gap * (n - 1)
+  const used = best.slots.reduce((a, b) => a + b, 0) + gap * (n - 1)
 
   let y = best.r.y + Math.round((best.r.h - used) / 2)
   imgs.forEach((img, i) => {
-    const slotH = Math.round(best.natural[i] * best.k)
-    const box = drawContained(ctx, img, best.r.x, y, best.r.w, slotH)
+    const slotH = Math.round(best.slots[i])
+    const draw = fit === 'equalCrop' ? drawCover : drawContained
+    const box = draw(ctx, img, best.r.x, y, best.r.w, slotH)
     if (n > 1) drawTag(ctx, String(i + 1), box.x + 10, box.y + 10, 24)
     y += slotH + gap
   })
