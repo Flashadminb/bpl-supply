@@ -739,6 +739,12 @@ export interface SackRow {
   relay_via: string | null
   created_at: string
   sent_at: string | null
+  /** จำนวนที่ส่งไปจริง · ว่าง = ส่งเต็มตามที่ขอ ไม่ใช่ไม่รู้ */
+  sent_qty: number | null
+  /** จำนวนที่ใช้แสดงในใบ = sent_qty ถ้ามี ไม่งั้นเท่าที่ขอ */
+  qty_out: number
+  /** ส่งไม่เท่าที่ขอ · หน้าประวัติเอาไว้ขึ้นป้ายเตือน */
+  qty_differs: boolean
   /** แก้ไขล่าสุดเมื่อไหร่ · ว่าง = ยังไม่เคยถูกแก้ */
   updated_at: string | null
   created_by_name: string | null

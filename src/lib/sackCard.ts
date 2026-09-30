@@ -45,7 +45,7 @@ export function sackFormText(row: SackRow, sentBy?: string | null): string {
     `เลขที่ : ${row.ref_no}`,
     '',
     `HUB ที่จัดส่ง : ${row.hub_code}`,
-    `จำนวน : ${row.qty.toLocaleString('th-TH')} ${row.unit}`,
+    `${qtyLabel(row)} : ${qtyOf(row).toLocaleString('th-TH')} ${row.unit}`,
     `สาขาที่ขอ : ${row.branch}`,
     `สถานะการส่ง : ${sackStatusLabel(row)}`,
   ]
@@ -173,10 +173,21 @@ interface Field {
   wide?: boolean
 }
 
+/**
+ * จำนวนที่ขึ้นในใบคือจำนวนที่ส่งไปจริง ไม่ใช่จำนวนที่สาขาขอมา
+ *
+ * เจ้าของระบบขอไว้ชัดว่าห้ามขึ้นเป็น "ขอ 500 ส่ง 200" ในใบ
+ * ใบนี้ไปอยู่ในแชทกลุ่มที่มีสาขาปลายทางอยู่ด้วย
+ * ตัวเลขที่ขอแล้วไม่ได้ของทำให้ต้องไปนั่งอธิบายกันในกลุ่ม
+ * ส่วนต่างไปโผล่ในหน้าประวัติฝั่งเว็บแทน ซึ่งมีแต่คนในเห็น
+ */
+const qtyOf = (row: SackRow) => row.qty_out ?? row.qty
+const qtyLabel = (row: SackRow) => (row.status === 'pending' ? 'จำนวน' : 'จำนวนที่ส่ง')
+
 function fieldsOf(row: SackRow, sentBy?: string | null): Field[] {
   const out: Field[] = [
     { label: 'HUB ที่จัดส่ง', value: row.hub_code },
-    { label: 'จำนวน', value: `${row.qty.toLocaleString('th-TH')} ${row.unit}`, big: true },
+    { label: qtyLabel(row), value: `${qtyOf(row).toLocaleString('th-TH')} ${row.unit}`, big: true },
     { label: 'สาขาที่ขอ', value: row.branch, big: true, wide: true },
     { label: 'สถานะการส่ง', value: sackStatusLabel(row), big: true, wide: true },
   ]

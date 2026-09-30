@@ -33,6 +33,14 @@ export default function Ship() {
   const [target, setTarget] = useState<SackRow | null>(null)
   const [mode, setMode] = useState<'direct' | 'relay'>('direct')
   const [via, setVia] = useState('')
+  /**
+   * ส่งไปจริงเท่าไหร่ — เติมจำนวนที่ขอไว้ให้แล้ว
+   *
+   * เคสปกติคือส่งครบ คนหน้างานจึงไม่ต้องแตะช่องนี้เลย
+   * ที่ต้องมีเพราะของในฮับไม่พอก็เกิดบ่อย สาขาขอ 500 ส่งได้จริง 200
+   * ถ้าบันทึกแค่ "ส่งแล้ว" ส่วนกลางจะไล่ไม่ได้ว่ายังค้างอยู่เท่าไหร่
+   */
+  const [qtyOut, setQtyOut] = useState('')
   const [shots, setShots] = useState<Shot[]>([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -52,12 +60,16 @@ export default function Ship() {
   )
 
   const photosReady = shots.length === 0 || shots.every((s) => s.state === 'done')
-  const canSend = photosReady && !busy && (mode === 'direct' || via.trim() !== '')
+  const qtyNum = Number(qtyOut)
+  const qtyOk = qtyOut.trim() !== '' && Number.isFinite(qtyNum) && qtyNum > 0
+  const canSend =
+    photosReady && qtyOk && !busy && (mode === 'direct' || via.trim() !== '')
 
   function open(row: SackRow) {
     setTarget(row)
     setMode('direct')
     setVia('')
+    setQtyOut(String(row.qty))
     setShots([])
     setErr(null)
   }
@@ -82,6 +94,7 @@ export default function Ship() {
         mode,
         relayVia: via.trim() || null,
         photos,
+        sentQty: qtyNum,
       })
 
       // รูปในเครื่องยังอยู่ ใช้วาดการ์ดได้ทันทีโดยไม่ต้องโหลดกลับจาก Drive
@@ -93,6 +106,9 @@ export default function Ship() {
         sent_at: target.sent_at ?? new Date().toISOString(),
         sent_by_name: target.sent_by_name ?? profile?.full_name ?? null,
         photo_count: res.duplicate ? target.photo_count : photos.length,
+        sent_qty: res.sent_qty,
+        qty_out: res.sent_qty,
+        qty_differs: res.sent_qty !== target.qty,
       }
       setTarget(null)
       setDone({ row: shown, urls })
@@ -207,6 +223,33 @@ export default function Ship() {
               {target.qty.toLocaleString('th-TH')} {target.unit} · {target.ref_no}
               {target.note ? ` · ${target.note}` : ''}
             </p>
+
+            <div>
+              <label className="label" htmlFor="ship-qty">
+                ส่งไปเท่าไหร่
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="ship-qty"
+                  className="input w-[140px] text-lg"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  value={qtyOut}
+                  onChange={(e) => setQtyOut(e.target.value)}
+                />
+                <span className="text-sm text-ink-500">{target.unit}</span>
+              </div>
+              {qtyOk && qtyNum !== target.qty && (
+                <p className="mt-1 text-xs text-warn-txt">
+                  ไม่เท่าที่ขอ ({target.qty.toLocaleString('th-TH')} {target.unit}) —
+                  ส่งได้เท่านี้ก็กดได้เลย ส่วนกลางจะเห็นเองว่ายังค้างเท่าไหร่
+                </p>
+              )}
+              {!qtyOk && (
+                <p className="mt-1 text-xs text-danger-txt">ใส่จำนวนที่ส่งไปจริงก่อน</p>
+              )}
+            </div>
 
             <div>
               <p className="label">ส่งยังไง</p>

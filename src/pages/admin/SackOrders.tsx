@@ -263,8 +263,17 @@ export default function SackOrders() {
                       </span>
                     )}
                   </td>
+                  {/* ส่วนต่างระหว่างที่ขอกับที่ส่งโผล่ตรงนี้ที่เดียว
+                      ในใบที่หน้างานส่งเข้าแชทกลุ่มขึ้นแต่จำนวนที่ส่ง
+                      เพราะกลุ่มนั้นมีสาขาปลายทางอยู่ด้วย */}
                   <td className="px-3 py-2 text-right font-display">
-                    {r.qty.toLocaleString('th-TH')} {r.unit}
+                    {(r.qty_out ?? r.qty).toLocaleString('th-TH')} {r.unit}
+                    {r.qty_differs && (
+                      <span className="block text-xs font-normal text-warn-txt">
+                        ขอ {r.qty.toLocaleString('th-TH')} · ขาด{' '}
+                        {(r.qty - (r.qty_out ?? r.qty)).toLocaleString('th-TH')}
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2">
                     <span
