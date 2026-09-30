@@ -41,6 +41,13 @@ export default function Ship() {
    * ถ้าบันทึกแค่ "ส่งแล้ว" ส่วนกลางจะไล่ไม่ได้ว่ายังค้างอยู่เท่าไหร่
    */
   const [qtyOut, setQtyOut] = useState('')
+  /**
+   * หน่วยตอนส่ง — เลือกได้ ไม่ได้ล็อกตามตอนตั้งรายการ
+   *
+   * สาขาขอมาเป็นชิ้น แต่หน้างานนับตอนขึ้นรถเป็นกระสอบ
+   * ของเดิมต้องแปลงหัวคิดเอาเอง ซึ่งแปลว่ามีวันที่แปลงผิด
+   */
+  const [unitOut, setUnitOut] = useState<'ชิ้น' | 'กระสอบ'>('ชิ้น')
   const [shots, setShots] = useState<Shot[]>([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -70,6 +77,7 @@ export default function Ship() {
     setMode('direct')
     setVia('')
     setQtyOut(String(row.qty))
+    setUnitOut(row.unit === 'กระสอบ' ? 'กระสอบ' : 'ชิ้น')
     setShots([])
     setErr(null)
   }
@@ -95,6 +103,7 @@ export default function Ship() {
         relayVia: via.trim() || null,
         photos,
         sentQty: qtyNum,
+        sentUnit: unitOut,
       })
 
       // รูปในเครื่องยังอยู่ ใช้วาดการ์ดได้ทันทีโดยไม่ต้องโหลดกลับจาก Drive
@@ -107,8 +116,11 @@ export default function Ship() {
         sent_by_name: target.sent_by_name ?? profile?.full_name ?? null,
         photo_count: res.duplicate ? target.photo_count : photos.length,
         sent_qty: res.sent_qty,
+        sent_unit: res.sent_unit,
         qty_out: res.sent_qty,
-        qty_differs: res.sent_qty !== target.qty,
+        unit_out: res.sent_unit,
+        unit_differs: res.sent_unit !== target.unit,
+        qty_differs: res.sent_unit === target.unit && res.sent_qty !== target.qty,
       }
       setTarget(null)
       setDone({ row: shown, urls })
@@ -228,19 +240,33 @@ export default function Ship() {
               <label className="label" htmlFor="ship-qty">
                 ส่งไปเท่าไหร่
               </label>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <input
                   id="ship-qty"
-                  className="input w-[140px] text-lg"
+                  className="input w-[130px] text-lg"
                   type="number"
                   inputMode="numeric"
                   min={1}
                   value={qtyOut}
                   onChange={(e) => setQtyOut(e.target.value)}
                 />
-                <span className="text-sm text-ink-500">{target.unit}</span>
+                {(['ชิ้น', 'กระสอบ'] as const).map((u) => (
+                  <button
+                    key={u}
+                    type="button"
+                    className={`chip py-3 ${unitOut === u ? 'chip-on' : ''}`}
+                    onClick={() => setUnitOut(u)}
+                  >
+                    {u}
+                  </button>
+                ))}
               </div>
-              {qtyOk && qtyNum !== target.qty && (
+              {unitOut !== target.unit && (
+                <p className="mt-1 text-xs text-ink-500">
+                  ขอมาเป็น {target.unit} · บันทึกเป็น {unitOut} ตามที่นับจริงตอนขึ้นรถ
+                </p>
+              )}
+              {qtyOk && unitOut === target.unit && qtyNum !== target.qty && (
                 <p className="mt-1 text-xs text-warn-txt">
                   ไม่เท่าที่ขอ ({target.qty.toLocaleString('th-TH')} {target.unit}) —
                   ส่งได้เท่านี้ก็กดได้เลย ส่วนกลางจะเห็นเองว่ายังค้างเท่าไหร่

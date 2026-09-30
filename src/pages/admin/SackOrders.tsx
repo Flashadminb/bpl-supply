@@ -275,14 +275,21 @@ export default function SackOrders() {
                     ) : (
                       <>
                         <span className="block text-xs font-normal text-ink-400">
-                          ขอ {r.qty.toLocaleString('th-TH')}
+                          ขอ {r.qty.toLocaleString('th-TH')} {r.unit}
                         </span>
-                        <span className={r.qty_differs ? 'text-warn-txt' : undefined}>
-                          ส่ง {(r.qty_out ?? r.qty).toLocaleString('th-TH')} {r.unit}
+                        <span className={r.qty_differs || r.unit_differs ? 'text-warn-txt' : undefined}>
+                          ส่ง {(r.qty_out ?? r.qty).toLocaleString('th-TH')} {r.unit_out ?? r.unit}
                         </span>
+                        {/* ขาดเท่าไหร่บอกได้เฉพาะตอนหน่วยเดียวกัน
+                            ขอ 700 ชิ้น ส่ง 20 กระสอบ ไม่ได้แปลว่าขาด 680 */}
                         {r.qty_differs && (
                           <span className="block text-xs font-normal text-warn-txt">
                             ขาด {(r.qty - (r.qty_out ?? r.qty)).toLocaleString('th-TH')}
+                          </span>
+                        )}
+                        {r.unit_differs && (
+                          <span className="block text-xs font-normal text-warn-txt">
+                            คนละหน่วย
                           </span>
                         )}
                       </>

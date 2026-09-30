@@ -45,7 +45,7 @@ export function sackFormText(row: SackRow, sentBy?: string | null): string {
     `เลขที่ : ${row.ref_no}`,
     '',
     `HUB ที่จัดส่ง : ${row.hub_code}`,
-    `${qtyLabel(row)} : ${qtyOf(row).toLocaleString('th-TH')} ${row.unit}`,
+    `${qtyLabel(row)} : ${qtyOf(row).toLocaleString('th-TH')} ${unitOf(row)}`,
     `สาขาที่ขอ : ${row.branch}`,
     `สถานะการส่ง : ${sackStatusLabel(row)}`,
   ]
@@ -182,12 +182,13 @@ interface Field {
  * ส่วนต่างไปโผล่ในหน้าประวัติฝั่งเว็บแทน ซึ่งมีแต่คนในเห็น
  */
 const qtyOf = (row: SackRow) => row.qty_out ?? row.qty
+const unitOf = (row: SackRow) => row.unit_out ?? row.unit
 const qtyLabel = (row: SackRow) => (row.status === 'pending' ? 'จำนวน' : 'จำนวนที่ส่ง')
 
 function fieldsOf(row: SackRow, sentBy?: string | null): Field[] {
   const out: Field[] = [
     { label: 'HUB ที่จัดส่ง', value: row.hub_code },
-    { label: qtyLabel(row), value: `${qtyOf(row).toLocaleString('th-TH')} ${row.unit}`, big: true },
+    { label: qtyLabel(row), value: `${qtyOf(row).toLocaleString('th-TH')} ${unitOf(row)}`, big: true },
     { label: 'สาขาที่ขอ', value: row.branch, big: true, wide: true },
     { label: 'สถานะการส่ง', value: sackStatusLabel(row), big: true, wide: true },
   ]

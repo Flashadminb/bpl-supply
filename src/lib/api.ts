@@ -1920,13 +1920,17 @@ export async function markSackSent(args: {
   photos?: { file_id: string; web_link: string | null; bytes: number | null }[]
   /** ส่งไปจริงเท่าไหร่ · ไม่ส่งมา = ส่งเต็มตามที่ขอ */
   sentQty?: number | null
+  /** หน่วยที่นับตอนส่ง · ไม่ส่งมา = หน่วยเดียวกับที่ขอ */
+  sentUnit?: 'ชิ้น' | 'กระสอบ' | null
 }): Promise<{
   ref_no: string
   duplicate: boolean
   status: 'direct' | 'relay'
   relay_via: string | null
   sent_qty: number
+  sent_unit: string
   qty: number
+  unit: string
 }> {
   const { data, error } = await supabase.rpc('mark_sack_sent', {
     p_id: args.id,
@@ -1934,6 +1938,7 @@ export async function markSackSent(args: {
     p_relay: args.mode === 'relay' ? (args.relayVia ?? null) : null,
     p_photos: args.photos ?? [],
     p_sent_qty: args.sentQty ?? null,
+    p_sent_unit: args.sentUnit ?? null,
   })
   if (error) throw new Error(readableError(error))
   return data as {
@@ -1942,7 +1947,9 @@ export async function markSackSent(args: {
     status: 'direct' | 'relay'
     relay_via: string | null
     sent_qty: number
+    sent_unit: string
     qty: number
+    unit: string
   }
 }
 
