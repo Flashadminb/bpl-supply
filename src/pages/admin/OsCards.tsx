@@ -42,22 +42,21 @@ export function OsCardStyles() {
           font-family:Kanit,system-ui,sans-serif; color:#111;
         }
         @media print { .os-card { width:54mm; height:86mm; border-radius:2mm; } }
-        .os-top,.os-bot { position:absolute; left:0; right:0; height:14%; overflow:hidden; }
-        .os-top { top:0 } .os-bot { bottom:0 }
-        .os-navy,.os-navy2 { position:absolute; inset:0; background:${NAVY}; }
-        .os-navy  { clip-path:polygon(0 0,100% 0,100% 64%,58% 100%,0 42%); }
+        .os-top { position:absolute; left:0; right:0; top:0; height:8%; overflow:hidden; }
+        .os-bot { position:absolute; left:0; right:0; bottom:0; height:14%; overflow:hidden; }
+                .os-navy,.os-navy2 { position:absolute; inset:0; background:${NAVY}; }
+        .os-navy  { clip-path:polygon(0 0,100% 0,100% 60%,48% 100%,0 55%); }
         .os-navy2 { clip-path:polygon(0 36%,44% 0,100% 30%,100% 100%,0 100%); }
-        .os-ytri  { position:absolute; right:0; top:0; width:56%; height:100%; background:${Y};
-                    clip-path:polygon(26% 0,100% 0,100% 100%,62% 100%); }
+        .os-wedge { position:absolute; right:0; top:0; width:46%; height:27%; background:${Y};
+                    clip-path:polygon(34% 0,100% 0,100% 74%,52% 100%); z-index:1; }
         .os-ytri2 { position:absolute; left:0; bottom:0; width:58%; height:100%; background:${Y};
                     clip-path:polygon(0 42%,54% 0,88% 26%,34% 100%,0 100%); }
         .os-ystripe { position:absolute; left:-4%; top:0; width:52%; height:9px; background:${Y};
                       transform:skewX(-34deg); }
-        .os-logo { position:absolute; left:10px; top:7px; font-weight:800; font-size:10px;
-                   letter-spacing:.06em; color:#fff; z-index:3; }
-        .os-logo i { font-style:normal; color:${Y}; }
-        .os-inner { position:absolute; inset:0; display:flex; flex-direction:column;
-                    align-items:center; padding:30px 9px 34px; }
+        .os-logo { position:absolute; left:9px; top:31px; width:64px; height:auto; z-index:3;
+                   mix-blend-mode:multiply; }
+                .os-inner { position:absolute; inset:0; display:flex; flex-direction:column;
+                    align-items:center; padding:46px 9px 34px; justify-content:space-between; }
         .os-tag { background:${Y}; color:#111; border-radius:4px; padding:0 10px;
                   font-weight:700; font-size:10px; line-height:1.5; }
         .os-name { font-weight:700; line-height:1.12; margin-top:5px; text-align:center; }
@@ -101,8 +100,8 @@ function Face({ fileId }: { fileId: string | null }) {
     <span
       className="block overflow-hidden"
       style={{
-        width: 96,
-        height: 108,
+        width: 94,
+        height: 100,
         flex: '0 0 auto',
         background: '#d8d3c7',
         borderRadius: 4,
@@ -139,12 +138,10 @@ export function Card({ p }: { p: OsPerson }) {
     <div className="os-card">
       <div className="os-top">
         <span className="os-navy" />
-        <span className="os-ytri" />
         <span className="os-ystripe" />
       </div>
-      <span className="os-logo">
-        FLA<i>S</i>H
-      </span>
+      <span className="os-wedge" />
+      <img className="os-logo" src="/os-logo.png" alt="Flash Express" />
 
       <div className="os-inner">
         <span className="os-tag">{p.affiliation ?? '—'}</span>
@@ -156,7 +153,7 @@ export function Card({ p }: { p: OsPerson }) {
         <span className="os-model">{p.phone_model ?? '—'}</span>
         <span className="os-imeiL">IMEI</span>
         <span className="os-imeiV">{p.imei ?? '—'}</span>
-        {p.card_token && <QrImg token={p.card_token} size={58} />}
+        {p.card_token && <QrImg token={p.card_token} size={56} />}
       </div>
 
       <div className="os-bot">
