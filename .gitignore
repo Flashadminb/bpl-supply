@@ -11,3 +11,6 @@ supabase/.temp
 
 # ค่าลับของระบบแจ้งเตือน
 supabase/แจ้งเตือน-ตั้งค่า.txt
+
+# หน้าตัวอย่างบัตรที่ card-preview.cjs สร้างไว้ดูชั่วคราว ไม่ต้องขึ้นเว็บจริง
+public/__card-preview.html

@@ -8,14 +8,14 @@ import { EmptyState, ErrorBox, Loading } from '../../components/ui'
 import type { OsPerson } from '../../lib/types'
 
 /**
- * พิมพ์บัตรคล้องคอ — A4 ละ 8 ใบ ขนาด 54×86 มม. เท่าบัตรพนักงาน
+ * พิมพ์บัตรคล้องคอ — A4 ละ 9 ใบ ขนาด 54×86 มม. เท่าบัตรพนักงาน
  *
  * พิมพ์จาก HTML ตรง ๆ ไม่ได้เรนเดอร์เป็นรูปก่อน
  * ตัวหนังสือจึงคมตามความละเอียดเครื่องพิมพ์ ไม่ใช่ตามความละเอียดรูป
  * ซึ่งสำคัญกับ IMEI สิบห้าหลักที่ต้องอ่านออกจากบัตรจริง
  *
  * ธีมเหลือง-กรมท่าตามแบบที่เจ้าของระบบทำไว้ใน Canva
- * ต่างกันที่ไม่มีรูปพื้นหลังคลังกับโลโก้ตัวจริง ซึ่งรอไฟล์อยู่
+ * ยังต่างจากแบบอยู่อย่างเดียวคือไม่มีรูปพื้นหลังคลัง ซึ่งรอไฟล์อยู่
  */
 
 const Y = '#FFED00'
@@ -32,7 +32,7 @@ export function OsCardStyles() {
         .os-sheet { display:grid; grid-template-columns:repeat(2,204px); gap:10px; }
         @media print {
           .no-print { display:none !important; }
-          .os-sheet { grid-template-columns:repeat(2,54mm); gap:4mm; }
+          .os-sheet { grid-template-columns:repeat(3,54mm); gap:4mm; }
           .os-card { break-inside:avoid; page-break-inside:avoid; }
           @page { size:A4; margin:8mm; }
         }
@@ -43,29 +43,40 @@ export function OsCardStyles() {
         }
         @media print { .os-card { width:54mm; height:86mm; border-radius:2mm; } }
         .os-top { position:absolute; left:0; right:0; top:0; height:8%; overflow:hidden; }
-        .os-bot { position:absolute; left:0; right:0; bottom:0; height:14%; overflow:hidden; }
-                .os-navy,.os-navy2 { position:absolute; inset:0; background:${NAVY}; }
+        .os-navy,.os-navy2 { position:absolute; inset:0; background:${NAVY}; }
         .os-navy  { clip-path:polygon(0 0,100% 0,100% 60%,48% 100%,0 55%); }
-        .os-navy2 { clip-path:polygon(0 36%,44% 0,100% 30%,100% 100%,0 100%); }
         .os-wedge { position:absolute; right:0; top:0; width:46%; height:27%; background:${Y};
-                    clip-path:polygon(34% 0,100% 0,100% 74%,52% 100%); z-index:1; }
-        .os-ytri2 { position:absolute; left:0; bottom:0; width:58%; height:100%; background:${Y};
-                    clip-path:polygon(0 42%,54% 0,88% 26%,34% 100%,0 100%); }
+                    clip-path:polygon(34% 0,100% 0,100% 74%,52% 100%); }
         .os-ystripe { position:absolute; left:-4%; top:0; width:52%; height:9px; background:${Y};
                       transform:skewX(-34deg); }
-        .os-logo { position:absolute; left:9px; top:31px; width:64px; height:auto; z-index:3;
-                   mix-blend-mode:multiply; }
-                .os-inner { position:absolute; inset:0; display:flex; flex-direction:column;
-                    align-items:center; padding:46px 9px 34px; justify-content:space-between; }
-        .os-tag { background:${Y}; color:#111; border-radius:4px; padding:0 10px;
+        /* โลโก้เล็กและอยู่สูงตามแบบใน Canva
+           ของเดิมใหญ่กว่านี้และต่ำกว่านี้ เลยไปอยู่แถวเดียวกับป้ายสังกัดพอดี
+           มองแล้วหนักไปทางซ้ายทั้งที่ป้ายอยู่กลางบัตรจริง ๆ */
+        .os-logo { position:absolute; left:9px; top:22px; width:46px; height:auto; }
+
+        /* แถบล่างบางลงและดันลายไปอยู่สองมุม ตรงกลางจึงว่างพอให้ QR ยืนเต็มใบ
+           ของเดิมหนา 14% พาดขวางทั้งใบ เลยกิน QR ไปจนสแกนไม่ติด */
+        .os-bot { position:absolute; left:0; right:0; bottom:0; height:8%; overflow:hidden; }
+        .os-navy2 { clip-path:polygon(0 52%,30% 14%,100% 40%,100% 100%,0 100%); }
+        .os-ytri2 { position:absolute; left:0; bottom:0; width:46%; height:100%; background:${Y};
+                    clip-path:polygon(0 34%,48% 0,86% 30%,30% 100%,0 100%); }
+
+        /* กรอบนี้กว้างเท่าบัตรและเว้นซ้ายขวาเท่ากัน แกนกลางของทุกบรรทัดจึงตรงกลางบัตรพอดี
+           ถ้าเว้นไม่เท่ากันเมื่อไหร่ ป้ายสังกัดกับชื่อจะเยื้องออกข้างทันที */
+        .os-inner { position:absolute; inset:0; display:flex; flex-direction:column;
+                    align-items:center; justify-content:space-between; text-align:center;
+                    padding:46px 9px 36px; }
+        .os-tag { flex:0 0 auto; background:${Y}; color:#111; border-radius:4px; padding:0 10px;
                   font-weight:700; font-size:10px; line-height:1.5; }
-        .os-name { font-weight:700; line-height:1.12; margin-top:5px; text-align:center; }
-        .os-id { font-size:9px; color:#3b3b3b; }
+        .os-mid { display:flex; flex-direction:column; align-items:center; width:100%;
+                  min-height:0; }
+        .os-name { font-weight:700; line-height:1.12; }
+        .os-id { font-size:9px; color:#3b3b3b; margin-top:1px; }
         .os-model { font-weight:700; font-size:9.5px; margin-top:4px; text-transform:uppercase;
-                    text-align:center; line-height:1.2; }
+                    line-height:1.2; }
         .os-imeiL { font-weight:700; font-size:10px; margin-top:3px; }
-        .os-imeiV { font-size:8.5px; letter-spacing:.01em; margin-bottom:3px; }
-        .os-hub { position:absolute; right:9px; bottom:11px; text-align:right; z-index:3;
+        .os-imeiV { font-size:8.5px; letter-spacing:.01em; }
+        .os-hub { position:absolute; right:9px; bottom:29px; text-align:right;
                   line-height:1.2; }
         .os-hub b { display:block; font-size:6px; color:#111; }
         .os-hub span { font-size:5px; color:#333; }
@@ -100,9 +111,13 @@ function Face({ fileId }: { fileId: string | null }) {
     <span
       className="block overflow-hidden"
       style={{
-        width: 94,
-        height: 100,
-        flex: '0 0 auto',
+        width: 84,
+        height: 92,
+        // ยอมให้รูปหดได้ เป็นวาล์วกันล้นของบัตร
+        // ชื่อยาวสองบรรทัดหรือชื่อรุ่นยาว ๆ จะดันของข้างล่างตกขอบ
+        // หดรูปลงสองสามพิกเซลไม่มีใครดูออก แต่ QR หลุดขอบนี่สแกนไม่ได้เลย
+        flex: '0 1 auto',
+        minHeight: 62,
         background: '#d8d3c7',
         borderRadius: 4,
       }}
@@ -146,14 +161,16 @@ export function Card({ p }: { p: OsPerson }) {
       <div className="os-inner">
         <span className="os-tag">{p.affiliation ?? '—'}</span>
         <Face fileId={p.photo_file_id} />
-        <span className="os-name" style={{ fontSize: nameSize }}>
-          {p.full_name}
-        </span>
-        <span className="os-id">ID: {p.os_code ?? '—'}</span>
-        <span className="os-model">{p.phone_model ?? '—'}</span>
-        <span className="os-imeiL">IMEI</span>
-        <span className="os-imeiV">{p.imei ?? '—'}</span>
-        {p.card_token && <QrImg token={p.card_token} size={56} />}
+        <div className="os-mid">
+          <span className="os-name" style={{ fontSize: nameSize }}>
+            {p.full_name}
+          </span>
+          <span className="os-id">ID: {p.os_code ?? '—'}</span>
+          <span className="os-model">{p.phone_model ?? '—'}</span>
+          <span className="os-imeiL">IMEI</span>
+          <span className="os-imeiV">{p.imei ?? '—'}</span>
+        </div>
+        {p.card_token && <QrImg token={p.card_token} size={52} />}
       </div>
 
       <div className="os-bot">
@@ -195,7 +212,7 @@ export default function OsCards() {
         <div>
           <h1 className="font-display text-xl">พิมพ์บัตร OS</h1>
           <p className="text-sm text-ink-400">
-            A4 ละ 8 ใบ · ขนาด 54×86 มม. เท่าบัตรพนักงาน · ตัดตามเส้นประ
+            A4 ละ 9 ใบ · ขนาด 54×86 มม. เท่าบัตรพนักงาน · ตัดตามเส้นประ
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
