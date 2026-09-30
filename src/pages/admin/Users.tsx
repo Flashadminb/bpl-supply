@@ -251,6 +251,7 @@ export default function Users() {
                 <th className="w-[250px] px-3 py-2 font-medium">กะ / แผนกย่อย</th>
                 <th className="w-[160px] px-3 py-2 font-medium">บทบาท</th>
                 <th className="w-[130px] px-3 py-2 font-medium">เบิก Asset</th>
+                <th className="w-[110px] px-3 py-2 font-medium">กระสอบ</th>
                 <th className="w-[110px] px-3 py-2 font-medium">สถานะ</th>
                 <th className="w-[150px] px-3 py-2 font-medium">รหัสผ่าน</th>
               </tr>
@@ -360,6 +361,26 @@ export default function Users() {
                       }
                     >
                       {u.can_assets ? 'เบิกได้' : 'เฉพาะสิ้นเปลือง'}
+                    </button>
+                  </td>
+                  {/* ของเดิมหน้างานทุกคนเห็นกระสอบ ซึ่งแปลว่าคนที่ไม่เกี่ยวกับงานนี้
+                      ก็เห็นคิวงานคนอื่นเต็มหน้าแรก ตอนนี้เจ้าของระบบเลือกเองได้
+                      ผู้ตรวจสอบเปิดไม่ได้ เพราะสั่งไว้ว่าเอากระสอบออกจากผู้ตรวจสอบทั้งหมด */}
+                  <td className="px-3 py-2 align-top">
+                    <button
+                      type="button"
+                      className={u.can_sack ? 'badge-ok' : 'badge-mute'}
+                      disabled={savingId === u.id || u.can_dispatch}
+                      onClick={() => void patch(u.id, { can_sack: !u.can_sack })}
+                      title={
+                        u.can_dispatch
+                          ? 'ผู้ตรวจสอบไม่เห็นงานกระสอบ'
+                          : u.can_sack
+                            ? 'เห็นกระสอบรอส่งและกดส่งได้ · กดเพื่อปิด'
+                            : 'ไม่เห็นงานกระสอบเลย · กดเพื่อเปิด'
+                      }
+                    >
+                      {u.can_dispatch ? '—' : u.can_sack ? 'เห็น' : 'ไม่เห็น'}
                     </button>
                   </td>
                   <td className="px-3 py-2 align-top">

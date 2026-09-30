@@ -22,6 +22,8 @@ export interface Profile {
   dept_code: string | null
   sub_dept: string | null
   can_assets: boolean
+  /** เห็นงานกระสอบไหม · ตั้งรายคนได้จากหน้าผู้ใช้และสิทธิ์ */
+  can_sack: boolean
   /** ผู้ตรวจสอบ — เห็นเครื่องทุกแผนก เบิกแทนและโอนเครื่องได้ */
   can_dispatch: boolean
   /** รปภ — เห็นเฉพาะหน้าสแกนบัตร OS ไม่เห็นเมนูเบิกของเลย */

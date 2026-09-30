@@ -12,7 +12,7 @@ import {
 import { StaffPage } from '../../components/Shell'
 import { EmptyState, ErrorBox, Loading } from '../../components/ui'
 import { STATUS_TH, fmtDateTime, statusClass } from '../../lib/format'
-import { MANAGER_ROLES, canProxy, roleLabel, showsOsScanTile } from '../../lib/roles'
+import { MANAGER_ROLES, canProxy, canSeeSacks, roleLabel, showsOsScanTile } from '../../lib/roles'
 import { usePendingApprovals } from '../../lib/usePendingApprovals'
 import { NotifyBell } from '../../components/NotifyBell'
 import { WorkLinks } from '../../components/WorkLinks'
@@ -50,7 +50,7 @@ export default function Home() {
    * ยกเว้นผู้ตรวจสอบ งานเขาคือตามว่าของถึงหรือยัง ไม่ใช่ขนของเอง
    * ไม่ถามฐานข้อมูลด้วยซ้ำถ้าเขาไม่ได้จะเห็น จะได้ไม่เปลืองโควต้าฟรี ๆ
    */
-  const seesSacks = !profile?.can_dispatch
+  const seesSacks = canSeeSacks(profile)
   const sacks = useAsync(
     () => (seesSacks ? countPendingSacks() : Promise.resolve(0)),
     [seesSacks],

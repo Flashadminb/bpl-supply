@@ -2,7 +2,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Suspense, lazy, useEffect, type ReactNode } from 'react'
 import { useAuth } from './lib/auth'
 import type { UserRole } from './lib/types'
-import { MANAGER_ROLES } from './lib/roles'
+import { MANAGER_ROLES, canSeeSacks } from './lib/roles'
 import { Loading } from './components/ui'
 
 import Login from './pages/staff/Login'
@@ -63,6 +63,7 @@ function Guard({
   roles,
   allowDispatch,
   allowGuard,
+  needsSack,
 }: {
   children: ReactNode
   roles?: UserRole[]
@@ -70,6 +71,8 @@ function Guard({
   allowDispatch?: boolean
   /** รปภ เข้าได้ด้วย — ใช้กับหน้าสแกนบัตร OS หน้าเดียวเท่านั้น */
   allowGuard?: boolean
+  /** ต้องมีสิทธิ์เห็นงานกระสอบ — ซ่อนไทล์อย่างเดียวไม่พอ คนรู้ URL ยังเข้าได้ */
+  needsSack?: boolean
 }) {
   const { session, profile, loading } = useAuth()
   const loc = useLocation()
@@ -106,6 +109,7 @@ function Guard({
     (allowDispatch && profile.can_dispatch) ||
     (allowGuard && profile.can_guard)
   if (!roleOk) return <Navigate to="/" replace />
+  if (needsSack && !canSeeSacks(profile)) return <Navigate to="/" replace />
   return <>{children}</>
 }
 
@@ -173,7 +177,7 @@ export default function App() {
       <Route path="/success/:refNo" element={<Guard><Success /></Guard>} />
       <Route path="/returns" element={<Guard><Returns /></Guard>} />
       <Route path="/by" element={<Guard><BySend /></Guard>} />
-      <Route path="/ship" element={<Guard><Ship /></Guard>} />
+      <Route path="/ship" element={<Guard needsSack><Ship /></Guard>} />
       {/*
         หน้าเดียวที่ รปภ เข้าได้ และคนที่จัดการรายชื่อ OS ก็เข้าได้
         ฐานข้อมูลกันซ้ำอีกชั้นใน os_scan() ไม่ได้กันแค่เส้นทาง

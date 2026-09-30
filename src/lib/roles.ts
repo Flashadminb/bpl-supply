@@ -108,6 +108,23 @@ export function postPatch(key: PostKey): {
 }
 
 /** จ่ายของแทนคนอื่นได้ไหม — ตรงกับ my_can_proxy() ในฐานข้อมูล */
+/**
+ * เห็นงานกระสอบไหม
+ *
+ * ของเดิมหน้างานทุกคนเห็น ยกเว้นผู้ตรวจสอบ ซึ่งแปลว่าคนที่ไม่เกี่ยวกับงานนี้
+ * ก็เห็นคิวงานคนอื่นเต็มหน้าแรก และเจ้าของระบบเลือกไม่ได้ว่าใครควรเห็น
+ *
+ * ผู้ตรวจสอบยังไม่เห็นเหมือนเดิม แม้จะเปิดธงให้ก็ตาม
+ * เพราะเคยสั่งไว้ชัดว่าเอาทุกอย่างที่เกี่ยวกับกระสอบออกจากผู้ตรวจสอบ
+ */
+export function canSeeSacks(
+  p: { role: UserRole; can_dispatch?: boolean; can_sack?: boolean } | null,
+): boolean {
+  if (!p) return false
+  if (p.can_dispatch) return false
+  return Boolean(p.can_sack)
+}
+
 export function canProxy(p: { role: UserRole; can_dispatch?: boolean } | null): boolean {
   if (!p) return false
   return p.role === 'supervisor' || p.role === 'admin' || Boolean(p.can_dispatch)

@@ -428,6 +428,7 @@ export async function updateProfile(
       | 'dept_code'
       | 'sub_dept'
       | 'can_assets'
+      | 'can_sack'
       | 'can_dispatch'
       | 'can_guard'
       | 'extra_depts'
