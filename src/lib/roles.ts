@@ -127,3 +127,17 @@ export function canGuardScan(
   if (!p) return false
   return Boolean(p.can_guard) || canProxy(p)
 }
+
+/**
+ * ใครได้ปุ่มสแกนบนหน้าแรกของแอพ — เจ้าของระบบกับผู้ตรวจสอบ
+ *
+ * แอดมินจัดการรายชื่อและออกบัตรได้จากหลังบ้านอยู่แล้ว
+ * แต่ไม่ได้ยืนหน้างาน ปุ่มบนหน้าแรกจึงเป็นของที่ไม่ได้ใช้
+ * ของที่ไม่ได้ใช้ไม่ควรอยู่บนจอ เพราะทำให้ของที่ต้องใช้หาเจอช้าลง
+ */
+export function showsOsScanTile(
+  p: { role: UserRole; can_dispatch?: boolean } | null,
+): boolean {
+  if (!p) return false
+  return p.role === 'admin' || Boolean(p.can_dispatch)
+}

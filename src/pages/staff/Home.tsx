@@ -12,7 +12,7 @@ import {
 import { StaffPage } from '../../components/Shell'
 import { EmptyState, ErrorBox, Loading } from '../../components/ui'
 import { STATUS_TH, fmtDateTime, statusClass } from '../../lib/format'
-import { MANAGER_ROLES, canOsAdmin, canProxy, roleLabel } from '../../lib/roles'
+import { MANAGER_ROLES, canProxy, roleLabel, showsOsScanTile } from '../../lib/roles'
 import { usePendingApprovals } from '../../lib/usePendingApprovals'
 import { NotifyBell } from '../../components/NotifyBell'
 import { WorkLinks } from '../../components/WorkLinks'
@@ -57,8 +57,8 @@ export default function Home() {
   )
   const sackCount = sacks.data ?? 0
 
-  // สแกนบัตร OS — เจ้าของระบบ แอดมิน ผู้ตรวจสอบ ไว้สุ่มเช็คเองที่หน้างาน
-  const mayScan = canOsAdmin(profile)
+  // สแกนบัตร OS — เจ้าของระบบกับผู้ตรวจสอบ ไว้สุ่มเช็คเองที่หน้างาน
+  const mayScan = showsOsScanTile(profile)
 
   /**
    * รปภ ได้หน้าแรกคนละหน้า ไม่ใช่หน้าเดิมที่ซ่อนเมนูไปครึ่งหนึ่ง

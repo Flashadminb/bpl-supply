@@ -73,6 +73,17 @@ export default function OsPeople() {
     })
   }, [rows, tab, q])
 
+  /** ค่าที่เคยใช้ — รายการโตเองจากข้อมูลจริง ไม่ต้องมีใครมาตั้งล่วงหน้า */
+  const affiliations = useMemo(
+    () => [...new Set(rows.map((r) => r.affiliation).filter(Boolean))].sort() as string[],
+    [rows],
+  )
+  const shifts = useMemo(() => {
+    const seen = [...new Set(rows.map((r) => r.shift).filter(Boolean))] as string[]
+    // เรียงตามเวลาจริง ไม่ใช่ตามตัวอักษร ไม่งั้น 3:00 จะไปอยู่หลัง 18:00
+    return seen.sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0))
+  }, [rows])
+
   const noCard = rows.filter((r) => !r.has_card && r.is_active).length
   const noPhoto = rows.filter((r) => !r.has_photo && r.is_active).length
   const warned = rows.filter((r) => osRowWarnings(r).length > 0).length
@@ -503,14 +514,14 @@ export default function OsPeople() {
               [
                 ['full_name', 'ชื่อ-นามสกุล', true],
                 ['os_code', 'รหัสพนักงาน OS', false],
-                ['affiliation', 'สังกัด', false],
-                ['shift', 'กะ', false],
+                ['affiliation', 'สังกัด', false, affiliations],
+                ['shift', 'กะ', false, shifts],
                 ['phone_model', 'รุ่นโทรศัพท์', false],
                 ['imei', 'IMEI', false],
                 ['nickname', 'ชื่อเล่น', false],
                 ['note', 'หมายเหตุ', false],
-              ] as [keyof OsPerson, string, boolean][]
-            ).map(([k, label, wide]) => (
+              ] as [keyof OsPerson, string, boolean, string[]?][]
+            ).map(([k, label, wide, options]) => (
               <span key={k} className={wide ? 'col-span-2' : ''}>
                 <label className="label" htmlFor={`os-${k}`}>
                   {label}
@@ -518,9 +529,18 @@ export default function OsPeople() {
                 <input
                   id={`os-${k}`}
                   className="input w-full"
+                  list={options ? `os-${k}-list` : undefined}
+                  placeholder={options?.length ? `เลือก หรือพิมพ์ใหม่` : undefined}
                   value={(edit[k] as string) ?? ''}
                   onChange={(e) => setEdit({ ...edit, [k]: e.target.value })}
                 />
+                {options && (
+                  <datalist id={`os-${k}-list`}>
+                    {options.map((o) => (
+                      <option key={o} value={o} />
+                    ))}
+                  </datalist>
+                )}
               </span>
             ))}
 
@@ -552,6 +572,48 @@ export default function OsPeople() {
                   ลบถาวร
                 </button>
               </span>
+            )}
+
+            {(affiliations.length > 0 || shifts.length > 0) && (
+              <div className="col-span-2 rounded-card bg-surface-2 p-3">
+                {affiliations.length > 0 && (
+                  <>
+                    <p className="label mb-1">สังกัดที่เคยใช้ · กดเลือกได้</p>
+                    <div className="mb-2 flex flex-wrap gap-1">
+                      {affiliations.map((a) => (
+                        <button
+                          key={a}
+                          type="button"
+                          className={`chip ${edit.affiliation === a ? 'chip-on' : ''}`}
+                          onClick={() => setEdit({ ...edit, affiliation: a })}
+                        >
+                          {a}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {shifts.length > 0 && (
+                  <>
+                    <p className="label mb-1">กะที่เคยใช้</p>
+                    <div className="flex flex-wrap gap-1">
+                      {shifts.map((h) => (
+                        <button
+                          key={h}
+                          type="button"
+                          className={`chip ${edit.shift === h ? 'chip-on' : ''}`}
+                          onClick={() => setEdit({ ...edit, shift: h })}
+                        >
+                          {h}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                <p className="mt-2 text-xs text-ink-400">
+                  ไม่มีที่ต้องการก็พิมพ์ลงช่องข้างบนได้เลย ครั้งหน้าจะมีให้เลือกเอง
+                </p>
+              </div>
             )}
 
             <button
