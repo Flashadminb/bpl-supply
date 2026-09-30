@@ -4,6 +4,7 @@ import { useAsync } from '../../lib/useAsync'
 import {
   listAssetHoldings,
   listAssetIssues,
+  reportAssetIssue,
   listAssetOpenIssues,
   listAssetTypes,
   listAssets,
@@ -686,6 +687,8 @@ function AssetSheet({
   const log = useAsync(() => listAssetIssues(asset.code), [asset.code])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [symptom, setSymptom] = useState('')
+  const [note, setNote] = useState<string | null>(null)
   const [enabled, setEnabled] = useState(asset.is_enabled)
   const [home, setHome] = useState(asset.dept_code ?? 'ALL')
   const [shares, setShares] = useState<string[]>(asset.share_depts ?? [])
@@ -846,6 +849,43 @@ function AssetSheet({
             {busy ? <Spinner /> : null}
             {enabled ? 'ปิดไม่ให้เบิก' : 'เปิดให้เบิก'}
           </button>
+        </div>
+
+        {/* แจ้งเสียได้จากตรงนี้ เผื่อหน้างานไม่แจ้งแล้วแอดมินเดินไปเจอเอง
+            ของเดิมอาการพังบันทึกได้ตอนเบิกหรือตอนคืนเท่านั้น
+            เครื่องที่วางอยู่เฉย ๆ จึงต้องรอให้มีคนมาเบิกก่อนถึงจะแจ้งได้
+            ซึ่งแปลว่าของพังถูกเบิกออกไปหนึ่งรอบก่อนเสมอ */}
+        <div className="rounded-card border border-warn/30 bg-warn-bg p-3">
+          <label className="label" htmlFor="asset-report">
+            เจอเครื่องเสียเอง แจ้งได้เลย
+          </label>
+          <textarea
+            id="asset-report"
+            className="input min-h-[72px] w-full"
+            placeholder="อาการที่เจอ เช่น จอแตก ปุ่มสแกนไม่ติด แบตบวม"
+            value={symptom}
+            onChange={(e) => setSymptom(e.target.value)}
+          />
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <p className="text-xs text-ink-500">
+              ลงชื่อคุณเป็นผู้แจ้ง · ไปโผล่ในอาการค้างข้างล่างทันที
+            </p>
+            <button
+              type="button"
+              className="btn-primary h-tap px-4"
+              disabled={busy || symptom.trim() === ''}
+              onClick={() =>
+                void run(async () => {
+                  const res = await reportAssetIssue({ code: asset.code, symptom })
+                  setSymptom('')
+                  setNote(res.duplicate ? 'อาการนี้แจ้งไว้อยู่แล้ว ไม่ได้บันทึกซ้ำ' : 'บันทึกอาการแล้ว')
+                })
+              }
+            >
+              {busy ? <Spinner /> : null} แจ้งเสีย
+            </button>
+          </div>
+          {note && <p className="mt-2 text-sm text-ink-700">{note}</p>}
         </div>
 
         <div>

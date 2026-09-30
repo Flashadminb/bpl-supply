@@ -856,3 +856,52 @@ export interface OsImportRow {
   imei: string | null
   nickname: string | null
 }
+
+/**
+ * ประวัติการโอนเครื่องทั้งฮับ — ใครโอนอะไรไปให้ใคร
+ *
+ * คนละตัวกับ TransferNotice ซึ่งเป็น "ของค้างอยู่ของฉัน" เท่านั้น
+ * ตัวนี้เห็นทั้งหมดรวมของที่จบไปแล้ว เพราะเป็นหน้าไว้ดูย้อนหลัง
+ */
+export interface AssetTransferRow {
+  id: number
+  asset_code: string
+  type_name: string
+  asset_dept: string | null
+  from_user_id: string | null
+  from_name: string | null
+  from_code: string | null
+  from_dept: string | null
+  to_user_id: string | null
+  to_name: string | null
+  to_code: string | null
+  to_dept: string | null
+  by_user_id: string | null
+  by_name: string | null
+  reason: string | null
+  created_at: string
+  claimed_at: string | null
+  claimed_by_name: string | null
+  ack_at: string | null
+  /** claimed = ปลายทางรับแล้ว · waiting = ยังไม่มีใครกดรับ */
+  state: 'claimed' | 'waiting'
+}
+
+/** ใบแจ้งเสียทั้งฮับ พ่วงชื่อคนแจ้งและชื่อประเภทเครื่องมาให้แล้ว */
+export interface AssetIssueRow {
+  id: number
+  asset_code: string
+  type_name: string
+  asset_dept: string | null
+  symptom: string
+  phase: AssetTxnKind | null
+  reported_at: string
+  reported_by_name: string | null
+  reported_by_code: string | null
+  file_id: string | null
+  web_link: string | null
+  resolved_at: string | null
+  resolved_by_name: string | null
+  resolve_note: string | null
+  is_open: boolean
+}

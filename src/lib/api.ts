@@ -1,5 +1,7 @@
 import { supabase, functionUrl, readableError, emailFromEmployeeCode } from './supabase'
 import type {
+  AssetIssueRow,
+  AssetTransferRow,
   CartLine,
   CreateReqResult,
   Item,
@@ -2225,4 +2227,63 @@ export async function osFlagTargets(): Promise<SackNotifyTarget[]> {
   const { data, error } = await supabase.rpc('os_flag_targets')
   if (error) throw new Error(readableError(error))
   return (data ?? []) as SackNotifyTarget[]
+}
+
+/* ------------------------------------------ โอน-แจ้งเสีย · ดูย้อนหลังทั้งฮับ */
+
+/**
+ * แจ้งเสียเครื่องจากหน้าทะเบียน โดยไม่ต้องรอให้มีคนเบิกหรือคืน
+ *
+ * เผื่อหน้างานไม่แจ้งแล้วแอดมินเดินไปเจอเอง
+ * ของเดิมบันทึกอาการได้เฉพาะตอนเบิกหรือตอนคืน เครื่องที่วางอยู่เฉย ๆ จึงแจ้งไม่ได้
+ */
+export async function reportAssetIssue(args: {
+  code: string
+  symptom: string
+  fileId?: string | null
+  webLink?: string | null
+}): Promise<{ id: number; duplicate: boolean; asset_code: string }> {
+  const { data, error } = await supabase.rpc('asset_report_issue', {
+    p_code: args.code,
+    p_symptom: args.symptom,
+    p_file_id: args.fileId ?? null,
+    p_web_link: args.webLink ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { id: number; duplicate: boolean; asset_code: string }
+}
+
+/** ประวัติการโอนในช่วงวันที่ — กรองที่ฐานข้อมูล ไม่ได้ดึงมาทั้งหมดแล้วคัดในเบราว์เซอร์ */
+export async function listAssetTransferRows(args: {
+  fromISO: string
+  toISO: string
+  limit?: number
+}): Promise<AssetTransferRow[]> {
+  return unwrap(
+    await supabase
+      .from('asset_transfer_rows')
+      .select('*')
+      .gte('created_at', args.fromISO)
+      .lte('created_at', args.toISO)
+      .order('created_at', { ascending: false })
+      .limit(args.limit ?? 400),
+  ) as unknown as AssetTransferRow[]
+}
+
+/** ใบแจ้งเสียในช่วงวันที่ · onlyOpen = เอาเฉพาะที่ยังไม่ได้เคลียร์ */
+export async function listAssetIssueRows(args: {
+  fromISO: string
+  toISO: string
+  onlyOpen?: boolean
+  limit?: number
+}): Promise<AssetIssueRow[]> {
+  let q = supabase
+    .from('asset_issue_rows')
+    .select('*')
+    .gte('reported_at', args.fromISO)
+    .lte('reported_at', args.toISO)
+  if (args.onlyOpen) q = q.eq('is_open', true)
+  return unwrap(
+    await q.order('reported_at', { ascending: false }).limit(args.limit ?? 400),
+  ) as unknown as AssetIssueRow[]
 }

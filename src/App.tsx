@@ -39,6 +39,7 @@ const Users = lazy(() => import('./pages/admin/Users'))
 const ExportSheet = lazy(() => import('./pages/admin/ExportSheet'))
 const AdminEvidence = lazy(() => import('./pages/admin/Evidence'))
 const ReturnStatus = lazy(() => import('./pages/admin/ReturnStatus'))
+const AssetMoves = lazy(() => import('./pages/admin/AssetMoves'))
 const WorkLinksAdmin = lazy(() => import('./pages/admin/WorkLinksAdmin'))
 const SystemHealth = lazy(() => import('./pages/admin/SystemHealth'))
 const Notices = lazy(() => import('./pages/admin/Notices'))
@@ -242,6 +243,12 @@ export default function App() {
         <Route
           path="return-status"
           element={<Guard roles={MANAGER_ROLES} allowDispatch><ReturnStatus /></Guard>}
+        />
+        {/* โอน-แจ้งเสีย เป็นหน้าอ่านอย่างเดียว ผู้ตรวจสอบเข้าได้ด้วย
+            เพราะเป็นงานตามของ ไม่ใช่งานสั่งการ */}
+        <Route
+          path="asset-moves"
+          element={<Guard roles={MANAGER_ROLES} allowDispatch><AssetMoves /></Guard>}
         />
         <Route path="qr" element={<Guard roles={MANAGER_ROLES}><QrLabels /></Guard>} />
         {/* สองหน้านี้ผู้ตรวจสอบเข้าได้ด้วย นอกนั้นเป็นของแอดมินล้วน */}

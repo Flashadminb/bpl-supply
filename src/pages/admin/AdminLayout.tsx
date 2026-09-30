@@ -35,6 +35,7 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
       { to: '/admin', label: 'หน้าแรก', icon: 'home', end: true },
       { to: '/admin/evidence', label: 'หลักฐานการเบิก-คืน', icon: 'photo' },
       { to: '/admin/return-status', label: 'สถานะเบิก-คืน', icon: 'clipboard', audit: true },
+      { to: '/admin/asset-moves', label: 'โอน-แจ้งเสีย', icon: 'history', audit: true },
     ],
   },
   {
