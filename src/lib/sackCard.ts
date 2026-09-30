@@ -593,77 +593,76 @@ async function buildGrid(
   imgs: HTMLImageElement[],
   fit: SackPhotoFit,
 ): Promise<Blob> {
-  const { canvas, ctx } = newCanvas()
-  drawHeader(ctx, row)
+  const probe = document.createElement('canvas').getContext('2d')
+  if (!probe) throw new Error('เบราว์เซอร์นี้วาดรูปลง canvas ไม่ได้')
 
-  const laid = layoutStack(ctx, fields, INFO_W)
-  const infoTop = HEADER_H + 30
-  drawStack(ctx, laid, PAD, infoTop)
-
+  const laid = layoutStack(probe, fields, INFO_W)
+  const top = HEADER_H + 30
+  const px = PAD + INFO_W + GUTTER
+  const pw = W - px - PAD
   const gap = 14
   const n = imgs.length
 
+  /** ความสูงที่รูปนี้อยากได้ ถ้าได้กว้างเต็มคอลัมน์ */
+  const natural = imgs.map((im) => (im.width > 0 ? (pw * im.height) / im.width : pw * 0.75))
+
   /**
-   * รูปวางได้สองที่ เลือกที่ที่รูปออกมาใหญ่กว่าจริง ๆ
-   *
-   *   ขวา  คอลัมน์ข้างข้อมูล สูงเกือบเต็มการ์ด แต่กว้างแค่ 610
-   *   ล่าง เต็มความกว้างใต้บล็อกข้อมูล กว้าง 968 แต่เตี้ยกว่า
-   *
-   * สองรูปขึ้นไปคอลัมน์ขวาชนะเสมอ เพราะมีความสูงให้ซ้อนกันเยอะ
-   * แต่รูปเดียวจะเหลือพื้นดำเกือบทั้งคอลัมน์ ทั้งที่ข้างล่างว่างอยู่
-   * ให้มันวัดเอาเองดีกว่าตั้งกฎตายตัว เพราะขึ้นกับว่ารูปตั้งหรือนอนด้วย
+   * เพดานความสูง — การ์ดยาวกว่าจอมือถือแล้วต้องเลื่อนดู ซึ่งเสียจุดประสงค์
+   * ปกติไม่ถึงเพดาน รูปนอนสองใบจบที่ราวพันสองร้อย
    */
-  const infoBottom = infoTop + laid.height
-  const regions = [
-    { x: PAD + INFO_W + GUTTER, y: HEADER_H + 20, w: W - (PAD + INFO_W + GUTTER) - PAD },
-    { x: PAD, y: infoBottom + 32, w: W - PAD * 2 },
-  ].map((r) => ({ ...r, h: H - r.y - FOOTER_H - 16 }))
+  const roomMax = H - top - 28 - FOOTER_H - gap * (n - 1)
+  const even = roomMax / n
+  const tallest = Math.max(...natural)
+  const shortest = Math.min(...natural)
 
-  /** ความสูงของแต่ละช่องในกรอบนี้ ตามวิธีแบ่งที่เลือกไว้ */
-  const slotsFor = (r: { w: number; h: number }): number[] => {
-    const room = r.h - gap * (n - 1)
-    if (room <= 0) return imgs.map(() => 0)
-    if (fit === 'proportional') {
-      const natural = imgs.map((im) => (im.width > 0 ? (r.w * im.height) / im.width : r.w * 0.75))
-      const wanted = natural.reduce((a, b) => a + b, 0)
-      const k = wanted > 0 ? Math.min(1, room / wanted) : 1
-      return natural.map((v) => v * k)
-    }
-    // ช่องเท่ากันทุกใบ แต่ไม่ยอมสูงเกินรูปที่เตี้ยที่สุดต้องการ
-    // ไม่งั้นรูปนอนสองใบจะถูกดันให้ห่างกันจนมีแถบดำคั่นเปล่า ๆ
-    const even = room / n
-    if (fit === 'equalCrop') return imgs.map(() => even)
-    const tallest = Math.max(
-      ...imgs.map((im) => (im.width > 0 ? (r.w * im.height) / im.width : r.w * 0.75)),
-    )
-    const cap = Math.min(even, tallest)
-    return imgs.map(() => cap)
+  let slots: number[]
+  if (fit === 'proportional') {
+    const wanted = natural.reduce((a, b) => a + b, 0)
+    const k = wanted > 0 ? Math.min(1, roomMax / wanted) : 1
+    slots = natural.map((v) => v * k)
+  } else if (fit === 'equalCrop') {
+    slots = imgs.map(() => Math.min(even, tallest))
+  } else {
+    /**
+     * ช่องเท่ากันทุกใบ และสูงเท่ารูปที่เตี้ยที่สุดต้องการ ไม่ใช่สูงที่สุด
+     *
+     * เอาตัวสูงสุดเป็นเกณฑ์แล้วรูปนอนจะลอยอยู่กลางช่องสูง ๆ
+     * ช่องเท่ากันก็จริง แต่รูปข้างในสูงไม่เท่ากัน ตาก็ยังเห็นว่าไม่เท่า
+     * แถมการ์ดถูกดันยาวออกไปด้วยแถบดำที่ไม่มีอะไรอยู่
+     *
+     * เอาตัวเตี้ยสุดเป็นเกณฑ์แล้วทุกใบสูงเท่ากันจริง และไม่มีแถบดำบนล่างเลย
+     * แลกกับรูปตั้งที่เล็กลง ซึ่งเกิดเฉพาะตอนมีรูปตั้งปนรูปนอนในใบเดียว
+     */
+    slots = imgs.map(() => Math.min(even, shortest))
   }
 
-  const plan = (r: { x: number; y: number; w: number; h: number }) => {
-    const slots = slotsFor(r)
-    // พื้นที่ที่รูปกินจริงหลังย่อ เป็นตัวตัดสิน ไม่ใช่ขนาดกรอบ
-    const area = imgs.reduce((sum, im, i) => {
-      if (fit === 'equalCrop') return sum + slots[i] * r.w
-      const wid = im.height > 0 ? (slots[i] * im.width) / im.height : r.w
-      return sum + slots[i] * Math.min(wid, r.w)
-    }, 0)
-    return { r, slots, area }
-  }
+  /**
+   * ความสูงการ์ดเดินตามเนื้อหา ไม่ได้ตรึงไว้ที่ 1920
+   *
+   * ตรึงไว้แล้วรูปนอนสองใบจบที่ราวพันสองร้อย เหลือพื้นดำอีกเจ็ดร้อย
+   * ซึ่งเปิดในแชทแล้วเห็นเป็นช่องว่างใหญ่ ๆ ใต้ของที่ต้องดู
+   *
+   * รูปเริ่มที่ระดับเดียวกับบรรทัดแรกของข้อมูล ไม่ได้จัดกลางคอลัมน์
+   * สองฝั่งจึงเริ่มเสมอกัน และการ์ดจบตรงที่ฝั่งที่ยาวกว่าจบ
+   */
+  const stackH = Math.round(slots.reduce((a, b) => a + b, 0) + gap * (n - 1))
+  const contentH = Math.max(laid.height, stackH)
+  const cardH = Math.min(H, top + contentH + 28 + FOOTER_H)
 
-  const best = regions.map(plan).reduce((a, b) => (b.area > a.area ? b : a))
-  const used = best.slots.reduce((a, b) => a + b, 0) + gap * (n - 1)
+  const { canvas, ctx } = newCanvas(cardH)
+  drawHeader(ctx, row)
+  drawStack(ctx, laid, PAD, top)
 
-  let y = best.r.y + Math.round((best.r.h - used) / 2)
+  let y = top
   imgs.forEach((img, i) => {
-    const slotH = Math.round(best.slots[i])
+    const slotH = Math.round(slots[i])
     const draw = fit === 'equalCrop' ? drawCover : drawContained
-    const box = draw(ctx, img, best.r.x, y, best.r.w, slotH)
+    const box = draw(ctx, img, px, y, pw, slotH)
     if (n > 1) drawTag(ctx, String(i + 1), box.x + 10, box.y + 10, 24)
     y += slotH + gap
   })
 
-  drawFooterAt(ctx, row, H)
+  drawFooterAt(ctx, row, cardH)
   return toBlob(canvas, true)
 }
 
