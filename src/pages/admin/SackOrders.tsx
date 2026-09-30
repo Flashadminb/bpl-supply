@@ -263,16 +263,29 @@ export default function SackOrders() {
                       </span>
                     )}
                   </td>
-                  {/* ส่วนต่างระหว่างที่ขอกับที่ส่งโผล่ตรงนี้ที่เดียว
+                  {/* ขอเท่าไหร่ ส่งเท่าไหร่ อยู่ตรงนี้ที่เดียว
                       ในใบที่หน้างานส่งเข้าแชทกลุ่มขึ้นแต่จำนวนที่ส่ง
-                      เพราะกลุ่มนั้นมีสาขาปลายทางอยู่ด้วย */}
+                      เพราะกลุ่มนั้นมีสาขาปลายทางอยู่ด้วย
+                      ตัวเลขที่ขอแล้วไม่ได้ของทำให้ต้องไปนั่งอธิบายกันในกลุ่ม */}
                   <td className="px-3 py-2 text-right font-display">
-                    {(r.qty_out ?? r.qty).toLocaleString('th-TH')} {r.unit}
-                    {r.qty_differs && (
-                      <span className="block text-xs font-normal text-warn-txt">
-                        ขอ {r.qty.toLocaleString('th-TH')} · ขาด{' '}
-                        {(r.qty - (r.qty_out ?? r.qty)).toLocaleString('th-TH')}
-                      </span>
+                    {r.status === 'pending' ? (
+                      <>
+                        {r.qty.toLocaleString('th-TH')} {r.unit}
+                      </>
+                    ) : (
+                      <>
+                        <span className="block text-xs font-normal text-ink-400">
+                          ขอ {r.qty.toLocaleString('th-TH')}
+                        </span>
+                        <span className={r.qty_differs ? 'text-warn-txt' : undefined}>
+                          ส่ง {(r.qty_out ?? r.qty).toLocaleString('th-TH')} {r.unit}
+                        </span>
+                        {r.qty_differs && (
+                          <span className="block text-xs font-normal text-warn-txt">
+                            ขาด {(r.qty - (r.qty_out ?? r.qty)).toLocaleString('th-TH')}
+                          </span>
+                        )}
+                      </>
                     )}
                   </td>
                   <td className="px-3 py-2">
