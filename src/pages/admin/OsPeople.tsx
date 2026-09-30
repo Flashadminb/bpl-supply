@@ -54,6 +54,34 @@ export default function OsPeople() {
   const [upLog, setUpLog] = useState<{ name: string; state: 'ok' | 'fail'; why?: string }[]>([])
 
   /* ------------------------------------------------------ แก้รายคน */
+  /**
+   * ออกบัตรให้ทุกคนที่ยังไม่มี
+   *
+   * รอบแรกมี 53 คน ถ้าให้กดทีละแถวคือ 53 ครั้งโดยที่ไม่มีอะไรให้ตัดสินใจเลย
+   * ยิงทีละคนไม่ยิงพร้อมกัน เพราะทุกใบต้องได้เลขใบต่อจากของเดิมของคนนั้น
+   * และถ้าติดกลางทาง จะได้รู้ว่าค้างที่ใคร ไม่ใช่ล้มทั้งกองแล้วไม่รู้ว่าถึงไหน
+   */
+  const [bulk, setBulk] = useState<{ done: number; total: number; fail: string[] } | null>(null)
+
+  async function issueAll() {
+    const targets = rows.filter((r) => r.is_active && !r.has_card)
+    if (targets.length === 0) return
+    if (!window.confirm(`ออกบัตรให้ ${targets.length} คนที่ยังไม่มีบัตร?`)) return
+
+    setErr(null)
+    const fail: string[] = []
+    for (let i = 0; i < targets.length; i++) {
+      setBulk({ done: i, total: targets.length, fail })
+      try {
+        await issueOsCard(targets[i].id)
+      } catch (e) {
+        fail.push(`${targets[i].full_name} — ${readableError(e)}`)
+      }
+    }
+    setBulk({ done: targets.length, total: targets.length, fail })
+    list.reload()
+  }
+
   const [edit, setEdit] = useState<Partial<OsPerson> | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -215,6 +243,16 @@ export default function OsPeople() {
           <button type="button" className="btn-ghost" onClick={() => filesRef.current?.click()}>
             อัปรูปหลายไฟล์
           </button>
+          {noCard > 0 && (
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => void issueAll()}
+              disabled={bulk !== null && bulk.done < bulk.total}
+            >
+              ออกบัตรให้ทุกคนที่ยังไม่มี ({noCard})
+            </button>
+          )}
           <button type="button" className="btn-primary" onClick={() => setPasteOpen(true)}>
             วางข้อมูลจากชีต
           </button>
@@ -231,6 +269,31 @@ export default function OsPeople() {
       />
 
       {err && <ErrorBox message={err} />}
+
+      {bulk && (
+        <div className="mb-3 rounded-card border border-line bg-surface p-3">
+          <p className="flex items-center gap-2 font-display text-md">
+            {bulk.done < bulk.total && <Spinner />}
+            ออกบัตรแล้ว {bulk.done}/{bulk.total} คน
+            {bulk.done === bulk.total && (
+              <button
+                type="button"
+                className="ml-auto text-sm text-ink-400 underline"
+                onClick={() => setBulk(null)}
+              >
+                ปิด
+              </button>
+            )}
+          </p>
+          {bulk.fail.length > 0 && (
+            <ul className="mt-1 space-y-[2px] text-xs text-danger-txt">
+              {bulk.fail.map((f, i) => (
+                <li key={i}>✕ {f}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {importDone && (
         <div className="mb-3 rounded-card border border-success/25 bg-success-bg p-3 text-sm text-success-txt">
           {importDone}
