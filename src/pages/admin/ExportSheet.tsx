@@ -7,6 +7,7 @@ import {
   countMeetingExportRows,
   countSheetExportRows,
   exportToSheet,
+  oldestPendingExport,
   listDepartments,
   listSheetExportRows,
 } from '../../lib/api'
@@ -37,6 +38,7 @@ export default function ExportSheet() {
   // ฝั่ง Asset มีแต่ตัวเลขนับ กดส่งแล้วไม่รู้ว่าส่งอะไรไป ตรวจย้อนไม่ได้
   const [side, setSide] = useState<'supply' | 'asset'>('supply')
   const [busy, setBusy] = useState(false)
+  const [widening, setWidening] = useState(false)
   const [runs, setRuns] = useState<RunLog[]>([])
 
   // คำนวณครั้งเดียวต่อการเปลี่ยนวัน ไม่งั้นค่าเปลี่ยนทุกครั้งที่ render แล้วโหลดวน
@@ -95,10 +97,41 @@ export default function ExportSheet() {
   const allPending = usePendingExports()
   const outsideRange = Math.max(allPending.count - totalPending, 0)
 
-  async function send() {
+  /**
+   * ขยายช่วงให้ครอบของที่ค้างแล้วส่งเลยในปุ่มเดียว
+   *
+   * ส่งด้วยช่วงที่คำนวณได้ตรง ๆ ไม่ได้รอให้ state ของ DateRangePicker อัปเดตก่อน
+   * ถ้ารอ จะต้องกดสองครั้งเพราะรอบแรก range ยังเป็นค่าเก่า
+   */
+  async function catchUp() {
+    setWidening(true)
+    try {
+      const oldest = await oldestPendingExport()
+      if (!oldest) {
+        allPending.reload()
+        setRuns((r) => [
+          { at: new Date().toISOString(), ok: true, message: 'ไม่มีบรรทัดค้างแล้ว ไม่ต้องส่ง' },
+          ...r,
+        ])
+        return
+      }
+      // ถอยอีกวันกันพลาดเรื่องเขตเวลา บรรทัดแรกสุดต้องอยู่ในช่วงแน่ ๆ
+      const start = new Date(Date.parse(oldest) - 864e5)
+      const dayKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(start)
+      setFrom(dayKey)
+      await send({ fromISO: start.toISOString(), toISO: range.toISO })
+    } catch (e) {
+      setRuns((r) => [{ at: new Date().toISOString(), ok: false, message: (e as Error).message }, ...r])
+    } finally {
+      setWidening(false)
+    }
+  }
+
+  async function send(over?: { fromISO: string; toISO: string }) {
+    const span = over ?? range
     setBusy(true)
     try {
-      const res = await exportToSheet({ from: range.fromISO, to: range.toISO })
+      const res = await exportToSheet({ from: span.fromISO, to: span.toISO })
       allPending.reload()
       setRuns((r) => [
         {
@@ -210,10 +243,25 @@ export default function ExportSheet() {
         </div>
 
         {outsideRange > 0 && (
-          <p className="mt-3 rounded-btn border border-warn/30 bg-warn-bg px-3 py-2 text-sm text-warn-txt">
-            ยังมีอีก <b>{outsideRange} บรรทัด</b> ที่ค้างส่งอยู่<b>นอกช่วงวันที่ที่เลือก</b> ·
-            ขยายช่วงวันที่ให้ครอบแล้วกดส่งอีกครั้ง ปุ่มนี้ส่งเฉพาะช่วงที่เลือกเท่านั้น
-          </p>
+          <div className="mt-3 rounded-btn border border-warn/30 bg-warn-bg px-3 py-2 text-sm text-warn-txt">
+            <p>
+              ยังมีอีก <b>{outsideRange} บรรทัด</b> ที่ค้างส่งอยู่<b>นอกช่วงวันที่ที่เลือก</b> ·
+              ปุ่มส่งด้านบนทำงานกับช่วงที่เลือกเท่านั้น
+            </p>
+            {/* ของเดิมบอกให้ไปขยายช่วงเอง ซึ่งแปลว่าต้องเดาว่าของค้างอยู่วันไหน
+                แล้วถ้าเดาไม่ถูกก็ยังกดส่งไม่ได้อยู่ดี ปุ่มนี้ถามฐานข้อมูลว่า
+                บรรทัดที่ค้างเก่าสุดคือวันไหน แล้วขยายให้พอดี ไม่ได้ลากไปสองปีรวด
+                เพราะลากไกลเกินจะไปเขียนทับแถวที่ส่งไปแล้วเป็นพัน ๆ แถวโดยเปล่าประโยชน์ */}
+            <button
+              type="button"
+              className="btn-primary mt-2 h-tap px-4"
+              disabled={busy || widening}
+              onClick={() => void catchUp()}
+            >
+              {widening ? <Spinner /> : null}
+              {widening ? 'กำลังขยายช่วง…' : `ขยายช่วงให้ครอบแล้วส่ง ${outsideRange} บรรทัดนี้`}
+            </button>
+          </div>
         )}
 
         <p className="mt-3 rounded-btn bg-surface-2 px-3 py-2 text-xs text-ink-500">

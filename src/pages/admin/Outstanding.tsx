@@ -24,6 +24,13 @@ export default function Outstanding() {
   const [closeNote, setCloseNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  /**
+   * รายการอื่นที่ปิดไปพร้อมกัน — เหมือนหน้า Asset ที่ยังไม่คืน
+   *
+   * คนเดียวมักค้างหลายรายการจากใบเดียวกัน เอาของมาคืนทีเดียวทั้งกอง
+   * ของเดิมต้องเปิดปิดทีละรายการ ซึ่งแอดมินจะทำไม่ครบแล้วเหลือค้างคาไว้
+   */
+  const [also, setAlso] = useState<number[]>([])
 
   const all = feed.data ?? []
 
@@ -42,6 +49,16 @@ export default function Outstanding() {
     }
     return [...out].sort(by[sort])
   }, [all, search, sort, lateOnly])
+
+  /** รายการค้างอื่นของคนเดียวกัน ที่ยังไม่ใช่ตัวที่กดเปิด */
+  const alsoCan = useMemo(() => {
+    if (!closing) return []
+    return all.filter(
+      (b) =>
+        b.requester_id === closing.requester_id &&
+        b.requisition_item_id !== closing.requisition_item_id,
+    )
+  }, [all, closing])
 
   const units = rows.reduce((n, b) => n + b.qty_open, 0)
   const late = all.filter((b) => hoursSince(b.created_at) >= LATE_HOURS)
@@ -180,6 +197,7 @@ export default function Outstanding() {
                           onClick={() => {
                             setErr(null)
                             setCloseNote('')
+                            setAlso([])
                             setClosing(b)
                           }}
                         >
@@ -226,6 +244,54 @@ export default function Outstanding() {
               บันทึกชื่อคุณไว้ว่าเป็นคนปิดให้ พร้อมเหตุผลด้านล่าง
             </p>
 
+            {/* รายการอื่นของคนเดียวกัน — คนเดียวมักค้างหลายรายการจากใบเดียวกัน
+                เอาของมาคืนทีเดียวทั้งกอง ของเดิมต้องเปิดปิดทีละรายการ
+                ซึ่งแอดมินจะทำไม่ครบแล้วเหลือค้างคาไว้โดยไม่มีใครรู้ */}
+            {alsoCan.length > 0 && (
+              <>
+                <p className="label mt-3">
+                  ปิดรายการอื่นของ {closing.requester_name} ไปพร้อมกัน (ไม่บังคับ)
+                </p>
+                <ul className="max-h-[200px] space-y-1 overflow-y-auto">
+                  {alsoCan.map((b) => {
+                    const on = also.includes(b.requisition_item_id)
+                    return (
+                      <li key={b.requisition_item_id}>
+                        <button
+                          type="button"
+                          className={`flex w-full items-center gap-3 rounded-card border p-2 text-left ${
+                            on ? 'border-ink bg-brand-50' : 'border-line bg-surface'
+                          }`}
+                          onClick={() =>
+                            setAlso((v) =>
+                              v.includes(b.requisition_item_id)
+                                ? v.filter((x) => x !== b.requisition_item_id)
+                                : [...v, b.requisition_item_id],
+                            )
+                          }
+                        >
+                          <span
+                            aria-hidden
+                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-btn border text-sm ${
+                              on ? 'border-ink bg-ink text-white' : 'border-line-2 text-transparent'
+                            }`}
+                          >
+                            ✓
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="font-display">{b.item_name}</span>
+                            <span className="block truncate text-xs text-ink-500">
+                              ค้าง {b.qty_open} {b.unit} · {b.ref_no} · {relativeAge(b.created_at)}
+                            </span>
+                          </span>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </>
+            )}
+
             <label className="label mt-3" htmlFor="ob-why">เหตุผล</label>
             <input
               id="ob-why"
@@ -248,19 +314,38 @@ export default function Outstanding() {
                 className="btn-primary"
                 disabled={busy}
                 onClick={() => {
-                  const row = closing
+                  const chosen = [closing, ...alsoCan.filter((b) => also.includes(b.requisition_item_id))]
                   setBusy(true)
                   setErr(null)
-                  void adminCloseBorrow(row.requisition_item_id, row.qty_open, closeNote)
-                    .then(() => {
+                  void (async () => {
+                    /**
+                     * ปิดทีละรายการตามลำดับ ไม่ยิงพร้อมกัน
+                     *
+                     * แต่ละรายการบวกสต็อกกลับคนละแถว ยิงพร้อมกันแล้วชนกันเองได้
+                     * และถ้าพังกลางทาง ต้องรู้ว่าปิดไปแล้วกี่รายการ ไม่ใช่เดา
+                     */
+                    const failed: string[] = []
+                    let ok = 0
+                    for (const b of chosen) {
+                      try {
+                        await adminCloseBorrow(b.requisition_item_id, b.qty_open, closeNote)
+                        ok++
+                      } catch (e) {
+                        failed.push(`${b.item_name} (${readableError(e)})`)
+                      }
+                    }
+                    feed.reload()
+                    if (failed.length === 0) {
                       setClosing(null)
-                      feed.reload()
-                    })
-                    .catch((e) => setErr(readableError(e)))
-                    .finally(() => setBusy(false))
+                    } else {
+                      // บอกให้ครบว่าอันไหนผ่านอันไหนไม่ผ่าน ไม่ใช่ขึ้นแค่ว่าพัง
+                      setErr(`ปิดสำเร็จ ${ok} รายการ · ไม่สำเร็จ ${failed.length}: ${failed.join(' · ')}`)
+                    }
+                  })().finally(() => setBusy(false))
                 }}
               >
                 {busy ? <Spinner /> : null} ยืนยันคืนแทน
+                {also.length > 0 ? ` ${also.length + 1} รายการ` : ''}
               </button>
             </div>
           </>

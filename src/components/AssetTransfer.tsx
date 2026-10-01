@@ -86,6 +86,7 @@ export function AssetTransfer({
   const [loadingPeople, setLoadingPeople] = useState(false)
   const [reason, setReason] = useState('')
   const [also, setAlso] = useState<string[]>([])
+  const [alsoQ, setAlsoQ] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -121,6 +122,22 @@ export function AssetTransfer({
     return candidates.filter((c) => c.code !== asset.code && c.holderId !== to.id)
   }, [candidates, asset, to])
 
+  /**
+   * รายการที่โชว์หลังกรองคำค้น — ตัวที่เลือกไว้แล้วโชว์เสมอ
+   *
+   * ไม่งั้นพิมพ์ค้นหาตัวถัดไปแล้วตัวที่เพิ่งติ๊กหายจากจอ
+   * คนจะนึกว่าติ๊กไม่ติดแล้วไปติ๊กซ้ำหรือยกเลิกทิ้ง
+   */
+  const alsoShown = useMemo(() => {
+    const s = alsoQ.trim().toLowerCase()
+    if (!s) return alsoCan
+    return alsoCan.filter(
+      (c) =>
+        also.includes(c.code) ||
+        `${c.code} ${c.type_name} ${c.dept ?? ''} ${c.holder ?? ''}`.toLowerCase().includes(s),
+    )
+  }, [alsoCan, alsoQ, also])
+
   const picked = asset ? [asset.code, ...also.filter((c) => alsoCan.some((x) => x.code === c))] : []
 
   function reset() {
@@ -128,6 +145,7 @@ export function AssetTransfer({
     setQ('')
     setReason('')
     setAlso([])
+    setAlsoQ('')
     setError(null)
   }
 
@@ -248,8 +266,29 @@ export function AssetTransfer({
           {alsoCan.length > 0 && (
             <>
               <p className="label mt-3">โอนเครื่องอื่นไปพร้อมกัน (ไม่บังคับ)</p>
+
+              {/* ช่องค้นหาโผล่เมื่อรายการยาวพอที่จะเลื่อนหาแล้วเหนื่อย
+                  สั้นกว่านี้ช่องค้นหาคือของเกินที่กินที่บนจอมือถือเปล่า ๆ
+                  ค้นได้ทั้งรหัสเครื่อง ประเภท แผนก และชื่อคนที่ถืออยู่
+                  เพราะหน้างานจำได้หลายแบบ บางทีจำได้แค่ว่าอยู่กับใคร */}
+              {alsoCan.length > 6 && (
+                <input
+                  className="input mb-2 w-full"
+                  placeholder="ค้นหารหัสเครื่อง ประเภท หรือชื่อคนที่ถืออยู่"
+                  value={alsoQ}
+                  onChange={(e) => setAlsoQ(e.target.value)}
+                />
+              )}
+
+              {alsoShown.length === 0 && (
+                <p className="rounded-card bg-surface-2 px-3 py-2 text-sm text-ink-500">
+                  ไม่เจอเครื่องที่ค้นหา
+                  {also.length > 0 && ` · ที่เลือกไว้ ${also.length} เครื่องยังอยู่`}
+                </p>
+              )}
+
               <ul className="max-h-[220px] space-y-1 overflow-y-auto">
-                {alsoCan.map((c) => {
+                {alsoShown.map((c) => {
                   const on = also.includes(c.code)
                   return (
                     <li key={c.code}>

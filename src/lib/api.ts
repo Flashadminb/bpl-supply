@@ -2320,3 +2320,32 @@ export async function removeAssetGrant(code: string, userId: string) {
   const { error } = await supabase.rpc('asset_grant_remove', { p_code: code, p_user: userId })
   if (error) throw new Error(readableError(error))
 }
+
+/**
+ * วันที่ของบรรทัดค้างส่งที่เก่าที่สุด — เอาไว้ขยายช่วงวันที่ให้ครอบพอดี
+ *
+ * ปุ่มส่งทำงานกับช่วงที่เลือกเท่านั้น ของที่ค้างอยู่นอกช่วงจึงกดส่งไม่ได้เลย
+ * ขยายไปสองปีรวดก็ส่งได้ แต่จะไปเขียนทับทุกแถวที่ส่งไปแล้วเป็นพัน ๆ แถวด้วย
+ * ซึ่งช้าและเสี่ยงหมดเวลาฝั่ง Edge Function
+ *
+ * ถามวันที่เก่าสุดที่ค้างจริงแทน แล้วขยายแค่พอครอบ ซึ่งปกติไม่กี่วัน
+ */
+export async function oldestPendingExport(lookbackDays = 730): Promise<string | null> {
+  const fromISO = new Date(Date.now() - lookbackDays * 864e5).toISOString()
+  const pick = async (view: 'sheet_export_rows' | 'asset_export_rows') => {
+    const { data, error } = await supabase
+      .from(view)
+      .select('created_at')
+      .is('tab', null)
+      .gte('created_at', fromISO)
+      .order('created_at', { ascending: true })
+      .limit(1)
+    if (error) throw new Error(readableError(error))
+    return (data?.[0] as { created_at?: string } | undefined)?.created_at ?? null
+  }
+  const found = (await Promise.all([pick('sheet_export_rows'), pick('asset_export_rows')])).filter(
+    (d): d is string => Boolean(d),
+  )
+  if (found.length === 0) return null
+  return found.sort()[0]
+}

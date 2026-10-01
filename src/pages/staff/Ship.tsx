@@ -107,7 +107,17 @@ export default function Ship() {
       })
 
       // รูปในเครื่องยังอยู่ ใช้วาดการ์ดได้ทันทีโดยไม่ต้องโหลดกลับจาก Drive
-      const urls = shots.filter((s) => s.state === 'done').map((s) => s.img.objectUrl)
+      /**
+       * สร้าง object URL ชุดใหม่ให้หน้าผลลัพธ์ถือเอง อย่าใช้ของ PhotoSteps
+       *
+       * PhotoSteps คืน URL ทั้งหมดให้เบราว์เซอร์ตอน unmount ตามกฎข้อ 7
+       * พอกดส่งเสร็จแผ่นปิด PhotoSteps ก็ unmount แล้ว URL ตายทันที
+       * การ์ดจึงโหลดรูปไม่ขึ้นและออกมาเป็นใบที่มีแต่ตัวหนังสือ
+       * ตัว Blob ยังอยู่ครบ สร้าง URL ใหม่จากมันได้เลย
+       */
+      const urls = shots
+        .filter((s) => s.state === 'done')
+        .map((s) => URL.createObjectURL(s.img.blob))
       const shown: SackRow = {
         ...target,
         status: res.duplicate ? (res.status as SackRow['status']) : mode,
@@ -150,7 +160,16 @@ export default function Ship() {
 
           <SackResult row={done.row} photoUrls={done.urls} sentBy={profile?.full_name} />
 
-          <button type="button" className="btn-dark mt-4 w-full" onClick={() => setDone(null)}>
+          {/* คืน URL ที่หน้านี้สร้างไว้ตอนออกจากหน้า ไม่งั้นรูปค้างในหน่วยความจำ
+              คนหน้างานกดส่งวันละหลายรอบโดยไม่ปิดแอปเลย */}
+          <button
+            type="button"
+            className="btn-dark mt-4 w-full"
+            onClick={() => {
+              done.urls.forEach((u) => URL.revokeObjectURL(u))
+              setDone(null)
+            }}
+          >
             กลับไปรายการ
           </button>
         </StaffPage>

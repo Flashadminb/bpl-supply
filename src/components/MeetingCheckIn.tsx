@@ -50,6 +50,14 @@ export function MeetingCheckIn() {
    */
   const tooEarly = win.data?.phase === 'soon'
 
+  /**
+   * ปิดกล้องเมื่อยังไม่ถึงเวลา หรือไม่มีนัดเลย
+   *
+   * รอให้โหลดกรอบเวลาเสร็จก่อน ไม่งั้นจอจะวาบเป็นข้อความห้ามแล้วค่อยเปิดกล้อง
+   * ซึ่งคนหน้างานจะกดปิดทิ้งไปก่อนที่มันจะเปิด
+   */
+  const blocked = !win.loading && (tooEarly || !win.data)
+
   const photos = shotsToPhotos(shots)
   const uploading = shots.some((s) => s.state === 'uploading' || s.state === 'ready')
   const failed = shots.some((s) => s.state === 'failed')
@@ -149,13 +157,27 @@ export function MeetingCheckIn() {
 
             <MeetingNotices rows={events.data ?? []} />
 
-            <p className="mb-3 text-sm text-ink-500">
-              ถ่ายเซลฟี่ตัวเองหนึ่งรูปเป็นหลักฐาน แล้วกดส่ง
-              <br />
-              ชื่อและเวลาระบบบันทึกให้เอง ไม่ต้องกรอกอะไร
-            </p>
+            {/* ยังไม่ถึงเวลา = ปิดกล้องด้วย ไม่ใช่ปิดแค่ปุ่มส่ง
+                PhotoSteps อัปรูปขึ้น Drive ทันทีที่ถ่าย ไม่ได้รอกดส่ง
+                ปล่อยให้ถ่ายก่อนเวลาจึงเป็นการอัปรูปที่ใช้ไม่ได้ขึ้นไปกินที่ฟรี ๆ
+                และคนถ่ายก็เสียเวลาถ่ายเสร็จแล้วค่อยรู้ว่ากดส่งไม่ได้ */}
+            {blocked ? (
+              <p className="rounded-card border border-warn/30 bg-warn-bg p-3 text-sm text-warn-txt">
+                {tooEarly
+                  ? 'ยังไม่ถึงเวลาเช็คชื่อ · กล้องจะเปิดให้เองเมื่อถึงเวลาที่ประกาศไว้'
+                  : 'ตอนนี้ไม่มีนัดประชุมที่เช็คชื่อได้ · รอประกาศจากผู้ตรวจสอบ'}
+              </p>
+            ) : (
+              <>
+                <p className="mb-3 text-sm text-ink-500">
+                  ถ่ายเซลฟี่ตัวเองหนึ่งรูปเป็นหลักฐาน แล้วกดส่ง
+                  <br />
+                  ชื่อและเวลาระบบบันทึกให้เอง ไม่ต้องกรอกอะไร
+                </p>
 
-            <PhotoSteps steps={[]} maxFree={1} stamp={stamp} shots={shots} onShots={setShots} />
+                <PhotoSteps steps={[]} maxFree={1} stamp={stamp} shots={shots} onShots={setShots} />
+              </>
+            )}
 
             <label className="label mt-3" htmlFor="mt-note">
               หมายเหตุ (ไม่บังคับ)
@@ -177,7 +199,7 @@ export function MeetingCheckIn() {
             <button
               type="button"
               className="btn-primary mt-4 w-full py-4 text-md"
-              disabled={busy || !ready || tooEarly}
+              disabled={busy || !ready || blocked}
               onClick={() => void submit()}
             >
               {busy ? <Spinner /> : null}
