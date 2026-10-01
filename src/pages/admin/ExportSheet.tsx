@@ -7,7 +7,7 @@ import {
   countMeetingExportRows,
   countSheetExportRows,
   exportToSheet,
-  oldestPendingExport,
+  pendingExportSpan,
   listDepartments,
   listSheetExportRows,
 } from '../../lib/api'
@@ -106,8 +106,8 @@ export default function ExportSheet() {
   async function catchUp() {
     setWidening(true)
     try {
-      const oldest = await oldestPendingExport()
-      if (!oldest) {
+      const span = await pendingExportSpan()
+      if (!span) {
         allPending.reload()
         setRuns((r) => [
           { at: new Date().toISOString(), ok: true, message: 'ไม่มีบรรทัดค้างแล้ว ไม่ต้องส่ง' },
@@ -115,11 +115,20 @@ export default function ExportSheet() {
         ])
         return
       }
-      // ถอยอีกวันกันพลาดเรื่องเขตเวลา บรรทัดแรกสุดต้องอยู่ในช่วงแน่ ๆ
-      const start = new Date(Date.parse(oldest) - 864e5)
-      const dayKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(start)
-      setFrom(dayKey)
-      await send({ fromISO: start.toISOString(), toISO: range.toISO })
+      /**
+       * เผื่อหัวท้ายข้างละวัน กันพลาดเรื่องเขตเวลา
+       *
+       * ของที่ค้างส่วนใหญ่ตกขอบด้านท้าย ไม่ใช่ด้านหน้า
+       * เพราะช่วงตั้งต้นจบที่ "วันนี้ 23:59 เวลาไทย" แต่ของที่เกิดหลังเที่ยงคืน
+       * ถูกนับเป็นวันถัดไปแล้ว จึงต้องขยายปลายช่วงด้วย ไม่ใช่ขยายแต่ต้น
+       */
+      const start = new Date(Date.parse(span.oldest) - 864e5)
+      const end = new Date(Math.max(Date.parse(span.newest), Date.now()) + 864e5)
+      const dayKey = (d: Date) =>
+        new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(d)
+      setFrom(dayKey(start))
+      setTo(dayKey(end))
+      await send({ fromISO: start.toISOString(), toISO: end.toISOString() })
     } catch (e) {
       setRuns((r) => [{ at: new Date().toISOString(), ok: false, message: (e as Error).message }, ...r])
     } finally {

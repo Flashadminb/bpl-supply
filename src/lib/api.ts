@@ -2322,30 +2322,41 @@ export async function removeAssetGrant(code: string, userId: string) {
 }
 
 /**
- * วันที่ของบรรทัดค้างส่งที่เก่าที่สุด — เอาไว้ขยายช่วงวันที่ให้ครอบพอดี
+ * ช่วงวันที่ของบรรทัดที่ยังค้างส่ง — เอาไว้ขยายช่วงให้ครอบพอดี
  *
  * ปุ่มส่งทำงานกับช่วงที่เลือกเท่านั้น ของที่ค้างอยู่นอกช่วงจึงกดส่งไม่ได้เลย
  * ขยายไปสองปีรวดก็ส่งได้ แต่จะไปเขียนทับทุกแถวที่ส่งไปแล้วเป็นพัน ๆ แถวด้วย
  * ซึ่งช้าและเสี่ยงหมดเวลาฝั่ง Edge Function
  *
- * ถามวันที่เก่าสุดที่ค้างจริงแทน แล้วขยายแค่พอครอบ ซึ่งปกติไม่กี่วัน
+ * **ต้องคืนทั้งหัวและท้าย ไม่ใช่แค่ตัวเก่าสุด**
+ * ของที่ค้างส่วนใหญ่ตกขอบ *ด้านท้าย* ไม่ใช่ด้านหน้า
+ * เพราะช่วงตั้งต้นจบที่ "วันนี้ 23:59 เวลาไทย" แต่ของที่เกิดหลังเที่ยงคืน
+ * จะถูกนับเป็นวันถัดไปแล้ว ตกขอบทันทีทั้งที่เพิ่งเกิดเมื่อครู่
+ * ขยายแต่ต้นช่วงอย่างเดียวจึงกดเท่าไหร่ก็ไม่ไป — เคยพลาดมาแล้ว
  */
-export async function oldestPendingExport(lookbackDays = 730): Promise<string | null> {
+export async function pendingExportSpan(
+  lookbackDays = 730,
+): Promise<{ oldest: string; newest: string } | null> {
   const fromISO = new Date(Date.now() - lookbackDays * 864e5).toISOString()
-  const pick = async (view: 'sheet_export_rows' | 'asset_export_rows') => {
+  const edge = async (view: 'sheet_export_rows' | 'asset_export_rows', asc: boolean) => {
     const { data, error } = await supabase
       .from(view)
       .select('created_at')
       .is('tab', null)
       .gte('created_at', fromISO)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: asc })
       .limit(1)
     if (error) throw new Error(readableError(error))
     return (data?.[0] as { created_at?: string } | undefined)?.created_at ?? null
   }
-  const found = (await Promise.all([pick('sheet_export_rows'), pick('asset_export_rows')])).filter(
-    (d): d is string => Boolean(d),
-  )
-  if (found.length === 0) return null
-  return found.sort()[0]
+  const [so, sn, ao, an] = await Promise.all([
+    edge('sheet_export_rows', true),
+    edge('sheet_export_rows', false),
+    edge('asset_export_rows', true),
+    edge('asset_export_rows', false),
+  ])
+  const olds = [so, ao].filter((d): d is string => Boolean(d)).sort()
+  const news = [sn, an].filter((d): d is string => Boolean(d)).sort()
+  if (olds.length === 0) return null
+  return { oldest: olds[0], newest: news[news.length - 1] }
 }
