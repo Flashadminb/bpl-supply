@@ -424,6 +424,45 @@ function drawCover(
   return { x, y, w, h }
 }
 
+/**
+ * วาดรูปโดยหมุนตะแคง 90 องศา ให้รูปแนวตั้งกินพื้นที่เท่ารูปแนวนอน
+ *
+ * ช่องในการ์ดกว้างกว่าสูง รูปแนวตั้งที่ไม่หมุนจึงโดนบีบด้วยความสูง
+ * แล้วเหลือความกว้างแค่ราวหนึ่งในสามของช่อง เล็กจนซูมอ่านตัวหนังสือในรูปไม่ออก
+ * ซึ่งเป็นปัญหาจริง เพราะรูปที่ถ่ายมามักเป็นใบส่งของที่ต้องอ่านเลขในนั้น
+ *
+ * หมุนทวนเข็ม ขอบบนของรูปจึงไปอยู่ทางซ้าย
+ * คนดูเอียงจอหรือเอียงหัวไปทางขวาแล้วอ่านได้ตามปกติ
+ */
+function drawRotated(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): { x: number; y: number; w: number; h: number } {
+  // หมุนแล้วด้านกว้างบนจอคือความสูงของรูป จึงสลับแกนตอนคำนวณอัตราย่อ
+  const scale = Math.min(w / img.height, h / img.width)
+  const dw = img.width * scale
+  const dh = img.height * scale
+  ctx.save()
+  ctx.translate(x + w / 2, y + h / 2)
+  ctx.rotate(-Math.PI / 2)
+  ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh)
+  ctx.restore()
+  // กรอบที่คืนไปเป็นพิกัดบนจอ ไม่ใช่พิกัดในกรอบที่หมุนแล้ว
+  return {
+    x: Math.round(x + (w - dh) / 2),
+    y: Math.round(y + (h - dw) / 2),
+    w: Math.round(dh),
+    h: Math.round(dw),
+  }
+}
+
+/** รูปแนวตั้งเท่านั้นที่ต้องหมุน จัตุรัสกับแนวนอนวางตามเดิม */
+const needsRotate = (img: HTMLImageElement) => img.height > img.width
+
 /** วาดรูปให้พอดีกรอบโดยไม่ครอบขอบทิ้ง แล้วคืนกรอบจริงที่รูปกิน */
 function drawContained(
   ctx: CanvasRenderingContext2D,
@@ -615,8 +654,18 @@ async function buildGrid(
   const gap = 14
   const n = imgs.length
 
-  /** ความสูงที่รูปนี้อยากได้ ถ้าได้กว้างเต็มคอลัมน์ */
-  const natural = imgs.map((im) => (im.width > 0 ? (pw * im.height) / im.width : pw * 0.75))
+  /**
+   * ความสูงที่รูปนี้อยากได้ ถ้าได้กว้างเต็มคอลัมน์
+   *
+   * รูปแนวตั้งคิดจากขนาดหลังหมุนแล้ว ไม่ใช่ขนาดดิบ
+   * ไม่งั้นมันจะไปจองช่องสูง ๆ ตามสัดส่วนเดิมทั้งที่จะถูกวางตะแคง
+   */
+  const rot = imgs.map(needsRotate)
+  const natural = imgs.map((im, i) => {
+    const w = rot[i] ? im.height : im.width
+    const h = rot[i] ? im.width : im.height
+    return w > 0 ? (pw * h) / w : pw * 0.75
+  })
 
   /**
    * เพดานความสูง — การ์ดยาวกว่าจอมือถือแล้วต้องเลื่อนดู ซึ่งเสียจุดประสงค์
@@ -668,8 +717,13 @@ async function buildGrid(
   let y = top
   imgs.forEach((img, i) => {
     const slotH = Math.round(slots[i])
-    const draw = fit === 'equalCrop' ? drawCover : drawContained
-    const box = draw(ctx, img, px, y, pw, slotH)
+    // ครอบขอบทิ้งไม่ต้องหมุน เพราะมันเต็มช่องอยู่แล้วไม่ว่ารูปจะตั้งหรือนอน
+    const box =
+      fit === 'equalCrop'
+        ? drawCover(ctx, img, px, y, pw, slotH)
+        : rot[i]
+          ? drawRotated(ctx, img, px, y, pw, slotH)
+          : drawContained(ctx, img, px, y, pw, slotH)
     if (n > 1) drawTag(ctx, String(i + 1), box.x + 10, box.y + 10, 24)
     y += slotH + gap
   })
