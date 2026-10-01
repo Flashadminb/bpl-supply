@@ -24,6 +24,8 @@ export interface Profile {
   can_assets: boolean
   /** เห็นงานกระสอบไหม · ตั้งรายคนได้จากหน้าผู้ใช้และสิทธิ์ */
   can_sack: boolean
+  /** เบิกแทนคนอื่นได้ไหม · ของเดิมผูกกับตำแหน่ง ตอนนี้เปิดปิดรายคนได้ */
+  can_proxy: boolean
   /** ผู้ตรวจสอบ — เห็นเครื่องทุกแผนก เบิกแทนและโอนเครื่องได้ */
   can_dispatch: boolean
   /** รปภ — เห็นเฉพาะหน้าสแกนบัตร OS ไม่เห็นเมนูเบิกของเลย */
@@ -904,4 +906,19 @@ export interface AssetIssueRow {
   resolved_by_name: string | null
   resolve_note: string | null
   is_open: boolean
+}
+
+
+/** สิทธิ์เห็นเครื่องเฉพาะเครื่องของคนหนึ่งคน · ค้างไว้จนกว่าจะเอาออก */
+export interface AssetGrantRow {
+  asset_code: string
+  type_name: string
+  asset_dept: string | null
+  user_id: string
+  user_name: string
+  user_code: string
+  user_dept: string | null
+  note: string | null
+  granted_by_name: string | null
+  created_at: string
 }

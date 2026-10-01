@@ -25,6 +25,7 @@ export type IconName =
   | 'bell'
   | 'clipboard'
   | 'history'
+  | 'lock'
 
 const PATHS: Record<IconName, JSX.Element> = {
   // บ้าน — หน้าแรก
@@ -142,6 +143,14 @@ const PATHS: Record<IconName, JSX.Element> = {
       <path d="M3.6 12a8.4 8.4 0 1 0 2.7-6.2" />
       <path d="M3.5 4v4h4" />
       <path d="M12 7.6V12l3 1.8" />
+    </>
+  ),
+  // กุญแจ — สิทธิ์เข้าถึง
+  lock: (
+    <>
+      <rect x="4.5" y="10.5" width="15" height="9.5" rx="2" />
+      <path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7" />
+      <path d="M12 14v2.6" />
     </>
   ),
   // กระดิ่ง — แจ้งเตือน

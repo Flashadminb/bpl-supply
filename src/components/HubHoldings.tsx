@@ -5,7 +5,7 @@ import { assetReturn, listAssetHoldings } from '../lib/api'
 import { readableError } from '../lib/supabase'
 import { fmtDateTime, relativeAge } from '../lib/format'
 import { stampLines } from '../lib/image'
-import { canProxy } from '../lib/roles'
+import { canAudit } from '../lib/roles'
 import { AssetTransfer, candidateFromHolding, targetFromHolding } from './AssetTransfer'
 import { PhotoSteps, shotsToPhotos, type Shot } from './PhotoSteps'
 import { ErrorBox, Sheet, Spinner } from './ui'
@@ -47,7 +47,7 @@ const QUICK_REASONS = [
 
 export function HubHoldings({ onCount }: { onCount?: (n: number) => void }) {
   const { profile } = useAuth()
-  const may = canProxy(profile)
+  const may = canAudit(profile)
 
   const feed = useAsync(() => (may ? listAssetHoldings(false) : Promise.resolve([])), [may])
 

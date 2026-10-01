@@ -35,7 +35,7 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
       { to: '/admin', label: 'หน้าแรก', icon: 'home', end: true },
       { to: '/admin/evidence', label: 'หลักฐานการเบิก-คืน', icon: 'photo' },
       { to: '/admin/return-status', label: 'สถานะเบิก-คืน', icon: 'clipboard', audit: true },
-      { to: '/admin/asset-moves', label: 'โอน-แจ้งเสีย', icon: 'history', audit: true },
+      { to: '/admin/asset-moves', label: 'สถานะโอน-แจ้งเสีย', icon: 'history', audit: true },
     ],
   },
   {
@@ -89,6 +89,7 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
       { to: '/admin/qr', label: 'พิมพ์ QR', icon: 'qr' },
       { to: '/admin/export', label: 'ส่งออก Google Sheet', icon: 'sheet', badge: 'exports' },
       { to: '/admin/users', label: 'ผู้ใช้และสิทธิ์', icon: 'users' },
+      { to: '/admin/access', label: 'สิทธิ์เข้าถึง', icon: 'lock', adminOnly: true },
       { to: '/admin/links', label: 'ลิงก์งาน', icon: 'sheet' },
       { to: '/admin/notices', label: 'ประกาศและแจ้งเตือน', icon: 'clipboard', audit: true },
       { to: '/admin/health', label: 'สถานะระบบ', icon: 'chart', audit: true },

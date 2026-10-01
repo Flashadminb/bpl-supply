@@ -125,9 +125,31 @@ export function canSeeSacks(
   return Boolean(p.can_sack)
 }
 
-export function canProxy(p: { role: UserRole; can_dispatch?: boolean } | null): boolean {
+/**
+ * เบิกแทนคนอื่นได้ไหม — ดูที่ธงรายคน ไม่ได้ดูที่ตำแหน่งแล้ว
+ *
+ * ของเดิมผูกกับตำแหน่งตายตัว หน้างานที่ไว้ใจได้จึงยกสิทธิ์ให้ไม่ได้เลย
+ * นอกจากเลื่อนตำแหน่งให้ทั้งก้อน ซึ่งให้สิทธิ์อย่างอื่นติดไปด้วยเต็มไปหมด
+ *
+ * เจ้าของระบบไม่ต้องพึ่งธง กันล็อกตัวเองออกจากระบบ
+ */
+/**
+ * เห็นของทั้งฮับ วางแผนประชุม ตามของค้าง — แอดมินหรือผู้ตรวจสอบ
+ *
+ * เดิมสามที่นี้ยืม canProxy ไปใช้ เพราะตอนนั้นเงื่อนไขบังเอิญเหมือนกัน
+ * พอ canProxy กลายเป็นธงรายคน ความหมายก็แยกกันแล้ว
+ * หน้างานที่ได้สิทธิ์เบิกแทน ไม่ควรเห็นของทั้งฮับตามไปด้วย
+ */
+export function canAudit(
+  p: { role: UserRole; can_dispatch?: boolean } | null,
+): boolean {
   if (!p) return false
   return p.role === 'supervisor' || p.role === 'admin' || Boolean(p.can_dispatch)
+}
+
+export function canProxy(p: { role: UserRole; can_proxy?: boolean } | null): boolean {
+  if (!p) return false
+  return p.role === 'admin' || Boolean(p.can_proxy)
 }
 
 /** จัดการรายชื่อ OS ได้ไหม — ตรงกับ my_can_os_admin() ในฐานข้อมูล */

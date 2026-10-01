@@ -9,7 +9,7 @@ import { Sheet, Spinner } from './ui'
 import { PhotoSteps, shotsToPhotos, type Shot } from './PhotoSteps'
 import { stampLines } from '../lib/image'
 import { MeetingNotices, MeetingPlanner } from './MeetingPlanner'
-import { canProxy } from '../lib/roles'
+import { canAudit } from '../lib/roles'
 
 /**
  * เช็คอินเข้าประชุม — ไอคอนเล็ก ๆ ข้างกระดิ่ง ทุกคนเห็น
@@ -38,7 +38,7 @@ export function MeetingCheckIn() {
     () => (open ? listUpcomingMeetings(5) : Promise.resolve([])),
     [open, planTick],
   )
-  const mayPlan = canProxy(profile)
+  const mayPlan = canAudit(profile)
 
   // นัดที่กำลังอยู่ในกรอบเวลา · โหลดตอนเปิดแผ่นเท่านั้น
   const win = useAsync(() => (open ? meetingWindow() : Promise.resolve(null)), [open, done])

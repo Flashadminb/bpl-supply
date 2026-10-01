@@ -1,5 +1,6 @@
 import { supabase, functionUrl, readableError, emailFromEmployeeCode } from './supabase'
 import type {
+  AssetGrantRow,
   AssetIssueRow,
   AssetTransferRow,
   CartLine,
@@ -431,6 +432,7 @@ export async function updateProfile(
       | 'sub_dept'
       | 'can_assets'
       | 'can_sack'
+      | 'can_proxy'
       | 'can_dispatch'
       | 'can_guard'
       | 'extra_depts'
@@ -2286,4 +2288,35 @@ export async function listAssetIssueRows(args: {
   return unwrap(
     await q.order('reported_at', { ascending: false }).limit(args.limit ?? 400),
   ) as unknown as AssetIssueRow[]
+}
+
+
+/* --------------------------------------- สิทธิ์เห็นเครื่องเฉพาะเครื่อง */
+
+/** รายการสิทธิ์ทั้งหมดที่ให้ไว้ · เจ้าของระบบกับผู้ตรวจสอบเห็นทั้งหมด */
+export async function listAssetGrants(): Promise<AssetGrantRow[]> {
+  return unwrap(
+    await supabase.from('asset_grant_rows').select('*').order('created_at', { ascending: false }),
+  ) as unknown as AssetGrantRow[]
+}
+
+/**
+ * เปิดให้คนหนึ่งคนเห็นเครื่องหนึ่งเครื่อง
+ *
+ * คนละเรื่องกับการโอน · การโอนย้ายเครื่องไปอยู่กับคนนั้นจริงและเป็นของชั่วคราว
+ * อันนี้แค่มองเห็นและเบิกได้ เครื่องไม่ได้ย้ายไปไหน และค้างไว้จนกว่าจะเอาออก
+ */
+export async function addAssetGrant(args: { code: string; userId: string; note?: string | null }) {
+  const { data, error } = await supabase.rpc('asset_grant_add', {
+    p_code: args.code,
+    p_user: args.userId,
+    p_note: args.note ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { asset_code: string; full_name: string }
+}
+
+export async function removeAssetGrant(code: string, userId: string) {
+  const { error } = await supabase.rpc('asset_grant_remove', { p_code: code, p_user: userId })
+  if (error) throw new Error(readableError(error))
 }

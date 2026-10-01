@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import { useAuth } from './auth'
-import { canProxy } from './roles'
+import { canAudit } from './roles'
 
 /**
  * นับเช็คอินประชุมที่ยังไม่ได้ตรวจ — ขึ้นเลขท้ายเมนู
@@ -13,7 +13,7 @@ const POLL_MS = 60_000
 
 export function usePendingMeetings(): { count: number; reload: () => void } {
   const { profile } = useAuth()
-  const may = canProxy(profile)
+  const may = canAudit(profile)
   const [count, setCount] = useState(0)
   const aliveRef = useRef(true)
 

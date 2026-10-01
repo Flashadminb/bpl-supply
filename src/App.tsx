@@ -40,6 +40,7 @@ const ExportSheet = lazy(() => import('./pages/admin/ExportSheet'))
 const AdminEvidence = lazy(() => import('./pages/admin/Evidence'))
 const ReturnStatus = lazy(() => import('./pages/admin/ReturnStatus'))
 const AssetMoves = lazy(() => import('./pages/admin/AssetMoves'))
+const Access = lazy(() => import('./pages/admin/Access'))
 const WorkLinksAdmin = lazy(() => import('./pages/admin/WorkLinksAdmin'))
 const SystemHealth = lazy(() => import('./pages/admin/SystemHealth'))
 const Notices = lazy(() => import('./pages/admin/Notices'))
@@ -250,6 +251,9 @@ export default function App() {
           path="asset-moves"
           element={<Guard roles={MANAGER_ROLES} allowDispatch><AssetMoves /></Guard>}
         />
+        {/* สิทธิ์เข้าถึงเป็นของเจ้าของระบบคนเดียว ไม่ใช่ของแอดมินทั่วไป
+            คนที่ยกสิทธิ์ให้คนอื่นได้ ต้องยกสิทธิ์ให้ตัวเองได้ด้วย */}
+        <Route path="access" element={<Guard roles={['admin']}><Access /></Guard>} />
         <Route path="qr" element={<Guard roles={MANAGER_ROLES}><QrLabels /></Guard>} />
         {/* สองหน้านี้ผู้ตรวจสอบเข้าได้ด้วย นอกนั้นเป็นของแอดมินล้วน */}
         <Route path="meetings" element={<Guard roles={MANAGER_ROLES} allowDispatch><Meetings /></Guard>} />
