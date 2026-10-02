@@ -34,6 +34,8 @@ export interface Profile {
   can_break_issue: boolean
   /** รปภ — สแกนบัตรเบรคขาออกและขากลับได้ */
   can_break_guard: boolean
+  /** กดห้ามเบรคเดี๋ยวนี้และยกเลิกได้ จากในแอป */
+  can_break_ban: boolean
   extra_depts: string[]
   shift_start: string | null
   shift_end: string | null

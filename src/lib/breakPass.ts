@@ -129,14 +129,40 @@ export async function listBreakReasons(): Promise<BreakReason[]> {
   return (data ?? []) as BreakReason[]
 }
 
+export interface BreakBanNow {
+  id: number
+  note: string | null
+  /** daily = ช่วงประจำวันที่ตั้งไว้ · once = กดห้ามเดี๋ยวนี้ มีเวลาจบจริง */
+  kind: 'daily' | 'once'
+  ends_at: string | null
+}
+
 /** ช่วงห้ามเบรคที่ครอบเวลาตอนนี้ · ไม่มีก็คืน null */
-export async function breakBanNow(): Promise<{ id: number; note: string | null } | null> {
+export async function breakBanNow(): Promise<BreakBanNow | null> {
   const { data, error } = await supabase.rpc('break_ban_now')
   if (error) throw new Error(readableError(error))
   // ฟังก์ชันประกาศว่าคืน break_bans ไม่ใช่ setof
   // ไม่เจอช่วงห้ามมันจึงคืนแถวที่ทุกช่องเป็น null ไม่ใช่ null ทั้งก้อน
-  const row = data as { id: number | null; note: string | null } | null
-  return row && row.id !== null ? { id: row.id, note: row.note } : null
+  const row = data as (BreakBanNow & { id: number | null }) | null
+  return row && row.id !== null ? row : null
+}
+
+/**
+ * กดห้ามเบรคเดี๋ยวนี้
+ *
+ * หมดอายุเอง ไม่ต้องกลับมาปิด ซึ่งเป็นจุดที่ช่วงห้ามแบบตั้งเวลาพังที่สุด
+ * กดซ้ำ = เลื่อนเวลาจบของอันเดิม ไม่ได้สร้างซ้อน
+ */
+export async function breakBanQuick(minutes: number, note?: string | null) {
+  return rpc<{ ok: true; id: number; until: string }>('break_ban_quick', {
+    p_minutes: minutes,
+    p_note: note ?? null,
+  })
+}
+
+/** ยกเลิกช่วงห้ามที่กดไว้ · ไม่ได้ลบทิ้ง ประวัติยังอ่านได้ว่าเคยห้ามตอนไหน */
+export async function breakBanStop() {
+  return rpc<{ ok: true; stopped: number }>('break_ban_stop', {})
 }
 
 export async function issueBreak(args: {
@@ -283,10 +309,21 @@ export interface BreakSettings {
     cards: number
     users: string[]
   }[]
-  cards: { code: string; group_code: string; active: boolean; note: string | null; busy: boolean }[]
+  cards: {
+    code: string
+    group_code: string
+    active: boolean
+    note: string | null
+    /** ยังไม่ได้รับกลับ · ปิดใช้งานหรือลบไม่ได้ */
+    busy: boolean
+    /** เคยถูกปล่อยแล้ว · ลบไม่ได้เพราะประวัติอ้างถึงรหัสนี้ ปิดใช้งานแทน */
+    used: boolean
+  }[]
   reasons: BreakReason[]
   bans: { id: number; start_min: number; end_min: number; note: string | null; active: boolean }[]
   alert_subs: string[]
+  /** คนที่กดห้ามเบรคเดี๋ยวนี้ได้ · มาจากธง can_break_ban */
+  ban_users: string[]
 }
 
 export async function getBreakSettings(): Promise<BreakSettings> {
@@ -326,6 +363,17 @@ export async function saveBreakCard(args: {
     p_group: args.group ?? null,
     p_note: args.note ?? null,
   })
+}
+
+/**
+ * ลบบัตรทิ้ง · ใบที่เคยถูกปล่อยแล้วลบไม่ได้ ฐานข้อมูลคืนมาว่าเหลือใบไหนเพราะอะไร
+ * ลบเท่าที่ลบได้ ไม่ล้มทั้งก้อนเพราะมีใบเดียวติด
+ */
+export async function deleteBreakCards(codes: string[]) {
+  return rpc<{ ok: true; deleted: number; kept: { code: string; why: string }[] }>(
+    'break_card_delete',
+    { p_codes: codes },
+  )
 }
 
 export async function setBreakGroupUser(group: string, userId: string, on: boolean) {

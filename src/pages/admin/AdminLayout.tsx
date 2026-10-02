@@ -87,8 +87,7 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
     title: 'บัตรเบรค',
     links: [
       { to: '/admin/break/history', label: 'ประวัติเบรค', icon: 'history', audit: true },
-      { to: '/admin/break/cards', label: 'แผนก บัตร และพิมพ์', icon: 'qr', adminOnly: true },
-      { to: '/admin/break/settings', label: 'ตั้งค่าเบรค', icon: 'lock', adminOnly: true },
+      { to: '/admin/break/cards', label: 'จัดการบัตรเบรค', icon: 'qr', adminOnly: true },
     ],
   },
   {

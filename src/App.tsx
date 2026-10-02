@@ -61,7 +61,6 @@ const OsCards = lazy(() => import('./pages/admin/OsCards'))
 const OsScans = lazy(() => import('./pages/admin/OsScans'))
 const BreakCards = lazy(() => import('./pages/admin/BreakCards'))
 const BreakHistory = lazy(() => import('./pages/admin/BreakHistory'))
-const BreakSettings = lazy(() => import('./pages/admin/BreakSettings'))
 const BreakIssue = lazy(() => import('./pages/staff/BreakIssue'))
 const BreakGuard = lazy(() => import('./pages/staff/BreakGuard'))
 
@@ -276,7 +275,6 @@ export default function App() {
             เพราะเพดานปล่อยพร้อมกันกับช่วงห้ามเบรคเป็นเครื่องมือคุมหัวหน้างานโดยตรง
             ฐานข้อมูลปฏิเสธคนอื่นอยู่แล้วใน break_admin_guard() เส้นทางนี้แค่ไม่ให้กดเข้ามาเจอ error */}
         <Route path="break/cards" element={<Guard roles={['admin']}><BreakCards /></Guard>} />
-        <Route path="break/settings" element={<Guard roles={['admin']}><BreakSettings /></Guard>} />
         {/* ประวัติเป็นหน้าอ่านอย่างเดียว ผู้ตรวจสอบเข้าได้ด้วย
             RLS ของ break_passes เปิดให้เขาเห็นทุกใบอยู่แล้ว */}
         <Route

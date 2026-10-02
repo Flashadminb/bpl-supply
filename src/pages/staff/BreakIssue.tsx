@@ -4,6 +4,7 @@ import { useAuth } from '../../lib/auth'
 import { useAsync } from '../../lib/useAsync'
 import { stampLines } from '../../lib/image'
 import { PhotoSteps, shotsToPhotos, type Shot } from '../../components/PhotoSteps'
+import { BreakBanBar } from '../../components/BreakBanBar'
 import { ErrorBox, Loading, EmptyState, Spinner } from '../../components/ui'
 import {
   breakBanNow,
@@ -151,6 +152,8 @@ export default function BreakIssue() {
         </Link>
       </div>
 
+      <BreakBanBar ban={banNow} now={now} onChanged={() => setTick((n) => n + 1)} />
+
       {done && (
         <div className="mb-4 rounded-card border border-success/30 bg-success-bg p-4 text-center">
           <p className="font-display text-md text-success-txt">
@@ -210,13 +213,7 @@ export default function BreakIssue() {
           {/* ───────── ช่วงห้ามเบรค ───────── */}
           {banNow && (
             <div className="mb-4 rounded-card border border-danger/30 bg-danger-bg p-3">
-              <p className="font-display text-sm text-danger-txt">
-                ตอนนี้อยู่ในช่วงห้ามเบรค{banNow.note ? ` · ${banNow.note}` : ''}
-              </p>
-              <p className="mt-1 text-xs text-danger-txt">
-                ปล่อยได้ถ้าจำเป็นจริง แต่ต้องกรอกเหตุผล
-                และจะแจ้งเตือนผู้ตรวจสอบกับเจ้าของระบบทันที
-              </p>
+              <p className="font-display text-sm text-danger-txt">ปล่อยในช่วงห้ามต้องมีเหตุผล</p>
               <input
                 className="input mt-2"
                 placeholder="เหตุผลฉุกเฉิน (บังคับ)"

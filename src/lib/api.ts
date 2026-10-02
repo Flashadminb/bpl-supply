@@ -437,6 +437,7 @@ export async function updateProfile(
       | 'can_guard'
       | 'can_break_issue'
       | 'can_break_guard'
+      | 'can_break_ban'
       | 'extra_depts'
       | 'shift_start'
       | 'shift_end'

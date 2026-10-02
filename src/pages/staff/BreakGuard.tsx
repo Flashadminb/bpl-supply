@@ -5,6 +5,7 @@ import { stampLines } from '../../lib/image'
 import { CodeScanner } from '../../components/CodeScanner'
 import { PhotoSteps, shotsToPhotos, type Shot } from '../../components/PhotoSteps'
 import { StaffPage, TopBar } from '../../components/Shell'
+import { BreakBanBar } from '../../components/BreakBanBar'
 import { ErrorBox, Sheet, Spinner, EmptyState } from '../../components/ui'
 import { fmtDateTime } from '../../lib/format'
 import {
@@ -12,6 +13,7 @@ import {
   breakProblem,
   breakReturn,
   countdown,
+  breakBanNow,
   listBreakBoard,
   scanBreakCard,
   type BreakScan,
@@ -37,6 +39,7 @@ export default function BreakGuard() {
   const { profile } = useAuth()
   const [tick, setTick] = useState(0)
   const board = useAsync(() => listBreakBoard(), [tick])
+  const ban = useAsync(() => breakBanNow(), [tick])
   const [open, setOpen] = useState(false)
   const [manual, setManual] = useState('')
   const [hit, setHit] = useState<BreakScan | null>(null)
@@ -137,6 +140,8 @@ export default function BreakGuard() {
     <>
       <TopBar title="เบรค OS" back />
       <StaffPage>
+        <BreakBanBar ban={ban.data ?? null} now={now} onChanged={() => setTick((n) => n + 1)} />
+
         {msg && (
           <p className="mb-3 rounded-btn bg-success-bg px-3 py-2 text-sm text-success-txt">{msg}</p>
         )}
