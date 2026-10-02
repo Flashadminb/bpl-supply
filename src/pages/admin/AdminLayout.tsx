@@ -84,6 +84,10 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
     ],
   },
   {
+    title: 'บัตรเบรค',
+    links: [{ to: '/admin/break/cards', label: 'แผนก บัตร และพิมพ์', icon: 'qr', adminOnly: true }],
+  },
+  {
     title: 'ทั่วไป',
     links: [
       { to: '/admin/qr', label: 'พิมพ์ QR', icon: 'qr' },

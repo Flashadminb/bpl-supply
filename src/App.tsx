@@ -59,6 +59,7 @@ const SackOrders = lazy(() => import('./pages/admin/SackOrders'))
 const OsPeople = lazy(() => import('./pages/admin/OsPeople'))
 const OsCards = lazy(() => import('./pages/admin/OsCards'))
 const OsScans = lazy(() => import('./pages/admin/OsScans'))
+const BreakCards = lazy(() => import('./pages/admin/BreakCards'))
 
 function Guard({
   children,
@@ -237,6 +238,10 @@ export default function App() {
         <Route path="os" element={<Guard roles={MANAGER_ROLES} allowDispatch><OsPeople /></Guard>} />
         <Route path="os/print" element={<Guard roles={MANAGER_ROLES} allowDispatch><OsCards /></Guard>} />
         <Route path="os/scans" element={<Guard roles={MANAGER_ROLES} allowDispatch><OsScans /></Guard>} />
+        {/* บัตรเบรค — แผนก บัตร และการพิมพ์ เป็นของเจ้าของระบบคนเดียว
+            เพราะเพดานปล่อยพร้อมกันกับช่วงห้ามเบรคเป็นเครื่องมือคุมหัวหน้างานโดยตรง
+            ฐานข้อมูลปฏิเสธคนอื่นอยู่แล้วใน break_admin_guard() เส้นทางนี้แค่ไม่ให้กดเข้ามาเจอ error */}
+        <Route path="break/cards" element={<Guard roles={['admin']}><BreakCards /></Guard>} />
         <Route path="report/supply" element={<Guard roles={MANAGER_ROLES}><SupplyReport /></Guard>} />
         <Route path="report/asset" element={<Guard roles={MANAGER_ROLES}><AssetReport /></Guard>} />
         <Route path="export" element={<Guard roles={MANAGER_ROLES}><ExportSheet /></Guard>} />
