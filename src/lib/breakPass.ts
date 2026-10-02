@@ -239,6 +239,31 @@ export async function listBreakRows(args: {
   return (data ?? []) as BreakRow[]
 }
 
+export interface BreakPhoto {
+  id: number
+  phase: 'issue' | 'return'
+  file_id: string
+  web_link: string
+  created_at: string
+}
+
+/**
+ * รูปของใบหนึ่ง · ผู้ตรวจสอบเท่านั้น
+ *
+ * ไม่ได้ดึงมาพร้อมตารางประวัติ เพราะส่วนใหญ่ไม่ได้เปิดดู
+ * ดึงตอนกดขยายแถวแทน ประหยัดทั้งเน็ตหน้างานและโควตา
+ */
+export async function listBreakPhotos(passId: number): Promise<BreakPhoto[]> {
+  const { data, error } = await supabase
+    .from('break_photos')
+    .select('id,phase,file_id,web_link,created_at')
+    .eq('pass_id', passId)
+    .order('phase')
+    .order('created_at')
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as BreakPhoto[]
+}
+
 /** ปิดใบที่ไม่มีใครมารับกลับ · หลังบ้านหรือหัวหน้าที่ปล่อยเอง */
 export async function closeBreakPasses(ids: number[], note?: string | null) {
   return rpc<{ ok: true; closed: number }>('break_close', {
