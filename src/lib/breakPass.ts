@@ -134,6 +134,7 @@ export interface BreakBanNow {
   note: string | null
   /** daily = ช่วงประจำวันที่ตั้งไว้ · once = กดห้ามเดี๋ยวนี้ มีเวลาจบจริง */
   kind: 'daily' | 'once'
+  starts_at: string | null
   ends_at: string | null
 }
 
@@ -160,9 +161,42 @@ export async function breakBanQuick(minutes: number, note?: string | null) {
   })
 }
 
+/**
+ * ห้ามเบรคแบบกำหนดเวลาเอง ตั้งแต่เมื่อไหร่ถึงเมื่อไหร่
+ *
+ * คนคิดเป็น "ห้ามถึงบ่ายสอง" ไม่ได้คิดเป็น "ห้ามอีก 47 นาที"
+ * และบางทีต้องตั้งล่วงหน้าก่อนรถเข้า ไม่ใช่กดตอนรถมาถึงแล้ว
+ */
+export async function breakBanSet(args: {
+  startAt?: string | null
+  endAt: string
+  note?: string | null
+}) {
+  return rpc<{ ok: true; id: number; from: string; until: string }>('break_ban_set', {
+    p_start: args.startAt ?? null,
+    p_end: args.endAt,
+    p_note: args.note ?? null,
+  })
+}
+
+/** ช่วงห้ามที่ตั้งไว้แต่ยังไม่ถึงเวลา · ไว้บอกว่า "ตั้งไว้แล้วนะ เริ่มบ่ายสอง" */
+export async function breakBanNext(): Promise<BreakBanNow | null> {
+  const { data, error } = await supabase.rpc('break_ban_next')
+  if (error) throw new Error(readableError(error))
+  const row = data as (BreakBanNow & { id: number | null; starts_at: string | null }) | null
+  return row && row.id !== null ? row : null
+}
+
 /** ยกเลิกช่วงห้ามที่กดไว้ · ไม่ได้ลบทิ้ง ประวัติยังอ่านได้ว่าเคยห้ามตอนไหน */
 export async function breakBanStop() {
   return rpc<{ ok: true; stopped: number }>('break_ban_stop', {})
+}
+
+/** ลบแผนกที่สร้างผิด · แผนกที่บัตรเคยถูกปล่อยแล้วลบไม่ได้ */
+export async function deleteBreakGroup(code: string) {
+  return rpc<{ ok: true; code: string; cards_removed: number }>('break_group_delete', {
+    p_code: code,
+  })
 }
 
 export async function issueBreak(args: {

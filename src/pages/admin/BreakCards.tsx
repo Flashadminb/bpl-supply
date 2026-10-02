@@ -3,16 +3,16 @@ import QRCode from 'qrcode'
 import { useAsync } from '../../lib/useAsync'
 import { listProfiles, updateProfile } from '../../lib/api'
 import { PeoplePicker } from '../../components/PeoplePicker'
+import { BreakBanBar } from '../../components/BreakBanBar'
 import { ErrorBox, Loading, EmptyState } from '../../components/ui'
 import type { Profile } from '../../lib/types'
 import {
   addBreakCards,
-  deleteBreakBan,
+  breakBanNext,
+  breakBanNow,
   deleteBreakCards,
+  deleteBreakGroup,
   getBreakSettings,
-  hhmmToMin,
-  minToHHMM,
-  saveBreakBan,
   saveBreakCard,
   saveBreakGroup,
   saveBreakReason,
@@ -21,24 +21,21 @@ import {
 } from '../../lib/breakPass'
 
 /**
- * จัดการบัตรเบรค — เมนูเดียวจบ
+ * จัดการบัตรเบรค
  *
- * ของเดิมแยกเป็นสองเมนู บัตรอยู่หน้าหนึ่ง ช่วงห้ามกับแจ้งเตือนอยู่อีกหน้า
- * ซึ่งทำให้คำถามที่ถามบ่อยที่สุดตอบไม่ได้ในหน้าเดียว คือ
- * "บัตรใบนี้ใครใช้ได้บ้าง" ต้องเปิดสองหน้าแล้วจำข้ามกัน
+ * หน้านี้เคยเป็นกองฟอร์มซ้อนกันสามชั้นแล้วค่อยมีข้อมูลอยู่ล่างสุด
+ * ซึ่งผิดลำดับ คนเปิดมาเพื่อ "ดูว่ามีอะไรอยู่" ไม่ใช่เพื่อ "กรอกฟอร์ม"
  *
- * ตอนนี้สิทธิ์อยู่ติดกับบัตรของแผนกนั้นเลย เห็นพร้อมกันและแก้ตรงนั้นได้
- *
- * บัตรเบรคต่างจากบัตร OS ตรงที่ไม่มีชื่อ ไม่มีรูป และไม่มี token ลับ
- * QR เก็บรหัสบัตรตรง ๆ เพราะความลับของบัตรไม่ได้ช่วยอะไรเลย
- * ใครปลอม QR ขึ้นมาเองก็ไปจบที่ด่านเดียวกัน — ปลอมใบที่ไม่ได้ถูกปล่อย
- * คือโดนปัด ปลอมใบที่ถูกปล่อยอยู่คือโดนจับว่าซ้ำ
+ * ตอนนี้เห็นแผนกกับบัตรก่อน ปุ่มเพิ่มอยู่ในแผนกนั้น ๆ เลย
+ * ไม่ต้องเลื่อนขึ้นไปกรอกฟอร์มกลางแล้วเลือกแผนกซ้ำอีกรอบ
+ * และตัวนำหน้ารหัสเติมให้จากรหัสแผนกเอง — ของเดิมเป็นช่องว่างที่มี placeholder
+ * หน้าตาเหมือนกรอกแล้ว ทำให้กดเพิ่มได้ 0 ใบโดยไม่รู้ว่าทำไม
  */
 
 const NAVY = '#1B2A4A'
 const Y = '#F5B301'
 
-type Tab = 'cards' | 'rules' | 'alerts' | 'print'
+type Tab = 'cards' | 'ban' | 'alerts' | 'print'
 
 export function BreakCardStyles() {
   return (
@@ -73,8 +70,7 @@ export function BreakCardStyles() {
       .brk-mid { flex:1; display:flex; align-items:center; justify-content:center; width:100%; }
       /* ขนาดตัวอักษรมาจากความยาวรหัส ตั้งเป็นตัวแปรไว้ใน style ของแต่ละใบ
          ตายตัวไม่ได้ เพราะเจ้าของระบบตั้งรหัสเองได้ยาวถึง 24 ตัว
-         ปล่อยไว้แล้วรหัสยาวจะตัดกลางคำ กลายเป็น PICK-NIGHT-1 ขึ้นบรรทัดใหม่เป็น 2
-         break-word ตัดตรงขีดกลางให้ก่อน ค่อยตัดกลางคำเมื่อจำเป็นจริง ๆ */
+         ปล่อยไว้แล้วรหัสยาวจะตัดกลางคำ กลายเป็น PICK-NIGHT-1 ขึ้นบรรทัดใหม่เป็น 2 */
       .brk-code { font-family:ui-monospace,monospace; font-weight:800;
                   font-size:var(--brk-fs,27px); line-height:1.1;
                   overflow-wrap:break-word; word-break:break-word; }
@@ -94,7 +90,6 @@ function Qr({ text, size = 116 }: { text: string; size?: number }) {
   useEffect(() => {
     let alive = true
     // ระดับ Q ทนลายเลือนได้ราวหนึ่งในสี่ของภาพ บัตรที่ถือกันทั้งกะต้องเจอรอยแน่
-    // รหัสสั้นแบบ OUT4-01 อยู่ในตาราง 25x25 ความทนจึงได้มาโดยช่องไม่เล็กลง
     QRCode.toDataURL(text, { width: size * 3, margin: 0, errorCorrectionLevel: 'Q' })
       .then((u) => alive && setUrl(u))
       .catch(() => alive && setUrl(null))
@@ -105,12 +100,6 @@ function Qr({ text, size = 116 }: { text: string; size?: number }) {
   return <span className="block">{url && <img src={url} alt="" />}</span>
 }
 
-/**
- * ตัวอักษรของรหัสย่อลงตามความยาว
- *
- * ตั้งตายตัวไม่ได้ รหัสตั้งเองได้ยาวถึง 24 ตัว ที่ 27px พอเกิน 9 ตัวก็ล้นแล้ว
- * ขนาดพวกนี้มาจากการลองวางจริงบนความกว้าง 184px (204 ลบขอบในซ้ายขวา)
- */
 function codeSize(code: string): string {
   if (code.length <= 8) return '27px'
   if (code.length <= 11) return '22px'
@@ -139,88 +128,66 @@ export function BreakCardFace({ code, group }: { code: string; group: string | n
   )
 }
 
-/**
- * สร้างรหัสเป็นชุด — "OUT4-" 1 ถึง 5 ได้ OUT4-01 … OUT4-05
- *
- * เจ้าของระบบจะเพิ่มบัตรทีละสิบใบ พิมพ์เองทีละบรรทัดแล้วพิมพ์ผิดแน่
- * และรหัสที่ผิดหนึ่งตัวแปลว่าบัตรใบนั้นสแกนไม่เจอตลอดอายุการใช้งาน
- */
-function expand(prefix: string, from: number, to: number, pad: number): string[] {
-  const out: string[] = []
-  for (let i = from; i <= to && out.length < 200; i++) {
-    out.push(`${prefix}${String(i).padStart(pad, '0')}`)
-  }
-  return out
-}
+type Grp = { code: string; name: string | null; max_open: number; active: boolean; users: string[] }
+type Crd = { code: string; group_code: string; active: boolean; busy: boolean; used: boolean }
+type Run = (fn: () => Promise<unknown>, ok: string) => void
 
 export default function BreakCards() {
   const [tab, setTab] = useState<Tab>('cards')
   const settings = useAsync(() => getBreakSettings(), [])
   const people = useAsync(() => listProfiles(), [])
+  const [tick, setTick] = useState(0)
+  const ban = useAsync(() => breakBanNow(), [tick])
+  const banNext = useAsync(() => breakBanNext(), [tick])
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [])
+
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
-
-  const [gCode, setGCode] = useState('')
-  const [gName, setGName] = useState('')
-  const [gMax, setGMax] = useState(3)
-
-  const [target, setTarget] = useState('')
-  const [prefix, setPrefix] = useState('')
-  const [from, setFrom] = useState(1)
-  const [to, setTo] = useState(5)
-  const [pad, setPad] = useState(2)
-
   const [sel, setSel] = useState<string[]>([])
   const [printGroup, setPrintGroup] = useState('')
-
-  const [bFrom, setBFrom] = useState('04:00')
-  const [bTo, setBTo] = useState('04:30')
-  const [bNote, setBNote] = useState('')
 
   const s = settings.data
   const groups = s?.groups ?? []
   const cards = s?.cards ?? []
-  const staff = useMemo(
-    () => (people.data ?? []).filter((p) => p.is_active),
-    [people.data],
-  )
-
-  useEffect(() => {
-    if (!target && groups.length > 0) setTarget(groups[0].code)
-  }, [groups, target])
-
-  const preview = useMemo(
-    () => (prefix.trim() ? expand(prefix.trim().toUpperCase(), from, to, pad) : []),
-    [prefix, from, to, pad],
-  )
+  const staff = useMemo(() => (people.data ?? []).filter((p) => p.is_active), [people.data])
 
   const printable = useMemo(
     () => cards.filter((c) => c.active && (!printGroup || c.group_code === printGroup)),
     [cards, printGroup],
   )
 
-  async function run(fn: () => Promise<unknown>, ok: string) {
+  const run: Run = (fn, ok) => {
     setBusy(true)
     setErr(null)
     setMsg(null)
-    try {
-      await fn()
-      setMsg(ok)
-      settings.reload()
-    } catch (e) {
-      setErr((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
+    void (async () => {
+      try {
+        await fn()
+        setMsg(ok)
+        settings.reload()
+      } catch (e) {
+        setErr((e as Error).message)
+      } finally {
+        setBusy(false)
+      }
+    })()
   }
 
   if (settings.loading && !s) return <Loading />
   if (settings.error) return <ErrorBox message={settings.error} onRetry={settings.reload} />
 
+  const selSet = new Set(sel)
+  const selCards = cards.filter((c) => selSet.has(c.code))
+  const canDelete = selCards.filter((c) => !c.used && !c.busy).length
+
   const TABS: [Tab, string][] = [
     ['cards', `บัตรและสิทธิ์ (${cards.length})`],
-    ['rules', 'ช่วงห้ามและนาที'],
+    ['ban', ban.data ? 'ห้ามเบรค 🔴' : 'ห้ามเบรคและนาที'],
     ['alerts', 'แจ้งเตือน'],
     ['print', `พิมพ์ (${printable.length})`],
   ]
@@ -231,10 +198,6 @@ export default function BreakCards() {
 
       <div className="no-print mb-4">
         <h1 className="font-display text-xl">จัดการบัตรเบรค</h1>
-        <p className="mt-1 text-sm text-ink-500">
-          บัตรไม่มีชื่อไม่มีรูป · QR เก็บรหัสบัตรตรง ๆ ไม่ใช่ความลับ จึงไม่ต้องเปลี่ยนรอบ
-          และพิมพ์ซ่อมเองได้ตลอด
-        </p>
       </div>
 
       <div className="no-print mb-4 flex flex-wrap gap-2">
@@ -261,118 +224,116 @@ export default function BreakCards() {
         </p>
       )}
 
+      {/* ═══════════════ บัตรและสิทธิ์ ═══════════════ */}
       {tab === 'cards' && (
-        <CardsTab
-          groups={groups}
-          cards={cards}
-          staff={staff}
-          busy={busy}
-          run={run}
-          sel={sel}
-          setSel={setSel}
-          gCode={gCode}
-          setGCode={setGCode}
-          gName={gName}
-          setGName={setGName}
-          gMax={gMax}
-          setGMax={setGMax}
-          target={target}
-          setTarget={setTarget}
-          prefix={prefix}
-          setPrefix={setPrefix}
-          from={from}
-          setFrom={setFrom}
-          to={to}
-          setTo={setTo}
-          pad={pad}
-          setPad={setPad}
-          preview={preview}
-          setMsg={setMsg}
-        />
+        <div className="space-y-4">
+          {sel.length > 0 && (
+            <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-card border-2 border-ink bg-surface p-3 shadow">
+              <span className="text-sm font-semibold">เลือกไว้ {sel.length} ใบ</span>
+              <button
+                type="button"
+                className="btn-ghost px-3 py-1.5 text-xs"
+                disabled={busy}
+                onClick={() =>
+                  run(async () => {
+                    for (const c of selCards.filter((x) => x.active && !x.busy)) {
+                      await saveBreakCard({ code: c.code, active: false })
+                    }
+                    setSel([])
+                  }, 'ปิดใช้งานแล้ว')
+                }
+              >
+                ปิดใช้งาน
+              </button>
+              <button
+                type="button"
+                className="btn-ghost px-3 py-1.5 text-xs"
+                disabled={busy}
+                onClick={() =>
+                  run(async () => {
+                    for (const c of selCards.filter((x) => !x.active)) {
+                      await saveBreakCard({ code: c.code, active: true })
+                    }
+                    setSel([])
+                  }, 'เปิดใช้งานแล้ว')
+                }
+              >
+                เปิดใช้งาน
+              </button>
+              <button
+                type="button"
+                className="rounded-btn border border-danger/40 px-3 py-1.5 text-xs font-semibold text-danger-txt disabled:opacity-40"
+                disabled={busy || canDelete === 0}
+                onClick={() =>
+                  run(async () => {
+                    const r = await deleteBreakCards(sel)
+                    setSel([])
+                    setMsg(
+                      r.kept.length === 0
+                        ? `ลบ ${r.deleted} ใบแล้ว`
+                        : `ลบ ${r.deleted} ใบ · ลบไม่ได้ ${r.kept.length} ใบ — ` +
+                          r.kept.map((k) => `${k.code} (${k.why})`).join(' · '),
+                    )
+                  }, 'ลบบัตรแล้ว')
+                }
+              >
+                ลบ {canDelete > 0 ? `${canDelete} ใบ` : '(ลบไม่ได้)'}
+              </button>
+              <button
+                type="button"
+                className="btn-ghost ml-auto px-3 py-1.5 text-xs"
+                onClick={() => setSel([])}
+              >
+                ยกเลิกเลือก
+              </button>
+            </div>
+          )}
+
+          <QuickAdd busy={busy} run={run} setMsg={setMsg} />
+
+          {groups.length === 0 && (
+            <EmptyState
+              title="ยังไม่มีบัตร"
+              hint="ใส่ตัวนำหน้ากับจำนวนข้างบนแล้วกดเพิ่มได้เลย กลุ่มสร้างให้เอง"
+            />
+          )}
+
+          {groups.map((g) => (
+            <GroupCard
+              key={g.code}
+              g={g}
+              cards={cards.filter((c) => c.group_code === g.code)}
+              staff={staff}
+              busy={busy}
+              run={run}
+              sel={sel}
+              setSel={setSel}
+              setMsg={setMsg}
+            />
+          ))}
+
+        </div>
       )}
 
-      {tab === 'rules' && s && (
+      {/* ═══════════════ ห้ามเบรคและนาที ═══════════════ */}
+      {tab === 'ban' && s && (
         <div className="space-y-5">
           <section className="rounded-card border border-line p-4">
-            <h2 className="font-display text-md">ช่วงห้ามเบรคประจำวัน</h2>
+            <h2 className="mb-1 font-display text-md">ห้ามเบรค</h2>
             <p className="mb-3 text-xs text-ink-500">
-              ตั้งไว้แล้ววนทุกวัน · เปิดปิดได้ ลบได้ แก้เวลาได้ ไม่ต้องลบแล้วสร้างใหม่
+              <b>ไม่กดห้าม = เบรคได้ตลอด</b> ไม่มีช่วงห้ามประจำวันให้ต้องมาตั้งทุกวัน
               <br />
-              ถ้าใช้เป็นครั้งคราว <b>ไม่ต้องตั้งที่นี่</b> ให้คนที่มีสิทธิ์กด
-              &ldquo;ห้ามเบรคเดี๋ยวนี้&rdquo; ในแอปแทน แล้วมันหมดอายุเอง
+              กดแล้วเลือกเองว่าถึงกี่โมง ครบเวลาปลดเอง ยกเลิกกลางคันได้ตลอด
               <br />
-              ช่วงที่คร่อมเที่ยงคืนใส่ได้ เช่น 23:40 ถึง 00:20 — กะดึกใช้ได้ตามปกติ
+              ห้ามแล้วหัวหน้ายัง<b>ปล่อยได้ถ้าฉุกเฉิน</b> แต่ต้องพิมพ์เหตุผล
+              แล้วคนในแท็บแจ้งเตือนจะรู้ทันที และใบนั้นติดป้ายถาวรในประวัติ
             </p>
-
-            {s.bans.length === 0 ? (
-              <p className="mb-3 text-sm text-ink-500">
-                ยังไม่ได้ตั้งช่วงห้ามประจำวันไว้เลย ปล่อยเบรคได้ตลอดเวลา
-              </p>
-            ) : (
-              <ul className="mb-3 space-y-2">
-                {s.bans.map((b) => (
-                  <BanRow key={b.id} b={b} busy={busy} run={run} />
-                ))}
-              </ul>
-            )}
-
-            <div className="grid gap-2 sm:grid-cols-4">
-              <div>
-                <label className="label" htmlFor="b-from">
-                  ตั้งแต่
-                </label>
-                <input
-                  id="b-from"
-                  type="time"
-                  className="input"
-                  value={bFrom}
-                  onChange={(e) => setBFrom(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="b-to">
-                  ถึง
-                </label>
-                <input
-                  id="b-to"
-                  type="time"
-                  className="input"
-                  value={bTo}
-                  onChange={(e) => setBTo(e.target.value)}
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="label" htmlFor="b-note">
-                  เหตุผล (ไม่บังคับ)
-                </label>
-                <input
-                  id="b-note"
-                  className="input"
-                  placeholder="เช่น ช่วงรถเข้า"
-                  value={bNote}
-                  onChange={(e) => setBNote(e.target.value)}
-                />
-              </div>
-            </div>
-            <button
-              type="button"
-              className="btn-primary mt-3 px-4 py-2 text-sm"
-              disabled={busy}
-              onClick={() => {
-                const a = hhmmToMin(bFrom)
-                const b2 = hhmmToMin(bTo)
-                if (a === null || b2 === null) {
-                  setErr('รูปแบบเวลาไม่ถูกต้อง')
-                  return
-                }
-                void run(async () => {
-                  await saveBreakBan({ startMin: a, endMin: b2, note: bNote })
-                  setBNote('')
-                }, 'เพิ่มช่วงห้ามแล้ว')
-              }}
-            >
-              เพิ่มช่วงห้ามประจำวัน
-            </button>
+            <BreakBanBar
+              ban={ban.data ?? null}
+              next={banNext.data ?? null}
+              now={now}
+              onChanged={() => setTick((n) => n + 1)}
+            />
           </section>
 
           <section className="rounded-card border border-line p-4">
@@ -395,7 +356,7 @@ export default function BreakCards() {
                     onBlur={(e) => {
                       const v = Number(e.target.value)
                       if (v === r.default_minutes || !v) return
-                      void run(
+                      run(
                         () =>
                           saveBreakReason({
                             code: r.code,
@@ -414,7 +375,7 @@ export default function BreakCards() {
                     className="btn-ghost ml-auto px-3 py-1 text-xs"
                     disabled={busy}
                     onClick={() =>
-                      void run(
+                      run(
                         () =>
                           saveBreakReason({
                             code: r.code,
@@ -437,6 +398,7 @@ export default function BreakCards() {
         </div>
       )}
 
+      {/* ═══════════════ แจ้งเตือน ═══════════════ */}
       {tab === 'alerts' && s && (
         <div className="space-y-5">
           <section className="rounded-card border border-line p-4">
@@ -444,12 +406,10 @@ export default function BreakCards() {
             <p className="mb-3 text-xs text-ink-500">
               เด้งสองเรื่อง — <b>มีคนปล่อยเบรคในช่วงห้าม</b> และ <b>รปภ แจ้งว่าคนเข้าไม่ครบ</b>
               <br />
-              ยิงทันทีที่กด ไม่รอรอบนาฬิกา · เข้าเป็นแจ้งเตือนบนมือถือ กดแล้วเข้าหน้าเบรคเลย
+              ยิงทันทีที่กด ไม่รอรอบนาฬิกา · เด้งบนมือถือ กดแล้วเข้าหน้าเบรคเลย
               <br />
               <b>ผู้ตรวจสอบและเจ้าของระบบได้รับเสมอ</b> ไม่ต้องใส่ที่นี่ ·
               หัวหน้าที่ปล่อยใบนั้นก็ได้รับด้วยเมื่อลูกน้องเข้าไม่ครบ
-              <br />
-              ช่องนี้ไว้เพิ่มคนนอกเหนือจากนั้น เช่น หัวหน้ากะอีกฝั่งที่ต้องรู้ด้วย
             </p>
             <PeoplePicker
               people={staff}
@@ -457,21 +417,16 @@ export default function BreakCards() {
               disabled={busy}
               emptyText="ยังไม่ได้เพิ่มใคร — ตอนนี้เตือนเฉพาะผู้ตรวจสอบและเจ้าของระบบ"
               onToggle={(id, next) =>
-                void run(() => setBreakAlertSub(id, next), next ? 'เพิ่มแล้ว' : 'เอาออกแล้ว')
+                run(() => setBreakAlertSub(id, next), next ? 'เพิ่มแล้ว' : 'เอาออกแล้ว')
               }
             />
           </section>
 
           <section className="rounded-card border border-line p-4">
-            <h2 className="font-display text-md">ใครกดห้ามเบรคเดี๋ยวนี้ได้</h2>
+            <h2 className="font-display text-md">ใครกดห้ามเบรคได้</h2>
             <p className="mb-3 text-xs text-ink-500">
-              คนกลุ่มนี้จะมีปุ่ม <b>&ldquo;ห้ามเบรคเดี๋ยวนี้&rdquo;</b> ในหน้าเบรคบนมือถือ
-              กดแล้วเลือกกี่นาที แล้วมันหมดอายุเอง ไม่ต้องกลับมาปิด
-              <br />
-              ยกเลิกกลางคันได้ตลอด · เจ้าของระบบกดได้อยู่แล้วไม่ต้องใส่
-              <br />
-              ห้ามแล้วหัวหน้ายัง<b>ปล่อยได้ถ้าฉุกเฉิน</b> แต่ต้องพิมพ์เหตุผล
-              และคนในรายชื่อข้างบนจะรู้ทันที
+              คนกลุ่มนี้จะมีปุ่ม <b>&ldquo;ห้ามเบรค&rdquo;</b> ในหน้าเบรคบนมือถือ
+              · เจ้าของระบบกดได้อยู่แล้วไม่ต้องใส่
             </p>
             <PeoplePicker
               people={staff}
@@ -479,7 +434,7 @@ export default function BreakCards() {
               disabled={busy}
               emptyText="ยังไม่ได้เพิ่มใคร — ตอนนี้มีแต่เจ้าของระบบที่กดได้"
               onToggle={(id, next) =>
-                void run(
+                run(
                   () => updateProfile(id, { can_break_ban: next } as Partial<Profile>),
                   next ? 'เพิ่มแล้ว' : 'เอาออกแล้ว',
                 )
@@ -489,6 +444,7 @@ export default function BreakCards() {
         </div>
       )}
 
+      {/* ═══════════════ พิมพ์ ═══════════════ */}
       {tab === 'print' && (
         <div>
           <div className="no-print mb-4 flex flex-wrap items-center gap-2">
@@ -539,508 +495,445 @@ export default function BreakCards() {
   )
 }
 
-/** ช่วงห้ามประจำวันหนึ่งแถว — แก้เวลาได้ในที่ ไม่ต้องลบแล้วสร้างใหม่ */
-function BanRow({
-  b,
+/* ───────────────────────── เพิ่มบัตรแบบขั้นตอนเดียว ───────────────────────── */
+
+/**
+ * กลุ่มบัตรสร้างให้เองจากตัวนำหน้า
+ *
+ * ของเดิมต้องสร้างกลุ่มก่อน แล้วค่อยเลื่อนไปอีกฟอร์มเพื่อเลือกกลุ่มแล้วใส่บัตร
+ * สองขั้นตอนทั้งที่ข้อมูลเดียวกัน และเจ้าของระบบพิมพ์ OUT4-01 ลงช่องรหัสกลุ่ม
+ * จนได้กลุ่มชื่อ OUT4-01 ที่ไม่มีความหมาย เพราะสองช่องนั้นหน้าตาเหมือนกัน
+ *
+ * ตอนนี้พิมพ์ตัวนำหน้าที่เดียว OUT4- แล้วระบบตัดขีดท้ายออกเป็นชื่อกลุ่มเอง
+ * ไม่มีทางพิมพ์ผิดช่อง เพราะเหลือช่องเดียว
+ */
+function QuickAdd({
   busy,
   run,
+  setMsg,
 }: {
-  b: { id: number; start_min: number; end_min: number; note: string | null; active: boolean }
   busy: boolean
-  run: (fn: () => Promise<unknown>, ok: string) => void
-}) {
-  const [edit, setEdit] = useState(false)
-  const [f, setF] = useState(minToHHMM(b.start_min))
-  const [t, setT] = useState(minToHHMM(b.end_min))
-  const [n, setN] = useState(b.note ?? '')
-
-  if (edit) {
-    return (
-      <li className="rounded-btn border border-line p-3">
-        <div className="flex flex-wrap items-end gap-2">
-          <input type="time" className="input w-32" value={f} onChange={(e) => setF(e.target.value)} />
-          <input type="time" className="input w-32" value={t} onChange={(e) => setT(e.target.value)} />
-          <input
-            className="input min-w-40 flex-1"
-            placeholder="เหตุผล"
-            value={n}
-            onChange={(e) => setN(e.target.value)}
-          />
-          <button
-            type="button"
-            className="btn-primary px-3 py-2 text-xs"
-            disabled={busy}
-            onClick={() => {
-              const a = hhmmToMin(f)
-              const z = hhmmToMin(t)
-              if (a === null || z === null) return
-              run(
-                () =>
-                  saveBreakBan({ id: b.id, startMin: a, endMin: z, note: n, active: b.active }),
-                'แก้ช่วงห้ามแล้ว',
-              )
-              setEdit(false)
-            }}
-          >
-            บันทึก
-          </button>
-          <button type="button" className="btn-ghost px-3 py-2 text-xs" onClick={() => setEdit(false)}>
-            ยกเลิก
-          </button>
-        </div>
-      </li>
-    )
-  }
-
-  return (
-    <li className="flex flex-wrap items-center gap-2 rounded-btn border border-line px-3 py-2 text-sm">
-      <span className="font-mono font-bold">
-        {minToHHMM(b.start_min)} – {minToHHMM(b.end_min)}
-      </span>
-      {b.start_min > b.end_min && <span className="badge-mute">ข้ามเที่ยงคืน</span>}
-      <span className="min-w-0 flex-1 text-ink-500">{b.note ?? '—'}</span>
-      {!b.active && <span className="badge-mute">ปิดอยู่</span>}
-      <button type="button" className="btn-ghost px-3 py-1 text-xs" onClick={() => setEdit(true)}>
-        แก้เวลา
-      </button>
-      <button
-        type="button"
-        className="btn-ghost px-3 py-1 text-xs"
-        disabled={busy}
-        onClick={() =>
-          run(
-            () =>
-              saveBreakBan({
-                id: b.id,
-                startMin: b.start_min,
-                endMin: b.end_min,
-                note: b.note,
-                active: !b.active,
-              }),
-            b.active ? 'ปิดช่วงนี้แล้ว' : 'เปิดช่วงนี้แล้ว',
-          )
-        }
-      >
-        {b.active ? 'ปิดใช้' : 'เปิดใช้'}
-      </button>
-      <button
-        type="button"
-        className="btn-ghost px-3 py-1 text-xs text-danger-txt"
-        disabled={busy}
-        onClick={() => run(() => deleteBreakBan(b.id), 'ลบช่วงนี้แล้ว')}
-      >
-        ลบ
-      </button>
-    </li>
-  )
-}
-
-/* ───────────────────────── แท็บบัตรและสิทธิ์ ───────────────────────── */
-
-type Grp = { code: string; name: string | null; max_open: number; active: boolean; users: string[] }
-type Crd = { code: string; group_code: string; active: boolean; busy: boolean; used: boolean }
-
-function CardsTab(p: {
-  groups: Grp[]
-  cards: Crd[]
-  staff: Profile[]
-  busy: boolean
-  run: (fn: () => Promise<unknown>, ok: string) => void
-  sel: string[]
-  setSel: (v: string[]) => void
-  gCode: string
-  setGCode: (v: string) => void
-  gName: string
-  setGName: (v: string) => void
-  gMax: number
-  setGMax: (v: number) => void
-  target: string
-  setTarget: (v: string) => void
-  prefix: string
-  setPrefix: (v: string) => void
-  from: number
-  setFrom: (v: number) => void
-  to: number
-  setTo: (v: number) => void
-  pad: number
-  setPad: (v: number) => void
-  preview: string[]
+  run: Run
   setMsg: (v: string) => void
 }) {
-  const selSet = new Set(p.sel)
-  const selCards = p.cards.filter((c) => selSet.has(c.code))
-  const canDelete = selCards.filter((c) => !c.used && !c.busy).length
+  const [prefix, setPrefix] = useState('')
+  const [count, setCount] = useState(5)
+  const [start, setStart] = useState(1)
+
+  const pre = prefix.trim().toUpperCase()
+  const group = pre.replace(/[-_]+$/, '')
+  const preview = useMemo(() => {
+    if (!group) return []
+    const sep = pre.endsWith('-') || pre.endsWith('_') ? pre : `${pre}-`
+    const out: string[] = []
+    for (let i = 0; i < Math.min(Math.max(count, 0), 200); i++) {
+      out.push(`${sep}${String(start + i).padStart(2, '0')}`)
+    }
+    return out
+  }, [pre, group, count, start])
 
   return (
-    <div className="space-y-5">
-      {/* ───────── เพิ่มแผนก ───────── */}
-      <section className="rounded-card border border-line p-4">
-        <h2 className="mb-1 font-display text-md">เพิ่มแผนกบัตร</h2>
-        <p className="mb-3 text-xs text-ink-500">
-          บัตรผูกกับแผนก ไม่ได้ผูกกับตัวพนักงาน OS · เพดานคือจำนวนใบที่แผนกนี้ปล่อยพร้อมกันได้
-          ใส่ 0 = ไม่จำกัด
-        </p>
-        <div className="grid gap-2 sm:grid-cols-4">
-          <div>
-            <label className="label" htmlFor="g-code">
-              รหัสแผนก
-            </label>
-            <input
-              id="g-code"
-              className="input"
-              placeholder="OUT4"
-              value={p.gCode}
-              onChange={(e) => p.setGCode(e.target.value)}
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="label" htmlFor="g-name">
-              ชื่อเรียก (ไม่บังคับ)
-            </label>
-            <input
-              id="g-name"
-              className="input"
-              placeholder="ขาออก 4"
-              value={p.gName}
-              onChange={(e) => p.setGName(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="g-max">
-              เพดานพร้อมกัน
-            </label>
-            <input
-              id="g-max"
-              type="number"
-              min={0}
-              max={50}
-              className="input"
-              value={p.gMax}
-              onChange={(e) => p.setGMax(Number(e.target.value))}
-            />
-          </div>
+    <section className="rounded-card border border-line p-4">
+      <h2 className="mb-1 font-display text-md">เพิ่มบัตร</h2>
+      <p className="mb-3 text-xs text-ink-500">
+        พิมพ์ตัวนำหน้ากับจำนวน แล้วกดเพิ่ม — จบในขั้นตอนเดียว
+        <br />
+        กลุ่มบัตรสร้างให้เองจากตัวนำหน้า · ใช้ได้เฉพาะ A-Z 0-9 ขีดกลาง ขีดล่าง
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-40 flex-1">
+          <label className="label" htmlFor="q-pre">
+            ตัวนำหน้า
+          </label>
+          <input
+            id="q-pre"
+            className="input font-mono"
+            placeholder="OUT4-"
+            value={prefix}
+            onChange={(e) => setPrefix(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="q-cnt">
+            กี่ใบ
+          </label>
+          <input
+            id="q-cnt"
+            type="number"
+            min={1}
+            max={200}
+            className="input w-24"
+            value={count}
+            onChange={(e) => setCount(Number(e.target.value))}
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="q-st">
+            เริ่มที่เลข
+          </label>
+          <input
+            id="q-st"
+            type="number"
+            min={1}
+            className="input w-24"
+            value={start}
+            onChange={(e) => setStart(Number(e.target.value))}
+          />
         </div>
         <button
           type="button"
-          className="btn-primary mt-3 px-4 py-2 text-sm"
-          disabled={p.busy || !p.gCode.trim()}
+          className="btn-primary px-5 py-2.5 text-sm"
+          disabled={busy || preview.length === 0}
           onClick={() =>
-            p.run(async () => {
-              await saveBreakGroup({ code: p.gCode, name: p.gName, maxOpen: p.gMax })
-              p.setGCode('')
-              p.setGName('')
-            }, 'บันทึกแผนกแล้ว')
+            run(async () => {
+              // สร้างกลุ่มให้เองถ้ายังไม่มี · มีอยู่แล้วก็ไม่ทับค่าที่ตั้งไว้
+              await saveBreakGroup({ code: group, maxOpen: 3 })
+              const r = await addBreakCards(group, preview)
+              setPrefix('')
+              setMsg(`เพิ่ม ${r.added} ใบเข้ากลุ่ม ${group} · มีอยู่แล้ว ${r.skipped} ใบ`)
+            }, 'เพิ่มบัตรแล้ว')
           }
         >
-          บันทึกแผนก
+          เพิ่ม {preview.length} ใบ
         </button>
-      </section>
+      </div>
 
-      {/* ───────── เพิ่มบัตรเป็นชุด ───────── */}
-      {p.groups.length > 0 && (
-        <section className="rounded-card border border-line p-4">
-          <h2 className="mb-1 font-display text-md">เพิ่มบัตรเป็นชุด</h2>
-          <p className="mb-3 text-xs text-ink-500">
-            ใช้ได้เฉพาะ A-Z 0-9 ขีดกลาง ขีดล่าง · ภาษาไทยใช้ไม่ได้ เพราะ รปภ
-            ต้องพิมพ์รหัสเองตอน QR เปื้อน
-          </p>
-          <div className="grid gap-2 sm:grid-cols-5">
-            <div>
-              <label className="label" htmlFor="c-grp">
-                แผนก
-              </label>
-              <select
-                id="c-grp"
-                className="input"
-                value={p.target}
-                onChange={(e) => p.setTarget(e.target.value)}
-              >
-                {p.groups.map((g) => (
-                  <option key={g.code} value={g.code}>
-                    {g.code}
-                  </option>
-                ))}
-              </select>
-            </div>
+      {preview.length > 0 && (
+        <p className="mt-3 rounded-btn bg-ink/5 px-3 py-2 font-mono text-xs text-ink-700">
+          กลุ่ม {group} → {preview.slice(0, 10).join(' · ')}
+          {preview.length > 10 ? ` … ถึง ${preview[preview.length - 1]}` : ''}
+        </p>
+      )}
+    </section>
+  )
+}
+
+/* ───────────────────────── แผนกหนึ่งกล่อง ───────────────────────── */
+
+function GroupCard({
+  g,
+  cards,
+  staff,
+  busy,
+  run,
+  sel,
+  setSel,
+  setMsg,
+}: {
+  g: Grp
+  cards: Crd[]
+  staff: Profile[]
+  busy: boolean
+  run: Run
+  sel: string[]
+  setSel: (v: string[]) => void
+  setMsg: (v: string) => void
+}) {
+  const [adding, setAdding] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editPeople, setEditPeople] = useState(false)
+
+  const [name, setName] = useState(g.name ?? '')
+  const [max, setMax] = useState(g.max_open)
+
+  const selSet = new Set(sel)
+  const owners = staff.filter((p) => g.users.includes(p.id))
+  const missingFlag = owners.filter((p) => !p.can_break_issue)
+
+  // เลขถัดไปที่ยังว่าง · เติมให้เลยจะได้ไม่ต้องไล่ดูเองว่าทำถึงใบไหนแล้ว
+  const nextNo = useMemo(() => {
+    const re = new RegExp(`^${g.code}-(\\d+)$`)
+    const used = cards.map((c) => Number(re.exec(c.code)?.[1])).filter((n) => !Number.isNaN(n))
+    return used.length === 0 ? 1 : Math.max(...used) + 1
+  }, [cards, g.code])
+
+  const [count, setCount] = useState(5)
+  const [start, setStart] = useState(nextNo)
+  useEffect(() => setStart(nextNo), [nextNo])
+
+  const preview = useMemo(() => {
+    const out: string[] = []
+    for (let i = 0; i < Math.min(count, 200); i++) {
+      out.push(`${g.code}-${String(start + i).padStart(2, '0')}`)
+    }
+    return out
+  }, [count, start, g.code])
+
+  const codes = cards.map((c) => c.code)
+  const allOn = codes.length > 0 && codes.every((c) => selSet.has(c))
+
+  return (
+    <section className="rounded-card border border-line p-4">
+      {/* ───── หัวกล่อง ───── */}
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="font-display text-md">
+          <span className="font-mono">{g.code}</span>
+          {g.name ? <span className="ml-2 text-sm font-sans text-ink-500">{g.name}</span> : null}
+        </h3>
+        {!g.active && <span className="badge-dang">ปิดใช้งาน</span>}
+        <span className="text-xs text-ink-500">
+          {cards.length} ใบ · ปล่อยพร้อมกันได้{' '}
+          {g.max_open === 0 ? 'ไม่จำกัด' : `${g.max_open} ใบ`}
+        </span>
+        <button
+          type="button"
+          className="btn-ghost ml-auto px-3 py-1 text-xs"
+          onClick={() => setEditing(!editing)}
+        >
+          {editing ? 'ปิด' : 'แก้ไขแผนก'}
+        </button>
+      </div>
+
+      {editing && (
+        <div className="mt-3 rounded-card border border-line-2 bg-ink/5 p-3">
+          <div className="grid gap-2 sm:grid-cols-3">
             <div className="sm:col-span-2">
-              <label className="label" htmlFor="c-pre">
-                ขึ้นต้นด้วย
+              <label className="label" htmlFor={`n-${g.code}`}>
+                ชื่อเรียก
               </label>
               <input
-                id="c-pre"
+                id={`n-${g.code}`}
                 className="input"
-                placeholder="OUT4-"
-                value={p.prefix}
-                onChange={(e) => p.setPrefix(e.target.value)}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
               />
             </div>
             <div>
-              <label className="label" htmlFor="c-from">
-                เลขที่
-              </label>
-              <div className="flex items-center gap-1">
-                <input
-                  id="c-from"
-                  type="number"
-                  min={0}
-                  className="input"
-                  value={p.from}
-                  onChange={(e) => p.setFrom(Number(e.target.value))}
-                />
-                <span className="text-sm text-ink-500">–</span>
-                <input
-                  type="number"
-                  min={0}
-                  aria-label="ถึงเลขที่"
-                  className="input"
-                  value={p.to}
-                  onChange={(e) => p.setTo(Number(e.target.value))}
-                />
-              </div>
-            </div>
-            <div>
-              <label className="label" htmlFor="c-pad">
-                เติมศูนย์
+              <label className="label" htmlFor={`m-${g.code}`}>
+                ปล่อยพร้อมกันได้ (0 = ไม่จำกัด)
               </label>
               <input
-                id="c-pad"
+                id={`m-${g.code}`}
                 type="number"
-                min={1}
-                max={4}
+                min={0}
+                max={50}
                 className="input"
-                value={p.pad}
-                onChange={(e) => p.setPad(Number(e.target.value))}
+                value={max}
+                onChange={(e) => setMax(Number(e.target.value))}
               />
             </div>
           </div>
-
-          {p.preview.length > 0 && (
-            <p className="mt-3 rounded-btn bg-ink/5 px-3 py-2 font-mono text-xs text-ink-700">
-              {p.preview.slice(0, 12).join(' · ')}
-              {p.preview.length > 12 ? ` … รวม ${p.preview.length} ใบ` : ''}
-            </p>
-          )}
-
-          <button
-            type="button"
-            className="btn-primary mt-3 px-4 py-2 text-sm"
-            disabled={p.busy || p.preview.length === 0 || !p.target}
-            onClick={() =>
-              p.run(async () => {
-                const r = await addBreakCards(p.target, p.preview)
-                p.setPrefix('')
-                p.setMsg(`เพิ่ม ${r.added} ใบ · มีอยู่แล้ว ${r.skipped} ใบ`)
-              }, 'เพิ่มบัตรแล้ว')
-            }
-          >
-            เพิ่ม {p.preview.length} ใบ
-          </button>
-        </section>
-      )}
-
-      {/* ───────── แถบจัดการบัตรที่เลือก ───────── */}
-      {p.sel.length > 0 && (
-        <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-card border border-ink bg-surface p-3 shadow">
-          <span className="text-sm font-semibold">เลือกไว้ {p.sel.length} ใบ</span>
-          <button
-            type="button"
-            className="btn-ghost px-3 py-1.5 text-xs"
-            disabled={p.busy}
-            onClick={() =>
-              p.run(async () => {
-                for (const c of selCards.filter((x) => x.active && !x.busy)) {
-                  await saveBreakCard({ code: c.code, active: false })
-                }
-                p.setSel([])
-              }, 'ปิดใช้งานแล้ว')
-            }
-          >
-            ปิดใช้งาน
-          </button>
-          <button
-            type="button"
-            className="btn-ghost px-3 py-1.5 text-xs"
-            disabled={p.busy}
-            onClick={() =>
-              p.run(async () => {
-                for (const c of selCards.filter((x) => !x.active)) {
-                  await saveBreakCard({ code: c.code, active: true })
-                }
-                p.setSel([])
-              }, 'เปิดใช้งานแล้ว')
-            }
-          >
-            เปิดใช้งาน
-          </button>
-          <button
-            type="button"
-            className="rounded-btn border border-danger/40 px-3 py-1.5 text-xs font-semibold text-danger-txt disabled:opacity-40"
-            disabled={p.busy || canDelete === 0}
-            onClick={() =>
-              p.run(async () => {
-                const r = await deleteBreakCards(p.sel)
-                p.setSel([])
-                p.setMsg(
-                  r.kept.length === 0
-                    ? `ลบ ${r.deleted} ใบแล้ว`
-                    : `ลบ ${r.deleted} ใบ · ลบไม่ได้ ${r.kept.length} ใบ — ` +
-                      r.kept.map((k) => `${k.code} (${k.why})`).join(' · '),
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn-primary px-4 py-2 text-xs"
+              disabled={busy}
+              onClick={() =>
+                run(async () => {
+                  await saveBreakGroup({ code: g.code, name, maxOpen: max, active: g.active })
+                  setEditing(false)
+                }, 'บันทึกแล้ว')
+              }
+            >
+              บันทึก
+            </button>
+            <button
+              type="button"
+              className="btn-ghost px-4 py-2 text-xs"
+              disabled={busy}
+              onClick={() =>
+                run(
+                  () =>
+                    saveBreakGroup({
+                      code: g.code,
+                      name: g.name,
+                      maxOpen: g.max_open,
+                      active: !g.active,
+                    }),
+                  g.active ? 'ปิดแผนกแล้ว' : 'เปิดแผนกแล้ว',
                 )
-              }, 'ลบบัตรแล้ว')
-            }
-          >
-            ลบ {canDelete > 0 ? `${canDelete} ใบ` : '(ไม่มีใบที่ลบได้)'}
-          </button>
-          <button
-            type="button"
-            className="btn-ghost ml-auto px-3 py-1.5 text-xs"
-            onClick={() => p.setSel([])}
-          >
-            ยกเลิกเลือก
-          </button>
-          <p className="w-full text-xs text-ink-500">
-            ลบได้เฉพาะบัตรที่<b>ยังไม่เคยถูกปล่อย</b> · ใบที่เคยใช้แล้วลบไม่ได้เพราะประวัติอ้างถึงรหัสนั้นอยู่
-            ให้ปิดใช้งานแทน ซึ่งซ่อนจากทุกหน้าโดยไม่ทำลายอะไร
+              }
+            >
+              {g.active ? 'ปิดใช้งานแผนก' : 'เปิดใช้งานแผนก'}
+            </button>
+            <button
+              type="button"
+              className="ml-auto rounded-btn border border-danger/40 px-4 py-2 text-xs font-semibold text-danger-txt"
+              disabled={busy}
+              onClick={() =>
+                run(
+                  () => deleteBreakGroup(g.code),
+                  `ลบแผนก ${g.code} แล้ว`,
+                )
+              }
+            >
+              ลบแผนกนี้
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-ink-400">
+            ลบแผนกได้เฉพาะตอนที่บัตรในแผนกยังไม่เคยถูกปล่อย · บัตรจะหายไปพร้อมกัน
           </p>
         </div>
       )}
 
-      {/* ───────── รายแผนก ───────── */}
-      {p.groups.length === 0 ? (
-        <EmptyState title="ยังไม่มีแผนกบัตร" hint="สร้างแผนกก่อน แล้วค่อยเพิ่มบัตรเข้าไป" />
-      ) : (
-        p.groups.map((g) => {
-          const mine = p.cards.filter((c) => c.group_code === g.code)
-          return (
-            <section key={g.code} className="rounded-card border border-line p-4">
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <h3 className="font-display text-md">
-                  {g.code}
-                  {g.name ? <span className="ml-2 text-sm text-ink-500">{g.name}</span> : null}
-                </h3>
-                <span className="badge-mute">
-                  {mine.length} ใบ · เพดาน {g.max_open === 0 ? 'ไม่จำกัด' : `${g.max_open} ใบ`}
-                </span>
-                {!g.active && <span className="badge-dang">ปิดใช้งาน</span>}
-                {mine.length > 0 && (
+      {/* ───── บัตร ───── */}
+      <div className="mt-3">
+        {cards.length === 0 ? (
+          <p className="text-sm text-ink-500">ยังไม่มีบัตรในแผนกนี้</p>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-1.5">
+              {cards.map((c) => {
+                const on = selSet.has(c.code)
+                return (
                   <button
+                    key={c.code}
                     type="button"
-                    className="btn-ghost px-3 py-1 text-xs"
-                    onClick={() => {
-                      const codes = mine.map((c) => c.code)
-                      const allOn = codes.every((c) => selSet.has(c))
-                      p.setSel(
-                        allOn
-                          ? p.sel.filter((c) => !codes.includes(c))
-                          : [...new Set([...p.sel, ...codes])],
-                      )
-                    }}
+                    title={
+                      c.busy
+                        ? 'ใบนี้ยังไม่ได้รับกลับ'
+                        : c.used
+                          ? 'เคยใช้งานแล้ว ลบไม่ได้ ปิดใช้งานแทนได้'
+                          : 'ยังไม่เคยถูกปล่อย ลบได้'
+                    }
+                    className={`rounded-btn border px-2.5 py-1 font-mono text-xs ${
+                      on
+                        ? 'border-ink bg-ink text-white'
+                        : c.busy
+                          ? 'border-warn/40 bg-warn-bg text-warn-txt'
+                          : c.active
+                            ? 'border-line bg-white text-ink-700'
+                            : 'border-line bg-ink/5 text-ink-500 line-through'
+                    }`}
+                    onClick={() =>
+                      setSel(on ? sel.filter((x) => x !== c.code) : [...sel, c.code])
+                    }
                   >
-                    เลือกทั้งแผนก
+                    {c.code}
+                    {c.busy ? ' ●' : c.used ? ' ·' : ''}
                   </button>
-                )}
-                <button
-                  type="button"
-                  className="btn-ghost ml-auto px-3 py-1 text-xs"
-                  disabled={p.busy}
-                  onClick={() =>
-                    p.run(
-                      () =>
-                        saveBreakGroup({
-                          code: g.code,
-                          name: g.name,
-                          maxOpen: g.max_open,
-                          active: !g.active,
-                        }),
-                      g.active ? 'ปิดแผนกแล้ว' : 'เปิดแผนกแล้ว',
-                    )
-                  }
-                >
-                  {g.active ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
-                </button>
-              </div>
+                )
+              })}
+            </div>
+            <p className="mt-1.5 text-xs text-ink-400">
+              กดที่บัตรเพื่อเลือก แล้วปุ่มลบจะโผล่ด้านบน · <b>●</b> กำลังออกไป · <b>·</b> เคยใช้แล้ว
+              ลบไม่ได้ · ขีดฆ่า = ปิดใช้งานอยู่
+            </p>
+          </>
+        )}
 
-              {mine.length === 0 ? (
-                <p className="text-sm text-ink-500">ยังไม่มีบัตรในแผนกนี้</p>
-              ) : (
-                <>
-                  <div className="flex flex-wrap gap-1.5">
-                    {mine.map((c) => {
-                      const on = selSet.has(c.code)
-                      return (
-                        <button
-                          key={c.code}
-                          type="button"
-                          title={
-                            c.busy
-                              ? 'ใบนี้ยังไม่ได้รับกลับ'
-                              : c.used
-                                ? 'เคยใช้งานแล้ว ลบไม่ได้ ปิดใช้งานแทนได้'
-                                : 'ยังไม่เคยถูกปล่อย ลบได้'
-                          }
-                          className={`rounded-btn border px-2.5 py-1 font-mono text-xs ${
-                            on
-                              ? 'border-ink bg-ink text-white'
-                              : c.busy
-                                ? 'border-warn/40 bg-warn-bg text-warn-txt'
-                                : c.active
-                                  ? 'border-line bg-white text-ink-700'
-                                  : 'border-line bg-ink/5 text-ink-500 line-through'
-                          }`}
-                          onClick={() =>
-                            p.setSel(
-                              on ? p.sel.filter((x) => x !== c.code) : [...p.sel, c.code],
-                            )
-                          }
-                        >
-                          {c.code}
-                          {c.busy ? ' ●' : c.used ? ' ·' : ''}
-                        </button>
-                      )
-                    })}
-                  </div>
-                  <p className="mt-1.5 text-xs text-ink-400">
-                    กดที่บัตรเพื่อเลือก · <b>●</b> กำลังออกไป · <b>·</b> เคยใช้แล้ว ลบไม่ได้ ·
-                    ขีดฆ่า = ปิดใช้งานอยู่
-                  </p>
-                </>
-              )}
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn-ghost px-3 py-1.5 text-xs"
+            onClick={() => setAdding(!adding)}
+          >
+            {adding ? 'ปิด' : '+ เพิ่มบัตร'}
+          </button>
+          {cards.length > 0 && (
+            <button
+              type="button"
+              className="btn-ghost px-3 py-1.5 text-xs"
+              onClick={() =>
+                setSel(allOn ? sel.filter((c) => !codes.includes(c)) : [...new Set([...sel, ...codes])])
+              }
+            >
+              {allOn ? 'เอาออกทั้งแผนก' : 'เลือกทั้งแผนก'}
+            </button>
+          )}
+        </div>
 
-              {/* ───── ใครใช้บัตรแผนกนี้ได้ ───── */}
-              <div className="mt-4 rounded-card border border-line-2 bg-ink/5 p-3">
-                <p className="mb-1 text-sm font-semibold">ใครปล่อยบัตรแผนกนี้ได้</p>
-                <p className="mb-2 text-xs text-ink-500">
-                  คนในรายชื่อนี้เท่านั้นที่จะ<b>เห็นบัตรของแผนก {g.code}</b> ในมือถือและปล่อยได้
-                  <br />
-                  ต้องเปิดสิทธิ์ &ldquo;ปล่อยบัตรเบรค&rdquo; ในหน้าสิทธิ์เข้าถึงด้วย
-                  ใส่ชื่อที่นี่อย่างเดียวยังปล่อยไม่ได้
-                </p>
-                <PeoplePicker
-                  people={p.staff}
-                  selected={g.users}
-                  disabled={p.busy}
-                  emptyText={`ยังไม่มีใครดูแลบัตรแผนก ${g.code} — ตอนนี้ไม่มีใครปล่อยบัตรแผนกนี้ได้เลย`}
-                  placeholder="พิมพ์ชื่อหรือรหัสพนักงานเพื่อเพิ่ม"
-                  onToggle={(id, next) =>
-                    p.run(
-                      () => setBreakGroupUser(g.code, id, next),
-                      next ? 'เพิ่มคนดูแลแล้ว' : 'เอาออกแล้ว',
-                    )
-                  }
+        {adding && (
+          <div className="mt-2 rounded-card border border-line-2 bg-ink/5 p-3">
+            <div className="flex flex-wrap items-end gap-2">
+              <div>
+                <label className="label" htmlFor={`cnt-${g.code}`}>
+                  เพิ่มกี่ใบ
+                </label>
+                <input
+                  id={`cnt-${g.code}`}
+                  type="number"
+                  min={1}
+                  max={200}
+                  className="input w-24"
+                  value={count}
+                  onChange={(e) => setCount(Number(e.target.value))}
                 />
-                {g.users.some(
-                  (id) => !p.staff.find((x) => x.id === id)?.can_break_issue,
-                ) && (
-                  <p className="mt-2 rounded-btn bg-warn-bg px-3 py-2 text-xs text-warn-txt">
-                    มีคนในรายชื่อที่ยังไม่ได้เปิดสิทธิ์ &ldquo;ปล่อยบัตรเบรค&rdquo; —
-                    เขาจะยังเข้าหน้าปล่อยบัตรไม่ได้ ไปเปิดที่หน้าสิทธิ์เข้าถึง
-                  </p>
-                )}
               </div>
-            </section>
-          )
-        })
-      )}
-    </div>
+              <div>
+                <label className="label" htmlFor={`st-${g.code}`}>
+                  เริ่มที่เลข
+                </label>
+                <input
+                  id={`st-${g.code}`}
+                  type="number"
+                  min={1}
+                  className="input w-24"
+                  value={start}
+                  onChange={(e) => setStart(Number(e.target.value))}
+                />
+              </div>
+              <button
+                type="button"
+                className="btn-primary px-4 py-2 text-sm"
+                disabled={busy || preview.length === 0}
+                onClick={() =>
+                  run(async () => {
+                    const r = await addBreakCards(g.code, preview)
+                    setAdding(false)
+                    setMsg(`เพิ่ม ${r.added} ใบ · มีอยู่แล้ว ${r.skipped} ใบ`)
+                  }, 'เพิ่มบัตรแล้ว')
+                }
+              >
+                เพิ่ม {preview.length} ใบ
+              </button>
+            </div>
+            <p className="mt-2 rounded-btn bg-white px-3 py-2 font-mono text-xs text-ink-700">
+              {preview.slice(0, 10).join(' · ')}
+              {preview.length > 10 ? ` … ถึง ${preview[preview.length - 1]}` : ''}
+            </p>
+            <p className="mt-1 text-xs text-ink-400">
+              รหัสสร้างจากรหัสแผนกให้เอง · ใบที่มีอยู่แล้วจะถูกข้ามไป ไม่ซ้ำ
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* ───── ใครปล่อยได้ ───── */}
+      <div className="mt-4 border-t border-line-2 pt-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold">ใครปล่อยบัตรแผนกนี้ได้</span>
+          <span className="min-w-0 flex-1 text-sm text-ink-500">
+            {owners.length === 0 ? (
+              <span className="text-danger-txt">ยังไม่มีใคร — ตอนนี้ไม่มีใครปล่อยบัตรแผนกนี้ได้เลย</span>
+            ) : (
+              owners.map((p) => p.full_name).join(' · ')
+            )}
+          </span>
+          <button
+            type="button"
+            className="btn-ghost px-3 py-1 text-xs"
+            onClick={() => setEditPeople(!editPeople)}
+          >
+            {editPeople ? 'ปิด' : 'แก้ไข'}
+          </button>
+        </div>
+
+        {missingFlag.length > 0 && (
+          <p className="mt-2 rounded-btn bg-warn-bg px-3 py-2 text-xs text-warn-txt">
+            {missingFlag.map((p) => p.full_name).join(' · ')} ยังไม่ได้เปิดสิทธิ์
+            &ldquo;ปล่อยบัตรเบรค&rdquo; — เขาจะยังเข้าหน้าปล่อยบัตรไม่ได้ ไปเปิดที่หน้าสิทธิ์เข้าถึง
+          </p>
+        )}
+
+        {editPeople && (
+          <div className="mt-2">
+            <PeoplePicker
+              people={staff}
+              selected={g.users}
+              disabled={busy}
+              emptyText="ยังไม่มีใครดูแลบัตรแผนกนี้"
+              placeholder="พิมพ์ชื่อหรือรหัสพนักงานเพื่อเพิ่ม"
+              onToggle={(id, next) =>
+                run(
+                  () => setBreakGroupUser(g.code, id, next),
+                  next ? 'เพิ่มคนดูแลแล้ว' : 'เอาออกแล้ว',
+                )
+              }
+            />
+          </div>
+        )}
+      </div>
+    </section>
   )
 }

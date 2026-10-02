@@ -13,6 +13,7 @@ import {
   breakProblem,
   breakReturn,
   countdown,
+  breakBanNext,
   breakBanNow,
   listBreakBoard,
   scanBreakCard,
@@ -40,6 +41,7 @@ export default function BreakGuard() {
   const [tick, setTick] = useState(0)
   const board = useAsync(() => listBreakBoard(), [tick])
   const ban = useAsync(() => breakBanNow(), [tick])
+  const banNext = useAsync(() => breakBanNext(), [tick])
   const [open, setOpen] = useState(false)
   const [manual, setManual] = useState('')
   const [hit, setHit] = useState<BreakScan | null>(null)
@@ -140,7 +142,7 @@ export default function BreakGuard() {
     <>
       <TopBar title="เบรค OS" back />
       <StaffPage>
-        <BreakBanBar ban={ban.data ?? null} now={now} onChanged={() => setTick((n) => n + 1)} />
+        <BreakBanBar ban={ban.data ?? null} next={banNext.data ?? null} now={now} onChanged={() => setTick((n) => n + 1)} />
 
         {msg && (
           <p className="mb-3 rounded-btn bg-success-bg px-3 py-2 text-sm text-success-txt">{msg}</p>

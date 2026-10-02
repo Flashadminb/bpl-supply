@@ -6,7 +6,9 @@ import { stampLines } from '../../lib/image'
 import { PhotoSteps, shotsToPhotos, type Shot } from '../../components/PhotoSteps'
 import { BreakBanBar } from '../../components/BreakBanBar'
 import { ErrorBox, Loading, EmptyState, Spinner } from '../../components/ui'
+import { StaffPage, TopBar } from '../../components/Shell'
 import {
+  breakBanNext,
   breakBanNow,
   countdown,
   issueBreak,
@@ -38,6 +40,7 @@ export default function BreakIssue() {
   const [tick, setTick] = useState(0)
   const board = useAsync(() => listBreakBoard(), [tick])
   const ban = useAsync(() => breakBanNow(), [tick])
+  const banNext = useAsync(() => breakBanNext(), [tick])
 
   const [card, setCard] = useState<string | null>(null)
   const [people, setPeople] = useState(1)
@@ -133,8 +136,26 @@ export default function BreakIssue() {
     }
   }
 
-  if (cards.loading && list.length === 0) return <Loading />
-  if (cards.error) return <ErrorBox message={cards.error} onRetry={cards.reload} />
+  if (cards.loading && list.length === 0) {
+    return (
+      <>
+        <TopBar title="ปล่อยเบรค OS" back />
+        <StaffPage>
+          <Loading />
+        </StaffPage>
+      </>
+    )
+  }
+  if (cards.error) {
+    return (
+      <>
+        <TopBar title="ปล่อยเบรค OS" back />
+        <StaffPage>
+          <ErrorBox message={cards.error} onRetry={cards.reload} />
+        </StaffPage>
+      </>
+    )
+  }
 
   const byGroup = new Map<string, BreakCardOption[]>()
   for (const c of list) {
@@ -144,15 +165,19 @@ export default function BreakIssue() {
   }
 
   return (
-    <main className="mx-auto max-w-lg p-4 pb-24">
-      <div className="mb-4 flex items-center gap-2">
-        <h1 className="font-display text-xl">ปล่อยเบรค OS</h1>
-        <Link to="/break/board" className="btn-ghost ml-auto px-3 py-1.5 text-sm">
-          ดูกระดาน
-        </Link>
-      </div>
+    <>
+      <TopBar
+        title="ปล่อยเบรค OS"
+        back
+        right={
+          <Link to="/break/board" className="btn-ghost px-3 py-1.5 text-sm">
+            กระดาน
+          </Link>
+        }
+      />
+      <StaffPage>
 
-      <BreakBanBar ban={banNow} now={now} onChanged={() => setTick((n) => n + 1)} />
+      <BreakBanBar ban={banNow} next={banNext.data ?? null} now={now} onChanged={() => setTick((n) => n + 1)} />
 
       {done && (
         <div className="mb-4 rounded-card border border-success/30 bg-success-bg p-4 text-center">
@@ -392,6 +417,7 @@ export default function BreakIssue() {
           </button>
         </>
       )}
-    </main>
+      </StaffPage>
+    </>
   )
 }
