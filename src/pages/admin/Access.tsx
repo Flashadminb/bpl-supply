@@ -32,7 +32,14 @@ type Tab = 'people' | 'assets'
 
 /** สวิตช์ทั้งหมดที่เปิดปิดได้รายคน — เพิ่มธงใหม่ให้มาต่อแถวนี้ */
 const FLAGS: {
-  key: 'can_assets' | 'can_proxy' | 'can_sack' | 'can_dispatch' | 'can_guard'
+  key:
+    | 'can_assets'
+    | 'can_proxy'
+    | 'can_sack'
+    | 'can_dispatch'
+    | 'can_guard'
+    | 'can_break_issue'
+    | 'can_break_guard'
   label: string
   on: string
   off: string
@@ -73,6 +80,22 @@ const FLAGS: {
     on: 'ใช่',
     off: 'ไม่',
     hint: 'เห็นแค่หน้าสแกนบัตร OS',
+  },
+  {
+    key: 'can_break_issue',
+    label: 'ปล่อยบัตรเบรค',
+    on: 'ปล่อยได้',
+    off: 'ปิด',
+    // เปิดธงอย่างเดียวยังไม่พอ ต้องใส่เขาไว้ในแผนกบัตรด้วย
+    // ไม่งั้นเขาเปิดหน้าได้แต่ไม่เห็นบัตรสักใบ แล้วจะคิดว่าระบบพัง
+    hint: 'หัวหน้างาน · ต้องเพิ่มเขาเข้าแผนกบัตรในหน้าตั้งค่าบัตรเบรคด้วย',
+  },
+  {
+    key: 'can_break_guard',
+    label: 'สแกนบัตรเบรค',
+    on: 'สแกนได้',
+    off: 'ปิด',
+    hint: 'รปภ · สแกนขาออกและขากลับ ไม่เห็นรูปและไม่เห็นประวัติ',
   },
 ]
 

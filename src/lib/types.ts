@@ -30,6 +30,10 @@ export interface Profile {
   can_dispatch: boolean
   /** รปภ — เห็นเฉพาะหน้าสแกนบัตร OS ไม่เห็นเมนูเบิกของเลย */
   can_guard: boolean
+  /** หัวหน้างาน — ปล่อยบัตรเบรคให้ OS ได้ · ต้องถูกใส่ไว้ในแผนกบัตรด้วยถึงจะเห็นบัตร */
+  can_break_issue: boolean
+  /** รปภ — สแกนบัตรเบรคขาออกและขากลับได้ */
+  can_break_guard: boolean
   extra_depts: string[]
   shift_start: string | null
   shift_end: string | null

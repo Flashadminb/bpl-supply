@@ -126,6 +126,27 @@ export function canSeeSacks(
 }
 
 /**
+ * ปล่อยบัตรเบรคได้ไหม — ตรงกับ my_can_break_issue() ในฐานข้อมูล
+ *
+ * เปิดธงแล้วยังไม่พอ ต้องถูกใส่ไว้ในแผนกบัตรด้วยถึงจะเห็นบัตร
+ * ตัวนี้ใช้ตัดสินแค่ว่าจะโชว์เมนูไหม ของจริงฐานข้อมูลตรวจซ้ำอีกชั้น
+ */
+export function canBreakIssue(
+  p: { role: UserRole; can_break_issue?: boolean } | null,
+): boolean {
+  if (!p) return false
+  return p.role === 'admin' || Boolean(p.can_break_issue)
+}
+
+/** สแกนบัตรเบรคได้ไหม — ตรงกับ my_can_break_guard() ในฐานข้อมูล */
+export function canBreakGuard(
+  p: { role: UserRole; can_break_guard?: boolean } | null,
+): boolean {
+  if (!p) return false
+  return p.role === 'admin' || Boolean(p.can_break_guard)
+}
+
+/**
  * เบิกแทนคนอื่นได้ไหม — ดูที่ธงรายคน ไม่ได้ดูที่ตำแหน่งแล้ว
  *
  * ของเดิมผูกกับตำแหน่งตายตัว หน้างานที่ไว้ใจได้จึงยกสิทธิ์ให้ไม่ได้เลย

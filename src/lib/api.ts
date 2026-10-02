@@ -435,6 +435,8 @@ export async function updateProfile(
       | 'can_proxy'
       | 'can_dispatch'
       | 'can_guard'
+      | 'can_break_issue'
+      | 'can_break_guard'
       | 'extra_depts'
       | 'shift_start'
       | 'shift_end'
