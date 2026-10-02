@@ -51,6 +51,8 @@ export function PhotoSteps({
   stamp,
   shots,
   onShots,
+  kind,
+  namePrefix = 'asset',
 }: {
   /** ขั้นตอนบังคับ — ว่างแปลว่าถ่ายอิสระ */
   steps: AssetPhotoStep[]
@@ -60,6 +62,10 @@ export function PhotoSteps({
   stamp: string[]
   shots: Shot[]
   onShots: (next: Shot[] | ((prev: Shot[]) => Shot[])) => void
+  /** โฟลเดอร์ปลายทางใน Drive · ไม่ส่งมา = โฟลเดอร์หลักเหมือนเดิม */
+  kind?: 'evidence' | 'break'
+  /** ขึ้นต้นชื่อไฟล์ใน Drive · ของเดิมขึ้นต้นด้วย asset ทุกใบไม่ว่าจะเป็นงานอะไร */
+  namePrefix?: string
 }) {
   const cameraRef = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
@@ -184,7 +190,7 @@ export function PhotoSteps({
         running++
         onShots((prev) => prev.map((s) => (s.key === shot.key ? { ...s, state: 'uploading' } : s)))
 
-        void uploadEvidence(shot.img.blob, `asset-${shot.seq}-${shot.key}.webp`)
+        void uploadEvidence(shot.img.blob, `${namePrefix}-${shot.seq}-${shot.key}.webp`, kind)
           .then((res) => {
             if (!mountedRef.current) return
             onShots((prev) =>
@@ -218,7 +224,7 @@ export function PhotoSteps({
     }
     pump()
     // ไม่มี cleanup ยกเลิก — ปล่อยให้อัปโหลดที่ค้างอยู่วิ่งจนจบเสมอ
-  }, [shots, onShots])
+  }, [shots, onShots, kind, namePrefix])
 
   function retry(key: string) {
     uploadedRef.current.delete(key)

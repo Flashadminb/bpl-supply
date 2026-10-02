@@ -2,7 +2,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Suspense, lazy, useEffect, type ReactNode } from 'react'
 import { useAuth } from './lib/auth'
 import type { UserRole } from './lib/types'
-import { MANAGER_ROLES, canSeeSacks } from './lib/roles'
+import { MANAGER_ROLES, canSeeSacks, canBreakIssue, canBreakGuard } from './lib/roles'
 import { Loading } from './components/ui'
 
 import Login from './pages/staff/Login'
@@ -60,6 +60,8 @@ const OsPeople = lazy(() => import('./pages/admin/OsPeople'))
 const OsCards = lazy(() => import('./pages/admin/OsCards'))
 const OsScans = lazy(() => import('./pages/admin/OsScans'))
 const BreakCards = lazy(() => import('./pages/admin/BreakCards'))
+const BreakIssue = lazy(() => import('./pages/staff/BreakIssue'))
+const BreakGuard = lazy(() => import('./pages/staff/BreakGuard'))
 
 function Guard({
   children,
@@ -67,6 +69,7 @@ function Guard({
   allowDispatch,
   allowGuard,
   needsSack,
+  needsBreak,
 }: {
   children: ReactNode
   roles?: UserRole[]
@@ -76,6 +79,12 @@ function Guard({
   allowGuard?: boolean
   /** ต้องมีสิทธิ์เห็นงานกระสอบ — ซ่อนไทล์อย่างเดียวไม่พอ คนรู้ URL ยังเข้าได้ */
   needsSack?: boolean
+  /**
+   * ต้องมีสิทธิ์เรื่องบัตรเบรค
+   *   issue  ปล่อยบัตรได้ · guard สแกนได้ · any อย่างใดอย่างหนึ่งก็เข้าได้
+   * ฐานข้อมูลปฏิเสธซ้ำอีกชั้นในทุก RPC ตรงนี้แค่ไม่ให้กดเข้ามาเจอหน้าว่าง
+   */
+  needsBreak?: 'issue' | 'guard' | 'any'
 }) {
   const { session, profile, loading } = useAuth()
   const loc = useLocation()
@@ -113,7 +122,27 @@ function Guard({
     (allowGuard && profile.can_guard)
   if (!roleOk) return <Navigate to="/" replace />
   if (needsSack && !canSeeSacks(profile)) return <Navigate to="/" replace />
+  if (needsBreak) {
+    const ok =
+      needsBreak === 'issue'
+        ? canBreakIssue(profile)
+        : needsBreak === 'guard'
+          ? canBreakGuard(profile)
+          : canBreakIssue(profile) || canBreakGuard(profile)
+    if (!ok) return <Navigate to="/" replace />
+  }
   return <>{children}</>
+}
+
+/**
+ * /break พาไปหน้าที่ถูกกับคนที่เปิด
+ *
+ * แจ้งเตือนทุกชนิดชี้มาที่ /break เส้นเดียว เพราะตอนยิงเตือนยังไม่รู้ว่า
+ * คนรับเป็นหัวหน้างานหรือ รปภ · หัวหน้าได้หน้าปล่อยบัตร ที่เหลือได้กระดาน
+ */
+function BreakEntry() {
+  const { profile } = useAuth()
+  return canBreakIssue(profile) ? <BreakIssue /> : <BreakGuard />
 }
 
 /**
@@ -193,6 +222,9 @@ export default function App() {
           </Guard>
         }
       />
+      {/* บัตรเบรค OS — หัวหน้างานปล่อย รปภ สแกน · คนอื่นไม่เห็นเมนูและเข้าไม่ได้ */}
+      <Route path="/break" element={<Guard needsBreak="any"><BreakEntry /></Guard>} />
+      <Route path="/break/board" element={<Guard needsBreak="any"><BreakGuard /></Guard>} />
       <Route path="/assets" element={<Guard><AssetBasket /></Guard>} />
       <Route path="/assets/done/:refNo" element={<Guard><AssetDone /></Guard>} />
       <Route path="/assets/:typeCode" element={<Guard><AssetPick /></Guard>} />

@@ -638,7 +638,12 @@ async function callFunction<T>(
  *
  * ปุ่มกดลองใหม่ยังอยู่ ไว้ใช้เมื่อสามครั้งแล้วยังไม่ผ่านจริง ๆ
  */
-export async function uploadEvidence(blob: Blob, filename: string) {
+export async function uploadEvidence(
+  blob: Blob,
+  filename: string,
+  /** โฟลเดอร์ปลายทางใน Drive · ไม่ส่งมา = โฟลเดอร์หลักเหมือนเดิม */
+  kind?: 'evidence' | 'break',
+) {
   const delays = [800, 2200, 5000]
   let last: unknown = null
 
@@ -647,6 +652,7 @@ export async function uploadEvidence(blob: Blob, filename: string) {
       const fd = new FormData()
       fd.append('file', blob, filename)
       fd.append('filename', filename)
+      if (kind) fd.append('kind', kind)
       return await callFunction<{ fileId: string; webViewLink: string; bytes: number }>(
         'upload-evidence',
         fd,

@@ -95,7 +95,14 @@ export type BreakScan =
 
 export interface BreakPhotoIn {
   file_id: string
-  web_link: string
+  /**
+   * ลิงก์เปิดไฟล์บน Drive
+   *
+   * ยอมให้เป็น null เพราะ shotsToPhotos คืนแบบนั้นได้
+   * ฐานข้อมูลข้ามรูปที่ไม่มีลิงก์ทิ้งไปเอง แล้วด่าน "ต้องมีรูปอย่างน้อยหนึ่งใบ"
+   * จะไม่ผ่าน ซึ่งถูกแล้ว — รูปที่เปิดไม่ได้เท่ากับไม่มีรูป
+   */
+  web_link: string | null
   bytes?: number | null
 }
 
