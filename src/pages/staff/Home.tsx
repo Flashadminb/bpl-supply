@@ -124,6 +124,27 @@ export default function Home() {
             </span>
           </button>
 
+          {/*
+            หน้านี้เป็นหน้าแรกของบัญชี รปภ ล้วน ซึ่งมีปุ่มเดียวมาตลอด
+            พอมีงานบัตรเบรคเพิ่มเข้ามา ถ้าไม่ใส่ปุ่มตรงนี้ด้วย
+            เปิดสิทธิ์ให้เขาแล้วก็ยังไม่มีทางกดเข้าไปได้ นอกจากพิมพ์ URL เอง
+          */}
+          {maysSeeBreak && (
+            <button
+              type="button"
+              className="mt-3 w-full rounded-panel bg-brand-500 px-4 py-9 text-center text-ink"
+              // ชี้ไปที่กระดานตรง ๆ ไม่ผ่าน /break ที่เดาหน้าให้
+              // บัญชีนี้เป็น รปภ ล้วน หน้าที่ถูกคือกระดานเสมอ ไม่ต้องให้เดา
+              onClick={() => nav('/break/board')}
+            >
+              <span aria-hidden className="block text-[44px] leading-none">
+                ⏱
+              </span>
+              <span className="mt-2 block font-display text-xl">เบรค OS</span>
+              <span className="mt-1 block text-sm">สแกนบัตรเบรค · ดูว่าใครออกไปอยู่</span>
+            </button>
+          )}
+
           <p className="mt-4 text-center text-xs text-ink-400">
             เทียบหน้ากับรูปในระบบ และเทียบเครื่องกับ IMEI ก่อนปล่อยเข้า
             <br />
