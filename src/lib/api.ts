@@ -1098,18 +1098,53 @@ export async function setAssetEnabled(code: string, on: boolean) {
   if (error) throw new Error(readableError(error))
 }
 
-export async function resolveAssetIssue(id: number, note?: string) {
-  const { error } = await supabase.rpc('resolve_asset_issue', { p_id: id, p_note: note ?? null })
+export interface IssuePhotoIn {
+  file_id: string
+  web_link: string | null
+  bytes?: number | null
+}
+
+/**
+ * เคลียร์ใบแจ้งชำรุด — รูปตอนซ่อมเสร็จบังคับ
+ *
+ * ฐานข้อมูลปฏิเสธถ้าไม่มีรูป ไม่ได้กันแค่ที่หน้าจอ
+ * ตัวเก่าที่ไม่รับรูปถูกลบทิ้งแล้ว เรียกแบบเดิมจะไม่เจอฟังก์ชัน
+ */
+export async function resolveAssetIssue(id: number, photos: IssuePhotoIn[], note?: string) {
+  const { error } = await supabase.rpc('resolve_asset_issue', {
+    p_id: id,
+    p_note: note ?? null,
+    p_photos: photos,
+  })
   if (error) throw new Error(readableError(error))
 }
 
-export async function resolveAssetIssuesFor(code: string, note?: string) {
+export async function resolveAssetIssuesFor(
+  code: string,
+  photos: IssuePhotoIn[],
+  note?: string,
+) {
   const { data, error } = await supabase.rpc('resolve_asset_issues_for', {
     p_code: code,
     p_note: note ?? null,
+    p_photos: photos,
   })
   if (error) throw new Error(readableError(error))
   return data as number
+}
+
+/** หลักฐานทั้งหมดของใบแจ้งชำรุด รวมรูปตอนคืนของที่ใบนี้เกิดมาด้วยกัน */
+export async function assetIssueEvidence(id: number) {
+  const { data, error } = await supabase.rpc('asset_issue_evidence', { p_id: id })
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as {
+    phase: 'report' | 'fix'
+    source: 'issue' | 'txn'
+    file_id: string
+    web_link: string | null
+    created_at: string
+    label: string | null
+  }[]
 }
 
 /**
@@ -2251,14 +2286,13 @@ export async function osFlagTargets(): Promise<SackNotifyTarget[]> {
 export async function reportAssetIssue(args: {
   code: string
   symptom: string
-  fileId?: string | null
-  webLink?: string | null
+  /** รูปอาการที่เจอ · ฐานข้อมูลบังคับอย่างน้อยหนึ่งใบ */
+  photos: IssuePhotoIn[]
 }): Promise<{ id: number; duplicate: boolean; asset_code: string }> {
   const { data, error } = await supabase.rpc('asset_report_issue', {
     p_code: args.code,
     p_symptom: args.symptom,
-    p_file_id: args.fileId ?? null,
-    p_web_link: args.webLink ?? null,
+    p_photos: args.photos,
   })
   if (error) throw new Error(readableError(error))
   return data as { id: number; duplicate: boolean; asset_code: string }

@@ -22,6 +22,9 @@ import { createAsset, deleteAsset, updateAsset } from '../../lib/api'
 import { readableError } from '../../lib/supabase'
 import { DepartmentManager } from '../../components/DepartmentManager'
 import { MANAGER_ROLES, canProxy } from '../../lib/roles'
+import { IssueFixSheet } from '../../components/IssueFixSheet'
+import { PhotoSteps, shotsToPhotos, type Shot } from '../../components/PhotoSteps'
+import { stampLines } from '../../lib/image'
 
 type Filter = 'all' | 'free' | 'out' | 'issue' | 'off'
 
@@ -689,6 +692,14 @@ function AssetSheet({
   const [err, setErr] = useState<string | null>(null)
   const [symptom, setSymptom] = useState('')
   const [note, setNote] = useState<string | null>(null)
+  const { profile } = useAuth()
+  // รูปอาการที่เจอ · ฐานข้อมูลบังคับอย่างน้อยหนึ่งใบ ปุ่มจึงต้องรอให้รูปขึ้นเสร็จก่อน
+  const [shots, setShots] = useState<Shot[]>([])
+  const reportReady =
+    shotsToPhotos(shots).length >= 1 &&
+    !shots.some((x) => x.state === 'uploading' || x.state === 'ready' || x.state === 'failed')
+  const [fixOne, setFixOne] = useState<number | null>(null)
+  const [fixAll, setFixAll] = useState(false)
   const [enabled, setEnabled] = useState(asset.is_enabled)
   const [home, setHome] = useState(asset.dept_code ?? 'ALL')
   const [shares, setShares] = useState<string[]>(asset.share_depts ?? [])
@@ -713,8 +724,36 @@ function AssetSheet({
     }
   }
 
+  const fixSheets = (
+    <>
+      <IssueFixSheet
+        open={fixOne !== null}
+        title="ซ่อมเสร็จแล้ว"
+        hint="แนบรูปตอนซ่อมเสร็จไว้เทียบกับรูปตอนแจ้ง ถ้าเครื่องเดิมพังซ้ำจะไล่ได้ว่ารอบที่แล้วแก้อะไรไป"
+        onClose={() => setFixOne(null)}
+        onSubmit={async (photos, n) => {
+          await resolveAssetIssue(fixOne!, photos, n ?? undefined)
+          log.reload()
+          onChanged()
+        }}
+      />
+      <IssueFixSheet
+        open={fixAll}
+        title={`เคลียร์ทุกอาการของ ${asset.code}`}
+        hint="รูปชุดเดียวจะติดไปกับทุกใบที่ปิดในครั้งนี้"
+        onClose={() => setFixAll(false)}
+        onSubmit={async (photos, n) => {
+          await resolveAssetIssuesFor(asset.code, photos, n ?? undefined)
+          log.reload()
+          onChanged()
+        }}
+      />
+    </>
+  )
+
   return (
     <Sheet open title={asset.code} onClose={onClose}>
+      {fixSheets}
       <div className="space-y-4">
         {err && <ErrorBox message={err} />}
 
@@ -866,6 +905,20 @@ function AssetSheet({
             value={symptom}
             onChange={(e) => setSymptom(e.target.value)}
           />
+          <p className="label mt-3">รูปอาการที่เจอ (บังคับ)</p>
+          <PhotoSteps
+            steps={[]}
+            maxFree={5}
+            minFree={1}
+            stamp={stampLines(
+              profile?.full_name ?? '',
+              profile?.employee_code ?? '',
+              profile?.dept_code ?? profile?.hub_code ?? 'BPL',
+              'แจ้งเสีย',
+            )}
+            shots={shots}
+            onShots={setShots}
+          />
           <div className="mt-2 flex items-center justify-between gap-2">
             <p className="text-xs text-ink-500">
               ลงชื่อคุณเป็นผู้แจ้ง · ไปโผล่ในอาการค้างข้างล่างทันที
@@ -873,11 +926,20 @@ function AssetSheet({
             <button
               type="button"
               className="btn-primary h-tap px-4"
-              disabled={busy || symptom.trim() === ''}
+              disabled={busy || symptom.trim() === '' || !reportReady}
               onClick={() =>
                 void run(async () => {
-                  const res = await reportAssetIssue({ code: asset.code, symptom })
+                  const res = await reportAssetIssue({
+                    code: asset.code,
+                    symptom,
+                    photos: shotsToPhotos(shots).map((p) => ({
+                      file_id: p.file_id,
+                      web_link: p.web_link,
+                      bytes: p.bytes,
+                    })),
+                  })
                   setSymptom('')
+                  setShots([])
                   setNote(res.duplicate ? 'อาการนี้แจ้งไว้อยู่แล้ว ไม่ได้บันทึกซ้ำ' : 'บันทึกอาการแล้ว')
                 })
               }
@@ -896,7 +958,7 @@ function AssetSheet({
                 type="button"
                 className="btn-soft h-tap px-3 text-sm"
                 disabled={busy}
-                onClick={() => void run(() => resolveAssetIssuesFor(asset.code))}
+                onClick={() => setFixAll(true)}
               >
                 เคลียร์ทั้งหมด
               </button>
@@ -923,7 +985,7 @@ function AssetSheet({
                   type="button"
                   className="btn-soft mt-2 h-tap px-3 text-sm"
                   disabled={busy}
-                  onClick={() => void run(() => resolveAssetIssue(r.id))}
+                  onClick={() => setFixOne(r.id)}
                 >
                   ซ่อมแล้ว เคลียร์อาการนี้
                 </button>

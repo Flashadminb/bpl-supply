@@ -912,6 +912,12 @@ export interface AssetIssueRow {
   resolved_by_name: string | null
   resolve_note: string | null
   is_open: boolean
+  /** รูปที่แนบตอนแจ้ง */
+  report_shots: number
+  /** รูปตอนซ่อมเสร็จ */
+  fix_shots: number
+  /** รูปตอนคืนของที่ใบนี้เกิดมาด้วยกัน · มีอยู่แล้วแต่เพิ่งถูกเอามาโชว์ */
+  txn_shots: number
 }
 
 

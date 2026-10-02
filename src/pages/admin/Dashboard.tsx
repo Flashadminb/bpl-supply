@@ -136,7 +136,8 @@ export default function Dashboard() {
     freshIssues.length > 0 && {
       key: 'freshissue',
       tone: 'danger' as const,
-      to: '/admin/assets',
+      // พาไปหน้าสถานะแจ้งซ่อมโดยตรง ไม่ใช่ทะเบียนที่ต้องไล่หาเครื่องเองอีกที
+      to: '/admin/asset-moves?tab=issue',
       title: `แจ้งซ่อมใหม่วันนี้ ${freshIssues.length} ใบ`,
       detail: freshIssues[0] ? `${freshIssues[0].asset_code} · ${freshIssues[0].symptom}` : '',
     },

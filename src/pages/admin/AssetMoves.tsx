@@ -1,4 +1,8 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { assetIssueEvidence, resolveAssetIssue } from '../../lib/api'
+import { EvidenceImg } from '../../components/EvidenceThumbs'
+import { IssueFixSheet } from '../../components/IssueFixSheet'
 import { listAssetIssueRows, listAssetTransferRows } from '../../lib/api'
 import { useAsync } from '../../lib/useAsync'
 import { DateRangePicker } from '../../components/DateRangePicker'
@@ -27,7 +31,11 @@ function dayKey(offset = 0): string {
 }
 
 export default function AssetMoves() {
-  const [tab, setTab] = useState<Tab>('transfer')
+  const [sp] = useSearchParams()
+  // แจ้งเตือนหน้าแรกพามาที่แท็บแจ้งเสียได้ตรง ๆ ไม่ต้องกดอีกทีให้เสียจังหวะ
+  const [tab, setTab] = useState<Tab>(sp.get('tab') === 'issue' ? 'issue' : 'transfer')
+  const [openId, setOpenId] = useState<number | null>(null)
+  const [fixId, setFixId] = useState<number | null>(null)
   // ย้อนหลัง 30 วันเป็นค่าตั้งต้น การโอนกับของพังไม่ได้เกิดทุกวันเหมือนการเบิก
   // ตั้งไว้วันเดียวแล้วหน้าจะว่างเปล่าเกือบตลอด ซึ่งดูเหมือนระบบไม่ทำงาน
   const [from, setFrom] = useState(dayKey(-30))
@@ -192,11 +200,13 @@ export default function AssetMoves() {
                 <th className="px-3 py-2 font-medium">อาการ</th>
                 <th className="px-3 py-2 font-medium">คนแจ้ง</th>
                 <th className="w-[190px] px-3 py-2 font-medium">สถานะ</th>
+                <th className="w-[130px] px-3 py-2 font-medium">หลักฐาน</th>
               </tr>
             </thead>
             <tbody>
               {iRows.map((r) => (
-                <tr key={r.id} className="border-b border-line-2 last:border-0 align-top">
+                <Fragment key={r.id}>
+                <tr className="border-b border-line-2 last:border-0 align-top">
                   <td className="px-3 py-2">
                     <span className="font-mono">{r.asset_code}</span>
                     <span className="block text-xs text-ink-400">{r.type_name}</span>
@@ -238,11 +248,103 @@ export default function AssetMoves() {
                       </>
                     )}
                   </td>
+                  <td className="px-3 py-2">
+                    {shotsOf(r) > 0 ? (
+                      <button
+                        type="button"
+                        className="btn-ghost px-3 py-1 text-xs"
+                        onClick={() => setOpenId(openId === r.id ? null : r.id)}
+                      >
+                        {openId === r.id ? 'ซ่อนรูป' : `ดูรูป ${shotsOf(r)} ใบ`}
+                      </button>
+                    ) : (
+                      <span className="text-xs text-ink-400">ไม่มีรูป</span>
+                    )}
+                    {r.is_open && (
+                      <button
+                        type="button"
+                        className="btn-soft mt-1 w-full px-3 py-1 text-xs"
+                        onClick={() => setFixId(r.id)}
+                      >
+                        ซ่อมแล้ว เคลียร์
+                      </button>
+                    )}
+                  </td>
                 </tr>
+                {openId === r.id && (
+                  <tr className="border-b border-line-2 bg-ink/5">
+                    <td colSpan={5} className="px-3 py-3">
+                      <IssueEvidence id={r.id} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      <IssueFixSheet
+        open={fixId !== null}
+        title="ซ่อมเสร็จแล้ว"
+        hint="แนบรูปตอนซ่อมเสร็จไว้เทียบกับรูปตอนแจ้ง ถ้าเครื่องเดิมพังซ้ำจะไล่ได้ว่ารอบที่แล้วแก้อะไรไป"
+        onClose={() => setFixId(null)}
+        onSubmit={async (photos, note) => {
+          await resolveAssetIssue(fixId!, photos, note ?? undefined)
+          issues.reload()
+        }}
+      />
+    </div>
+  )
+}
+
+/** รูปทั้งหมดของใบนี้มีกี่ใบ · รวมรูปตอนคืนที่ผูกกับใบคืนด้วย */
+function shotsOf(r: { report_shots?: number; fix_shots?: number; txn_shots?: number }) {
+  return (r.report_shots ?? 0) + (r.fix_shots ?? 0) + (r.txn_shots ?? 0)
+}
+
+/**
+ * หลักฐานของใบแจ้งชำรุดใบหนึ่ง
+ *
+ * รวมรูปสามแหล่ง — รูปที่แนบตอนแจ้ง รูปตอนซ่อมเสร็จ และรูปตอนคืนของ
+ * รูปตอนคืนมีอยู่ในระบบมานานแล้วแต่ไม่เคยถูกเอามาโชว์ที่นี่
+ * เพราะมันผูกกับใบคืน ไม่ได้ผูกกับใบแจ้งชำรุด
+ */
+function IssueEvidence({ id }: { id: number }) {
+  const shots = useAsync(() => assetIssueEvidence(id), [id])
+  if (shots.loading) return <Loading label="กำลังโหลดรูป…" />
+  if (shots.error) return <ErrorBox message={shots.error} onRetry={shots.reload} />
+  const all = shots.data ?? []
+  if (all.length === 0) return <p className="text-sm text-ink-400">ไม่มีรูป</p>
+
+  const groups: [string, typeof all][] = [
+    ['ตอนแจ้ง', all.filter((x) => x.phase === 'report')],
+    ['ตอนซ่อมเสร็จ', all.filter((x) => x.phase === 'fix')],
+  ]
+
+  return (
+    <div className="flex flex-wrap gap-6">
+      {groups.map(([label, list]) =>
+        list.length === 0 ? null : (
+          <div key={label}>
+            <p className="mb-1 text-xs font-semibold text-ink-500">
+              {label} · {list.length} รูป
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {list.map((x) => (
+                <a key={x.file_id} href={x.web_link ?? undefined} target="_blank" rel="noreferrer">
+                  <EvidenceImg fileId={x.file_id} enabled className="h-28 w-20 rounded-btn" />
+                  {x.source === 'txn' && (
+                    <span className="mt-0.5 block text-center text-[10px] text-ink-400">
+                      {x.label ?? 'รูปตอนคืน'}
+                    </span>
+                  )}
+                </a>
+              ))}
+            </div>
+          </div>
+        ),
       )}
     </div>
   )
