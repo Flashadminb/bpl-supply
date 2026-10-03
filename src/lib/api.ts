@@ -57,6 +57,7 @@ import type {
   IssueRow,
   Announcement,
   NoticeLevel,
+  HistoryNote,
 } from './types'
 
 const ITEM_COLS =
@@ -306,6 +307,75 @@ export async function listReturnCards(args: {
   if (args.fromISO) q = q.gte('taken_at', args.fromISO)
   if (args.toISO) q = q.lte('taken_at', args.toISO)
   return unwrap(await q.limit(args.limit ?? 300)) as unknown as ReturnCard[]
+}
+
+/* ------------------------------------------- ลบของ และประวัติตัวหนังสือ */
+
+/**
+ * ประวัติแบบตัวหนังสือของสิ่งที่ถูกลบไป
+ *
+ * ของที่ลบทุกชิ้นถูกย่อเป็นข้อความเก็บไว้ก่อนเสมอ พร้อมลิงก์ไดร์ฟของรูป
+ * อ่านย้อนหลังได้โดยไม่ต้องโหลดรูปสักใบ ซึ่งเร็วกว่ามากและไม่กินโควตา
+ */
+export async function listHistoryNotes(args: {
+  kind?: 'issue' | 'asset' | 'supply'
+  fromISO?: string
+  toISO?: string
+  limit?: number
+}): Promise<HistoryNote[]> {
+  let q = supabase
+    .from('history_notes')
+    .select('*')
+    .order('happened_at', { ascending: false, nullsFirst: false })
+  if (args.kind) q = q.eq('kind', args.kind)
+  if (args.fromISO) q = q.gte('happened_at', args.fromISO)
+  if (args.toISO) q = q.lte('happened_at', args.toISO)
+  return unwrap(await q.limit(args.limit ?? 300)) as unknown as HistoryNote[]
+}
+
+/** ลบใบแจ้งชำรุด · ย่อเป็นข้อความเก็บไว้ก่อนลบเสมอ */
+export async function deleteAssetIssues(ids: number[], why?: string): Promise<number> {
+  const { data, error } = await supabase.rpc('asset_issues_delete', {
+    p_ids: ids,
+    p_why: why?.trim() || null,
+  })
+  if (error) throw new Error(readableError(error))
+  return (data ?? 0) as number
+}
+
+/** ลบใบเบิก/คืนเครื่อง · ฐานข้อมูลคืนสถานะเครื่องให้ตรงกับความจริงให้เอง */
+export async function deleteAssetTxns(ids: string[], why?: string): Promise<number> {
+  const { data, error } = await supabase.rpc('asset_txns_delete', {
+    p_ids: ids,
+    p_why: why?.trim() || null,
+  })
+  if (error) throw new Error(readableError(error))
+  return (data ?? 0) as number
+}
+
+/** ลบใบเบิกวัสดุ · สต็อกที่ตัดไปจะถูกบวกคืนพร้อมบรรทัดอธิบาย */
+export async function deleteRequisitions(ids: string[], why?: string): Promise<number> {
+  const { data, error } = await supabase.rpc('requisitions_delete', {
+    p_ids: ids,
+    p_why: why?.trim() || null,
+  })
+  if (error) throw new Error(readableError(error))
+  return (data ?? 0) as number
+}
+
+/** ไม่ส่งบรรทัดนี้ลงชีต · ใบเบิกยังอยู่ครบ แค่หลุดจากคิวรอส่ง */
+export async function skipExportLines(
+  kind: 'supply' | 'asset',
+  ids: number[],
+  skip = true,
+): Promise<number> {
+  const { data, error } = await supabase.rpc('export_line_skip', {
+    p_kind: kind,
+    p_ids: ids,
+    p_skip: skip,
+  })
+  if (error) throw new Error(readableError(error))
+  return (data ?? 0) as number
 }
 
 /* ------------------------------------------------------- สถานะระบบ */

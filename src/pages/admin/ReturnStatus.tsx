@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
-import { listReturnCards } from '../../lib/api'
+import { deleteAssetTxns, deleteRequisitions, listReturnCards } from '../../lib/api'
+import { BulkDeleteBar, PickBox } from '../../components/BulkDeleteBar'
+import { TextHistory } from '../../components/TextHistory'
 import { EmptyState, ErrorBox, Loading, Modal } from '../../components/ui'
 import { EvidenceImg, ThumbStrip } from '../../components/EvidenceThumbs'
 import { DateRangePicker } from '../../components/DateRangePicker'
@@ -63,6 +65,8 @@ interface CardGroup {
 interface Merged {
   key: string
   kind: 'supply' | 'asset'
+  /** รหัสใบจริงในฐานข้อมูล · การ์ดหนึ่งใบอาจมาจากหลายใบถ้าเบิกข้ามประเภทรอบเดียว */
+  ids: string[]
   refs: string[]
   taken_at: string
   who: string
@@ -91,6 +95,7 @@ function mergeCards(rows: ReturnCard[]): Merged[] {
     const name = c.kind === 'asset' ? (c.items[0]?.sub ?? 'อุปกรณ์') : ''
     const cur = out.get(key)
     if (cur) {
+      cur.ids.push(c.card_id)
       cur.refs.push(c.ref_no)
       cur.groups.push({ name, items: c.items, photos: c.out_file_ids })
       cur.items.push(...c.items)
@@ -99,6 +104,7 @@ function mergeCards(rows: ReturnCard[]): Merged[] {
       out.set(key, {
         key,
         kind: c.kind,
+        ids: [c.card_id],
         refs: [c.ref_no],
         taken_at: c.taken_at,
         who: c.who,
@@ -139,6 +145,9 @@ export default function ReturnStatus() {
   const [search, setSearch] = useState('')
   const [openOnly, setOpenOnly] = useState(false)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  // เลือกหลายใบเพื่อลบทีเดียว · เก็บเป็น key ของการ์ด แล้วค่อยแตกเป็นรหัสใบตอนลบ
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [showHistory, setShowHistory] = useState(false)
   const [view, setView] = useState<{ ids: string[]; at: number; title: string } | null>(null)
 
   const feed = useAsync(
@@ -172,6 +181,24 @@ export default function ReturnStatus() {
   }
 
   const unit = tab === 'asset' ? 'เครื่อง' : 'รายการ'
+  const allPicked = cards.length > 0 && cards.every(({ c }) => picked.has(c.key))
+  const pickedIds = cards.filter(({ c }) => picked.has(c.key)).flatMap(({ c }) => c.ids)
+
+  function toggle(key: string) {
+    setPicked((s) => {
+      const next = new Set(s)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  async function removePicked(why: string) {
+    if (tab === 'asset') await deleteAssetTxns(pickedIds, why)
+    else await deleteRequisitions(pickedIds, why)
+    setPicked(new Set())
+    feed.reload()
+  }
 
   return (
     <div className="mx-auto max-w-[900px]">
@@ -185,14 +212,20 @@ export default function ReturnStatus() {
           <button
             type="button"
             className={`chip ${tab === 'asset' ? 'chip-on' : ''}`}
-            onClick={() => setTab('asset')}
+            onClick={() => {
+              setTab('asset')
+              setPicked(new Set())
+            }}
           >
             อุปกรณ์ Asset
           </button>
           <button
             type="button"
             className={`chip ${tab === 'supply' ? 'chip-on' : ''}`}
-            onClick={() => setTab('supply')}
+            onClick={() => {
+              setTab('supply')
+              setPicked(new Set())
+            }}
           >
             วัสดุสิ้นเปลือง
           </button>
@@ -220,6 +253,24 @@ export default function ReturnStatus() {
         >
           เฉพาะที่ยังไม่ครบ
         </button>
+        <button
+          type="button"
+          className={`chip ${showHistory ? 'chip-on' : ''}`}
+          onClick={() => setShowHistory((v) => !v)}
+        >
+          ประวัติที่ลบแล้ว
+        </button>
+        {cards.length > 0 && !showHistory && (
+          <button
+            type="button"
+            className="chip"
+            onClick={() =>
+              setPicked(allPicked ? new Set() : new Set(cards.map(({ c }) => c.key)))
+            }
+          >
+            {allPicked ? 'ล้างที่เลือก' : 'เลือกทั้งหมด'}
+          </button>
+        )}
       </div>
 
       <p className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-ink-500">
@@ -237,6 +288,14 @@ export default function ReturnStatus() {
         </span>
       </p>
 
+      {showHistory ? (
+        <TextHistory
+          kind={tab}
+          fromISO={new Date(`${from}T00:00:00`).toISOString()}
+          toISO={new Date(`${to}T23:59:59`).toISOString()}
+        />
+      ) : (
+        <>
       {feed.loading && <Loading />}
       {feed.error && <ErrorBox message={feed.error} onRetry={feed.reload} />}
 
@@ -244,11 +303,42 @@ export default function ReturnStatus() {
         <EmptyState title="ไม่มีใบเบิกในช่วงนี้" hint="ลองขยายช่วงวันที่ หรือล้างคำค้น" />
       )}
 
+      <BulkDeleteBar
+        n={picked.size}
+        noun="ใบ"
+        confirmLabel={`ลบ ${picked.size} ใบ`}
+        warning={
+          tab === 'asset' ? (
+            <>
+              ใบเบิกและใบคืนของเครื่องที่เลือกจะหายถาวร
+              <br />
+              เครื่องที่ยังไม่ได้คืนจะกลับมาเป็นเครื่องว่าง ส่วนเครื่องที่คืนไปแล้วจะกลับไปขึ้นว่าอยู่ในมือคนเดิม
+            </>
+          ) : (
+            <>
+              ใบเบิกวัสดุที่เลือกจะหายถาวร
+              <br />
+              ของที่ตัดสต็อกไปจะถูกบวกคืนให้อัตโนมัติ เฉพาะส่วนที่ยังไม่ได้คืนเข้ามา
+            </>
+          )
+        }
+        onClear={() => setPicked(new Set())}
+        onDelete={removePicked}
+      />
+
       <div className="space-y-3">
         {cards.map(({ c, sum }) => {
           const on = isOpen(c, sum.done)
           return (
             <section key={c.key} className="card p-4">
+              <div className="mb-2 flex items-center gap-2">
+                <PickBox
+                  on={picked.has(c.key)}
+                  label={`เลือกใบ ${c.refs.join(' ')}`}
+                  onToggle={() => toggle(c.key)}
+                />
+                <span className="font-mono text-xs text-ink-400">{c.refs.join(' · ')}</span>
+              </div>
               {/* ---------------------------------------------------- หัวใบ */}
               <button
                 type="button"
@@ -442,6 +532,8 @@ export default function ReturnStatus() {
           )
         })}
       </div>
+        </>
+      )}
 
       {/* ------------------------------------------------------ ดูรูปใหญ่ */}
       <Modal open={Boolean(view)} onClose={() => setView(null)} title={view?.title ?? ''}>

@@ -12,6 +12,8 @@ import {
   listSheetExportRows,
 } from '../../lib/api'
 import { EmptyState, ErrorBox, Loading, Spinner } from '../../components/ui'
+import { PickBox } from '../../components/BulkDeleteBar'
+import { skipExportLines } from '../../lib/api'
 import { DateRangePicker } from '../../components/DateRangePicker'
 import { fmtDateTime } from '../../lib/format'
 
@@ -28,7 +30,55 @@ interface RunLog {
 
 type View = 'pending' | 'all'
 
+/**
+ * แถบจัดการบรรทัดที่เลือกไว้
+ *
+ * ไม่ได้ลบใบเบิกทิ้ง เพราะใบเบิกคือของจริงที่ตัดสต็อกไปแล้ว
+ * แค่ทำเครื่องหมายว่าข้าม ให้มันหลุดจากคิวรอส่ง ชีตจึงไม่มีวันได้บรรทัดนี้
+ * กดคืนได้ถ้าเปลี่ยนใจ · อยากลบของจริงต้องไปลบที่หน้าสถานะเบิก-คืน
+ */
+function SkipBar({
+  n,
+  busy,
+  onSkip,
+  onUnskip,
+  onClear,
+}: {
+  n: number
+  busy: boolean
+  onSkip: () => void
+  onUnskip: () => void
+  onClear: () => void
+}) {
+  if (n === 0) return null
+  return (
+    <div className="sticky top-0 z-20 mb-2 flex flex-wrap items-center gap-2 rounded-card border border-ink bg-ink px-3 py-2 text-white">
+      <span className="font-display">เลือกไว้ {n} บรรทัด</span>
+      <span className="hidden flex-1 text-xs opacity-80 sm:block">
+        ไม่ส่ง = ใบเบิกยังอยู่ครบ แค่ไม่ถูกเขียนลงชีต
+      </span>
+      <button type="button" className="btn-soft h-tap px-3 text-sm" disabled={busy} onClick={onUnskip}>
+        เอากลับเข้าคิว
+      </button>
+      <button
+        type="button"
+        className="h-tap rounded-btn bg-danger px-3 text-sm text-white"
+        disabled={busy}
+        onClick={onSkip}
+      >
+        {busy ? <Spinner /> : null} ไม่ส่ง {n} บรรทัดนี้
+      </button>
+      <button type="button" className="min-h-tap px-2 text-sm underline" onClick={onClear}>
+        ล้าง
+      </button>
+    </div>
+  )
+}
+
 export default function ExportSheet() {
+  const [picked, setPicked] = useState<Set<number>>(new Set())
+  const [skipBusy, setSkipBusy] = useState(false)
+  const [skipErr, setSkipErr] = useState<string | null>(null)
   const depts = useAsync(() => listDepartments(), [])
   const [from, setFrom] = useState(isoDay(-7))
   const [to, setTo] = useState(isoDay(0))
@@ -78,6 +128,33 @@ export default function ExportSheet() {
   )
 
   const rows = feed.data ?? []
+  const assetRows = assetFeed.data ?? []
+  const shown: { line_id: number }[] = side === 'supply' ? rows : assetRows
+  const allPicked = shown.length > 0 && shown.every((r) => picked.has(r.line_id))
+
+  function toggle(id: number) {
+    setPicked((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function runSkip(skip: boolean) {
+    setSkipBusy(true)
+    setSkipErr(null)
+    void skipExportLines(side, [...picked], skip)
+      .then(() => {
+        setPicked(new Set())
+        feed.reload()
+        assetFeed.reload()
+        tally.reload()
+        assetTally.reload()
+      })
+      .catch((e) => setSkipErr((e as Error).message))
+      .finally(() => setSkipBusy(false))
+  }
   const pending = tally.data?.pending ?? 0
   const done = tally.data?.done ?? 0
   const assetPending = assetTally.data?.pending ?? 0
@@ -289,14 +366,20 @@ export default function ExportSheet() {
               <button
                 type="button"
                 className={`chip ${side === 'supply' ? 'chip-on' : ''}`}
-                onClick={() => setSide('supply')}
+                onClick={() => {
+                  setSide('supply')
+                  setPicked(new Set())
+                }}
               >
                 วัสดุสิ้นเปลือง
               </button>
               <button
                 type="button"
                 className={`chip ${side === 'asset' ? 'chip-on' : ''}`}
-                onClick={() => setSide('asset')}
+                onClick={() => {
+                  setSide('asset')
+                  setPicked(new Set())
+                }}
               >
                 อุปกรณ์ Asset
               </button>
@@ -333,11 +416,33 @@ export default function ExportSheet() {
               />
             )}
 
+            {skipErr && (
+              <div className="mb-2">
+                <ErrorBox message={skipErr} />
+              </div>
+            )}
+            <SkipBar
+              n={picked.size}
+              busy={skipBusy}
+              onSkip={() => runSkip(true)}
+              onUnskip={() => runSkip(false)}
+              onClear={() => setPicked(new Set())}
+            />
+
             {rows.length > 0 && (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[880px] text-left text-sm">
                   <thead className="text-ink-500">
                     <tr className="border-b border-line">
+                      <th className="w-[44px] p-2">
+                        <PickBox
+                          on={allPicked}
+                          label="เลือกทั้งหมด"
+                          onToggle={() =>
+                            setPicked(allPicked ? new Set() : new Set(shown.map((r) => r.line_id)))
+                          }
+                        />
+                      </th>
                       <th className="p-2 font-medium">สถานะ</th>
                       <th className="p-2 font-medium">เลขที่</th>
                       <th className="p-2 font-medium">วันเวลา</th>
@@ -351,7 +456,16 @@ export default function ExportSheet() {
                     {rows.map((r) => (
                       <tr key={r.line_id} className="border-b border-line last:border-0">
                         <td className="p-2">
-                          {r.is_exported ? (
+                          <PickBox
+                            on={picked.has(r.line_id)}
+                            label={`เลือกบรรทัด ${r.ref_no}`}
+                            onToggle={() => toggle(r.line_id)}
+                          />
+                        </td>
+                        <td className="p-2">
+                          {r.tab === 'ข้าม' ? (
+                            <span className="badge-mute">ไม่ส่ง</span>
+                          ) : r.is_exported ? (
                             <span className="badge-ok">ส่งแล้ว</span>
                           ) : (
                             <span className="badge-warn">ยังไม่ส่ง</span>
@@ -410,11 +524,33 @@ export default function ExportSheet() {
               />
             )}
 
+            {skipErr && (
+              <div className="mb-2">
+                <ErrorBox message={skipErr} />
+              </div>
+            )}
+            <SkipBar
+              n={picked.size}
+              busy={skipBusy}
+              onSkip={() => runSkip(true)}
+              onUnskip={() => runSkip(false)}
+              onClear={() => setPicked(new Set())}
+            />
+
             {(assetFeed.data ?? []).length > 0 && (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[880px] text-left text-sm">
                   <thead className="text-ink-500">
                     <tr className="border-b border-line">
+                      <th className="w-[44px] p-2">
+                        <PickBox
+                          on={allPicked}
+                          label="เลือกทั้งหมด"
+                          onToggle={() =>
+                            setPicked(allPicked ? new Set() : new Set(shown.map((r) => r.line_id)))
+                          }
+                        />
+                      </th>
                       <th className="p-2 font-medium">สถานะ</th>
                       <th className="p-2 font-medium">เลขที่</th>
                       <th className="p-2 font-medium">วันเวลา</th>
@@ -428,7 +564,16 @@ export default function ExportSheet() {
                     {(assetFeed.data ?? []).map((r) => (
                       <tr key={r.line_id} className="border-b border-line last:border-0">
                         <td className="p-2">
-                          {r.is_exported ? (
+                          <PickBox
+                            on={picked.has(r.line_id)}
+                            label={`เลือกบรรทัด ${r.ref_no}`}
+                            onToggle={() => toggle(r.line_id)}
+                          />
+                        </td>
+                        <td className="p-2">
+                          {r.tab === 'ข้าม' ? (
+                            <span className="badge-mute">ไม่ส่ง</span>
+                          ) : r.is_exported ? (
                             <span className="badge-ok">ส่งแล้ว</span>
                           ) : (
                             <span className="badge-warn">ยังไม่ส่ง</span>

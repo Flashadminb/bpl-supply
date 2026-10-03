@@ -356,6 +356,28 @@ export interface CardEvent {
 }
 
 /** หนึ่งใบเบิก = หนึ่งการ์ด */
+/**
+ * ประวัติแบบตัวหนังสือของสิ่งที่ถูกลบไปแล้ว
+ *
+ * เก็บแค่ข้อความกับลิงก์ไดร์ฟ ไม่เก็บรูปซ้ำ
+ * รูปอยู่ในไดร์ฟอยู่แล้วและไดร์ฟไม่ใช่ข้อจำกัด ส่วนฐานข้อมูลเป็นข้อจำกัด
+ */
+export interface HistoryNote {
+  id: number
+  /** 'issue' แจ้งเสีย · 'asset' เบิกคืนเครื่อง · 'supply' เบิกวัสดุ */
+  kind: 'issue' | 'asset' | 'supply'
+  ref_no: string | null
+  subject: string | null
+  who: string | null
+  happened_at: string | null
+  body: string
+  links: string | null
+  photos: number
+  reason: string | null
+  archived_at: string
+  archived_by_name: string | null
+}
+
 export interface ReturnCard {
   kind: 'supply' | 'asset'
   card_id: string

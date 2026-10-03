@@ -729,7 +729,7 @@ function AssetSheet({
       <IssueFixSheet
         open={fixOne !== null}
         title="ซ่อมเสร็จแล้ว"
-        hint="แนบรูปตอนซ่อมเสร็จไว้เทียบกับรูปตอนแจ้ง ถ้าเครื่องเดิมพังซ้ำจะไล่ได้ว่ารอบที่แล้วแก้อะไรไป"
+        hint="ถ่ายรูปตอนซ่อมเสร็จ หรือเขียนว่าซ่อมอะไรไปก็ได้ ต้องมีอย่างน้อยหนึ่งอย่าง"
         onClose={() => setFixOne(null)}
         onSubmit={async (photos, n) => {
           await resolveAssetIssue(fixOne!, photos, n ?? undefined)
@@ -740,7 +740,7 @@ function AssetSheet({
       <IssueFixSheet
         open={fixAll}
         title={`เคลียร์ทุกอาการของ ${asset.code}`}
-        hint="รูปชุดเดียวจะติดไปกับทุกใบที่ปิดในครั้งนี้"
+        hint="รูปหรือข้อความชุดเดียวจะติดไปกับทุกใบที่ปิดในครั้งนี้ · ต้องมีอย่างน้อยหนึ่งอย่าง"
         onClose={() => setFixAll(false)}
         onSubmit={async (photos, n) => {
           await resolveAssetIssuesFor(asset.code, photos, n ?? undefined)

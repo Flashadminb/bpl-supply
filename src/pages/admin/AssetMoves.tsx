@@ -1,6 +1,8 @@
 import { Fragment, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { assetIssueEvidence, resolveAssetIssue } from '../../lib/api'
+import { assetIssueEvidence, deleteAssetIssues, resolveAssetIssue } from '../../lib/api'
+import { BulkDeleteBar, PickBox } from '../../components/BulkDeleteBar'
+import { TextHistory } from '../../components/TextHistory'
 import { EvidenceImg } from '../../components/EvidenceThumbs'
 import { IssueFixSheet } from '../../components/IssueFixSheet'
 import { listAssetIssueRows, listAssetTransferRows } from '../../lib/api'
@@ -20,9 +22,12 @@ import { fmtDateTime, relativeAge } from '../../lib/format'
  * ของค้างคืน สถานะเบิก-คืน และแถบเตือนของหน้างาน ยังทำงานเหมือนเดิมทุกอย่าง
  *
  * ผู้ตรวจสอบเห็นด้วย เพราะเป็นงานตามของ ไม่ใช่งานสั่งการ
+ *
+ * ลบใบแจ้งเสียได้ตั้งแต่ 094 แต่ลบแล้วไม่หายไปเฉย ๆ
+ * ใบที่ลบถูกย่อเป็นข้อความไปอยู่แท็บ "ประวัติที่ลบแล้ว" พร้อมลิงก์รูปในไดร์ฟ
  */
 
-type Tab = 'transfer' | 'issue'
+type Tab = 'transfer' | 'issue' | 'history'
 
 function dayKey(offset = 0): string {
   const d = new Date()
@@ -36,6 +41,7 @@ export default function AssetMoves() {
   const [tab, setTab] = useState<Tab>(sp.get('tab') === 'issue' ? 'issue' : 'transfer')
   const [openId, setOpenId] = useState<number | null>(null)
   const [fixId, setFixId] = useState<number | null>(null)
+  const [picked, setPicked] = useState<Set<number>>(new Set())
   // ย้อนหลัง 30 วันเป็นค่าตั้งต้น การโอนกับของพังไม่ได้เกิดทุกวันเหมือนการเบิก
   // ตั้งไว้วันเดียวแล้วหน้าจะว่างเปล่าเกือบตลอด ซึ่งดูเหมือนระบบไม่ทำงาน
   const [from, setFrom] = useState(dayKey(-30))
@@ -58,9 +64,19 @@ export default function AssetMoves() {
   const openCount = iRows.filter((r) => r.is_open).length
   const waiting = mRows.filter((r) => r.state === 'waiting').length
 
-  const loading = tab === 'transfer' ? moves.loading : issues.loading
-  const error = tab === 'transfer' ? moves.error : issues.error
+  const loading = tab === 'transfer' ? moves.loading : tab === 'issue' ? issues.loading : false
+  const error = tab === 'transfer' ? moves.error : tab === 'issue' ? issues.error : null
   const reload = tab === 'transfer' ? moves.reload : issues.reload
+  const allPicked = iRows.length > 0 && iRows.every((r) => picked.has(r.id))
+
+  function toggle(id: number) {
+    setPicked((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   return (
     <div>
@@ -108,6 +124,13 @@ export default function AssetMoves() {
           แจ้งเสีย · {iRows.length}
           {openCount > 0 && <span className="ml-1 text-danger-txt">(ค้าง {openCount})</span>}
         </button>
+        <button
+          type="button"
+          className={`chip ${tab === 'history' ? 'chip-on' : ''}`}
+          onClick={() => setTab('history')}
+        >
+          ประวัติที่ลบแล้ว
+        </button>
       </div>
 
       {loading && <Loading />}
@@ -121,6 +144,10 @@ export default function AssetMoves() {
           title="ไม่มีการแจ้งเสียในช่วงนี้"
           hint={onlyOpen ? 'ลองปิดตัวกรองหรือขยายช่วงวันที่' : 'ลองขยายช่วงวันที่'}
         />
+      )}
+
+      {tab === 'history' && (
+        <TextHistory kind="issue" fromISO={range.fromISO} toISO={range.toISO} />
       )}
 
       {tab === 'transfer' && mRows.length > 0 && (
@@ -192,10 +219,38 @@ export default function AssetMoves() {
       )}
 
       {tab === 'issue' && iRows.length > 0 && (
+        <>
+        <BulkDeleteBar
+          n={picked.size}
+          noun="ใบ"
+          confirmLabel={`ลบ ${picked.size} ใบ`}
+          warning={
+            <>
+              ใบแจ้งเสียที่เลือกจะหายออกจากระบบถาวร กู้คืนไม่ได้
+              <br />
+              ถ้าใบไหนยังไม่ได้เคลียร์ แปลว่าอาการนั้นจะไม่มีใครตามต่อแล้ว
+            </>
+          }
+          onClear={() => setPicked(new Set())}
+          onDelete={async (why) => {
+            await deleteAssetIssues([...picked], why)
+            setPicked(new Set())
+            issues.reload()
+          }}
+        />
         <div className="overflow-x-auto rounded-card border border-line bg-surface">
           <table className="w-full text-left text-sm">
             <thead className="text-ink-500">
               <tr className="border-b border-line">
+                <th className="w-[44px] px-3 py-2">
+                  <PickBox
+                    on={allPicked}
+                    label="เลือกทั้งหมด"
+                    onToggle={() =>
+                      setPicked(allPicked ? new Set() : new Set(iRows.map((r) => r.id)))
+                    }
+                  />
+                </th>
                 <th className="px-3 py-2 font-medium">เครื่อง</th>
                 <th className="px-3 py-2 font-medium">อาการ</th>
                 <th className="px-3 py-2 font-medium">คนแจ้ง</th>
@@ -207,6 +262,13 @@ export default function AssetMoves() {
               {iRows.map((r) => (
                 <Fragment key={r.id}>
                 <tr className="border-b border-line-2 last:border-0 align-top">
+                  <td className="px-3 py-2">
+                    <PickBox
+                      on={picked.has(r.id)}
+                      label={`เลือกใบของ ${r.asset_code}`}
+                      onToggle={() => toggle(r.id)}
+                    />
+                  </td>
                   <td className="px-3 py-2">
                     <span className="font-mono">{r.asset_code}</span>
                     <span className="block text-xs text-ink-400">{r.type_name}</span>
@@ -273,7 +335,7 @@ export default function AssetMoves() {
                 </tr>
                 {openId === r.id && (
                   <tr className="border-b border-line-2 bg-ink/5">
-                    <td colSpan={5} className="px-3 py-3">
+                    <td colSpan={6} className="px-3 py-3">
                       <IssueEvidence id={r.id} />
                     </td>
                   </tr>
@@ -283,12 +345,13 @@ export default function AssetMoves() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       <IssueFixSheet
         open={fixId !== null}
         title="ซ่อมเสร็จแล้ว"
-        hint="แนบรูปตอนซ่อมเสร็จไว้เทียบกับรูปตอนแจ้ง ถ้าเครื่องเดิมพังซ้ำจะไล่ได้ว่ารอบที่แล้วแก้อะไรไป"
+        hint="ถ่ายรูปตอนซ่อมเสร็จ หรือเขียนว่าซ่อมอะไรไปก็ได้ ต้องมีอย่างน้อยหนึ่งอย่าง · เครื่องเดิมพังซ้ำเมื่อไหร่จะได้ไล่ได้ว่ารอบที่แล้วแก้อะไร"
         onClose={() => setFixId(null)}
         onSubmit={async (photos, note) => {
           await resolveAssetIssue(fixId!, photos, note ?? undefined)
