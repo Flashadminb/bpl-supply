@@ -15,7 +15,7 @@ import { EmptyState, ErrorBox, Loading, QtyStepper, StockBadge } from '../../com
  *
  * ชื่อที่ไม่มีอยู่จริงในตารางหมวดจะถูกข้ามไปเงียบ ๆ ไม่ขึ้นปุ่มค้างไว้ให้กดแล้วว่าง
  */
-const QUICK_CATS = ['บัตรชั่วคราว', 'สำนักงาน', 'หน้างาน']
+const QUICK_CATS = ['บัตรชั่วคราว', 'สำนักงาน', 'หน้างาน', 'ยาสามัญประจำบ้าน']
 
 export default function Items() {
   const nav = useNavigate()
