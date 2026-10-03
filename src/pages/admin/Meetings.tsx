@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { DateRangePicker } from '../../components/DateRangePicker'
+import { closeMeeting, listUpcomingMeetings, reopenMeeting } from '../../lib/api'
 import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import {
@@ -115,6 +116,10 @@ export default function Meetings() {
   const [month, setMonth] = useState(todayTH().slice(0, 7))
   // ช่วงวันแบบปฏิทิน · ว่าง = ใช้ทั้งเดือนตามเดิม
   const [fromDay, setFromDay] = useState('')
+  // นัดที่ยังเปิดอยู่ · ปุ่มปิดต้องอยู่ตรงนี้ ไม่ใช่ซ่อนในแผ่นเช็คอินของหน้าแรก
+  // เพราะคนมาหน้านี้ตอนประชุมเลิกแล้ว มาดูว่าใครมาใครขาด ซึ่งเป็นจังหวะเดียวกับที่ควรกดปิด
+  const [openTick, setOpenTick] = useState(0)
+  const openMeetings = useAsync(() => listUpcomingMeetings(10), [openTick])
   const [toDay, setToDay] = useState('')
   // เริ่มที่วันนี้ ไม่ใช่ทั้งเดือน เพราะคำถามแรกคือ 'วันนี้ใครมา' และโหลดเบากว่ามาก
   // คิวรอตรวจไม่ควรผูกกับวันเดียว ของเมื่อวานที่ยังไม่ได้ตรวจต้องเห็นด้วย
@@ -234,6 +239,72 @@ export default function Meetings() {
           </button>
         </div>
       </div>
+
+      {/* --------------------------------------------- นัดที่ยังเปิดให้เช็คชื่ออยู่ */}
+      {(openMeetings.data ?? [])
+        .filter((e) => !e.cancelled_at && !e.closed_at)
+        .map((e) => (
+          <div
+            key={e.id}
+            className="mb-3 flex flex-wrap items-center gap-2 rounded-card border border-warn/40 bg-warn-bg p-3"
+          >
+            <span className="font-display text-sm text-warn-txt">
+              ยังเปิดให้เช็คชื่ออยู่ · {e.title}
+            </span>
+            <span className="min-w-0 flex-1 text-xs text-warn-txt">
+              {fmtDateTime(e.meet_at)}
+              {e.place ? ` · ${e.place}` : ''}
+              <br />
+              กล้องเช็คชื่อยังเปิดอยู่ ใครมาทีหลังก็ยังกดได้ · ปิดแล้วรายชื่อยังอยู่ครบ
+            </span>
+            <button
+              type="button"
+              className="btn-primary h-tap px-4 text-sm"
+              disabled={busy}
+              onClick={() => {
+                setBusy(true)
+                setError(null)
+                void closeMeeting(e.id)
+                  .then(() => {
+                    setOpenTick((n) => n + 1)
+                    rows.reload()
+                  })
+                  .catch((x) => setError((x as Error).message))
+                  .finally(() => setBusy(false))
+              }}
+            >
+              ปิดประชุม
+            </button>
+          </div>
+        ))}
+
+      {(openMeetings.data ?? []).filter((e) => !e.cancelled_at && e.closed_at).length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-card border border-line bg-surface p-3 text-sm">
+          <span className="text-ink-500">
+            ปิดประชุมไปแล้ว ·{' '}
+            {(openMeetings.data ?? [])
+              .filter((e) => !e.cancelled_at && e.closed_at)
+              .map((e) => e.title)
+              .join(' · ')}
+          </span>
+          <button
+            type="button"
+            className="btn-soft h-tap ml-auto px-3 text-xs"
+            disabled={busy}
+            onClick={() => {
+              const first = (openMeetings.data ?? []).find((e) => !e.cancelled_at && e.closed_at)
+              if (!first) return
+              setBusy(true)
+              void reopenMeeting(first.id)
+                .then(() => setOpenTick((n) => n + 1))
+                .catch((x) => setError((x as Error).message))
+                .finally(() => setBusy(false))
+            }}
+          >
+            เปิดใหม่
+          </button>
+        </div>
+      )}
 
       {/* ------------------------------------------------------------ ตัวกรอง */}
       <div className="mb-3 flex flex-wrap items-end gap-2">
