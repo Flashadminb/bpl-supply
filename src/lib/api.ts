@@ -1726,6 +1726,28 @@ export async function meetingRoster(eventId: string): Promise<RosterRow[]> {
   return (data ?? []) as RosterRow[]
 }
 
+/**
+ * เช็คชื่อทั้งนัดด้วยการกดครั้งเดียว
+ *
+ * onlyChecked = true แตะแค่คนที่ส่งใบเช็คอินมาจริง คนที่ขาดยังขาดอยู่
+ * ซึ่งเป็นค่าปกติ เพราะการกดรับทั้งแผ่นแล้วคนขาดกลายเป็นคนมาคือความเสียหายที่กู้ยาก
+ */
+export async function attendBulk(args: {
+  eventId: string
+  state?: 'ontime' | 'late' | 'excused' | 'absent'
+  onlyChecked?: boolean
+  reason?: string
+}): Promise<{ changed: number }> {
+  const { data, error } = await supabase.rpc('meeting_attend_bulk', {
+    p_event: args.eventId,
+    p_state: args.state ?? 'ontime',
+    p_only_checked: args.onlyChecked ?? true,
+    p_reason: args.reason?.trim() || null,
+  })
+  if (error) throw new Error(readableError(error))
+  return (data ?? { changed: 0 }) as { changed: number }
+}
+
 export async function meetingSummary(eventId: string): Promise<MeetingSummary> {
   const { data, error } = await supabase.rpc('meeting_summary', { p_event: eventId })
   if (error) throw new Error(readableError(error))

@@ -633,6 +633,14 @@ export interface RosterRow {
   reason: string | null
   by_name: string | null
   changed_at: string | null
+  /** รหัสใบเช็คอิน · ว่าง = คนนี้ไม่ได้ส่งใบมา จึงไม่มีอะไรให้ลบ */
+  checkin_id: string | null
+  file_id: string | null
+  /** โน้ตที่เจ้าตัวพิมพ์มาเองตอนเช็คอิน คนละช่องกับเหตุผลที่ผู้ตรวจสอบใส่ */
+  note: string | null
+  status: MeetingStatus | null
+  decided_by_name: string | null
+  decide_note: string | null
 }
 
 export interface MeetingSummary {
