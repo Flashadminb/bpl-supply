@@ -1282,7 +1282,7 @@ export async function createByBarcode(args: {
   photos: { file_id: string; web_link: string | null; bytes: number | null }[]
 }) {
   const { data, error } = await supabase.rpc('create_by_barcode', {
-    p_reason: args.reason,
+    p_reason: args.reason?.trim() || null,
     p_note: args.note ?? null,
     p_photos: args.photos,
   })
@@ -1737,7 +1737,8 @@ export async function setAttendance(args: {
   eventId: string
   userId: string
   state: Exclude<AttendState, 'waiting'>
-  reason: string
+  /** โน้ตกำกับ · ไม่บังคับแล้ว ว่างได้ */
+  reason?: string
 }) {
   const { error } = await supabase.rpc('set_meeting_attendance', {
     p_event: args.eventId,

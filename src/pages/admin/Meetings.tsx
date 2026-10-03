@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { DateRangePicker } from '../../components/DateRangePicker'
 import { closeMeeting, listOpenMeetings } from '../../lib/api'
+import { MeetingSets } from '../../components/MeetingSets'
 import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import {
@@ -112,7 +113,8 @@ function LazyThumb({ fileId, alt, onOpen }: { fileId: string; alt: string; onOpe
 
 export default function Meetings() {
   const nav = useNavigate()
-  const [tab, setTab] = useState<'list' | 'stats'>('list')
+  // ตั้งต้นที่มุมมองตามนัด เพราะคำถามแรกคือ "ประชุมนี้ใครมาใครไม่มา" ไม่ใช่ "มีใบอะไรเข้ามาบ้าง"
+  const [tab, setTab] = useState<'sets' | 'list' | 'stats'>('sets')
   const [month, setMonth] = useState(todayTH().slice(0, 7))
   // ช่วงวันแบบปฏิทิน · ว่าง = ใช้ทั้งเดือนตามเดิม
   const [fromDay, setFromDay] = useState('')
@@ -222,10 +224,17 @@ export default function Meetings() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
+            className={`chip ${tab === 'sets' ? 'chip-on' : ''}`}
+            onClick={() => setTab('sets')}
+          >
+            ตามนัด
+          </button>
+          <button
+            type="button"
             className={`chip ${tab === 'list' ? 'chip-on' : ''}`}
             onClick={() => setTab('list')}
           >
-            รายชื่อ {all.length > 0 ? `(${all.length})` : ''}
+            ใบเช็คอิน {all.length > 0 ? `(${all.length})` : ''}
           </button>
           <button
             type="button"
@@ -354,6 +363,10 @@ export default function Meetings() {
       {error && <div className="mb-3"><ErrorBox message={error} /></div>}
 
       {/* ------------------------------------------------------------ รายชื่อ */}
+      {tab === 'sets' && (
+        <MeetingSets from={fromDay || range.from} to={toDay || range.to} />
+      )}
+
       {tab === 'list' && (
         <>
           {picked.size > 0 && (
