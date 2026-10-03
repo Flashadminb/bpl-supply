@@ -19,7 +19,7 @@
 // ไม่บังคับ: GSHEET_MEETING_ID, GSHEET_SACK_ID, GSHEET_OSSCAN_ID (ไม่ตั้งก็ใช้ไฟล์ที่ฝังไว้ในโค้ด)
 // =====================================================================
 
-const VERSION = 'osscan-v12'
+const VERSION = 'skip-v13'
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
 
 const HEADER = ['เลขที่คำขอ', 'วันเวลา', 'ผู้เบิก (ฮับ)', 'วัสดุ', 'จำนวน', 'หลักฐาน', 'Drive File ID']
@@ -358,6 +358,26 @@ async function lookupPlaced(
     }
   }
   return placed
+}
+
+/**
+ * บรรทัดที่หลังบ้านสั่งว่าไม่ต้องเขียนลงชีต
+ *
+ * เคยทำด้วยการยัดแถวลง sheet_exports เป็น tab='ข้าม' row_no=0 ซึ่งผิดคนละเรื่อง
+ * sheet_exports แปลว่า "บรรทัดนี้นั่งอยู่ตรงไหนของชีตแล้ว" ตัวส่งออกจึงหยิบไปสั่ง
+ * Google Sheets ให้เขียนทับช่วง ข้าม!A0:L0 ซึ่งไม่มีอยู่จริง แล้วงานล้มทั้งก้อน
+ * คราวนี้อยู่คนละตารางกัน และใช้แค่คัดออกก่อนส่ง ไม่แตะที่อยู่ในชีตเลย
+ */
+async function lookupSkips(kind: string, keys: RowKey[]): Promise<Set<RowKey>> {
+  const skip = new Set<RowKey>()
+  for (let i = 0; i < keys.length; i += 200) {
+    const batch = keys.slice(i, i + 200).join(',')
+    const rows = await dbPaged<{ line_id: number }>(
+      `export_skips?kind=eq.${kind}&line_id=in.(${batch})&select=line_id`,
+    )
+    for (const r of rows) skip.add(r.line_id)
+  }
+  return skip
 }
 
 async function db<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -708,9 +728,12 @@ Deno.serve(async (req) => {
         }
       }
 
-      if (rows.length > 0) {
-        const placed = await lookupPlaced('sheet_exports', 'requisition_item_id', rows.map((r) => r.key))
-        const out = await pushRows(sheetId, token, rows, placed, HEADER)
+      const skip = rows.length > 0 ? await lookupSkips('supply', rows.map((r) => r.key)) : new Set<RowKey>()
+      const send = rows.filter((r) => !skip.has(r.key))
+
+      if (send.length > 0) {
+        const placed = await lookupPlaced('sheet_exports', 'requisition_item_id', send.map((r) => r.key))
+        const out = await pushRows(sheetId, token, send, placed, HEADER)
         updated += out.updated
         appended += out.appended
         out.tabs.forEach((t) => tabs.add(t))
@@ -781,9 +804,12 @@ Deno.serve(async (req) => {
         })
       }
 
-      if (rows.length > 0) {
-        const placed = await lookupPlaced('asset_sheet_exports', 'asset_txn_item_id', rows.map((r) => r.key))
-        const out = await pushRows(sheetId, token, rows, placed, ASSET_HEADER)
+      const skip = rows.length > 0 ? await lookupSkips('asset', rows.map((r) => r.key)) : new Set<RowKey>()
+      const send = rows.filter((r) => !skip.has(r.key))
+
+      if (send.length > 0) {
+        const placed = await lookupPlaced('asset_sheet_exports', 'asset_txn_item_id', send.map((r) => r.key))
+        const out = await pushRows(sheetId, token, send, placed, ASSET_HEADER)
         updated += out.updated
         appended += out.appended
         out.tabs.forEach((t) => tabs.add(t))

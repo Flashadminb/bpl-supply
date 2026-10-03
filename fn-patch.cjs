@@ -30,6 +30,13 @@ const script = execSync(`diff --normal "${TMP}/fnold.ts" "${TMP}/fnnew.ts" || tr
 
 const newLines = newT.split('\n')
 
+// git เก็บไฟล์จบด้วยขึ้นบรรทัด ส่วน Monaco บางรุ่นเก็บ บางรุ่นไม่เก็บ
+// เทียบกันตรง ๆ แล้วต่างกันหนึ่งตัวอักษรเสมอ ซึ่งทำให้ด่านตรวจปัดทิ้งทั้งที่ของตรงกัน
+// ตัดตัวท้ายออกจากทั้งสองฝั่งก่อนเทียบ จะได้ไม่ต้องเดาว่าหน้าเว็บวันนี้เป็นแบบไหน
+const strip = (t) => t.replace(/\n$/, '')
+const oldS = strip(oldT)
+const newS = strip(newT)
+
 /**
  * แปลงผลของ diff เป็นรายการแก้ไขทีละช่วง
  *
@@ -62,9 +69,9 @@ const sum = (t) => {
 }
 
 // ตรวจก่อนว่าชุดแก้ไขนี้ประกอบกลับได้ตรงกับไฟล์ใหม่จริง ไม่งั้นอย่าส่งไปเลย
-const check = oldT.split('\n')
+const check = oldS.split('\n')
 for (const op of [...ops].sort((x, y) => y.at - x.at)) check.splice(op.at, op.del, ...op.ins)
-if (check.join('\n') !== newT) throw new Error('ชุดแก้ไขประกอบกลับแล้วไม่ตรงกับไฟล์ใหม่')
+if (check.join('\n') !== newS) throw new Error('ชุดแก้ไขประกอบกลับแล้วไม่ตรงกับไฟล์ใหม่')
 
 const js = [
   '(() => {',
@@ -74,7 +81,7 @@ const js = [
   '  window.__orig = window.__orig || m.getValue().replace(/\\r\\n/g, "\\n");',
   // Monaco เติมขึ้นบรรทัดท้ายไฟล์ให้เอง ของเดิมจึงยาวกว่าที่ git เก็บอยู่หนึ่งตัว
   '  const cur = window.__orig.endsWith("\\n") ? window.__orig.slice(0, -1) : window.__orig;',
-  `  if (cur.length !== ${oldT.length}) return { stop: "ของเดิมในหน้าเว็บไม่ตรงกับที่คาดไว้", chars: cur.length, want: ${oldT.length} };`,
+  `  if (cur.length !== ${oldS.length}) return { stop: "ของเดิมในหน้าเว็บไม่ตรงกับที่คาดไว้", chars: cur.length, want: ${oldS.length} };`,
   `  const ops = ${JSON.stringify(ops)};`,
   '  const L = cur.split("\\n");',
   '  for (const op of ops.slice().sort((x, y) => y.at - x.at)) L.splice(op.at, op.del, ...op.ins);',
@@ -82,8 +89,8 @@ const js = [
   '  m.setValue(next);',
   '  const raw = m.getValue(); const t = raw.endsWith("\\n") ? raw.slice(0, -1) : raw;',
   '  let s = 0; for (let i = 0; i < t.length; i++) s = (s + (i + 1) * t.charCodeAt(i)) % 2147483647;',
-  `  return { chars: t.length, want: ${newT.length}, checksum: s, wantChecksum: ${sum(newT)},`,
-  `           ok: t.length === ${newT.length} && s === ${sum(newT)},`,
+  `  return { chars: t.length, want: ${newS.length}, checksum: s, wantChecksum: ${sum(newS)},`,
+  `           ok: t.length === ${newS.length} && s === ${sum(newS)},`,
   '           version: (t.match(/const VERSION = \'[^\']+\'/) || ["?"])[0] };',
   '})()',
 ].join('\n')
@@ -91,5 +98,5 @@ const js = [
 fs.writeFileSync('fn-patch.out.js', js)
 console.log('ของเดิม', oldT.length, '· ของใหม่', newT.length, 'ตัวอักษร')
 console.log('แก้', ops.length, 'ช่วง · บรรทัดใหม่', ops.reduce((n, o) => n + o.ins.length, 0))
-console.log('checksum ที่ต้องได้', sum(newT))
+console.log('checksum ที่ต้องได้', sum(newS))
 console.log('เขียน fn-patch.out.js ขนาด', js.length, 'ตัวอักษร')
