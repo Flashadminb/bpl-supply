@@ -719,6 +719,10 @@ export interface MeetingEvent {
   created_by_name: string
   created_at: string
   cancelled_at: string | null
+  /** ปิดประชุมแล้วเมื่อไหร่ · ว่าง = ยังเปิดอยู่ กล้องเช็คชื่อยังใช้ได้ */
+  closed_at?: string | null
+  closed_by_name?: string | null
+  audience_mode?: string
   day: string
 }
 

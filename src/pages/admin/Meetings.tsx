@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { DateRangePicker } from '../../components/DateRangePicker'
 import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import {
   deleteMeetings,
-  listMeetingDays,
   listMeetings,
   meetingStats,
   setMeetingStatus,
@@ -109,19 +109,13 @@ function LazyThumb({ fileId, alt, onOpen }: { fileId: string; alt: string; onOpe
   )
 }
 
-const dayLabelTH = (day: string) =>
-  new Intl.DateTimeFormat('th-TH', {
-    weekday: 'short',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  }).format(new Date(`${day}T00:00:00Z`))
-
 export default function Meetings() {
   const nav = useNavigate()
   const [tab, setTab] = useState<'list' | 'stats'>('list')
   const [month, setMonth] = useState(todayTH().slice(0, 7))
+  // ช่วงวันแบบปฏิทิน · ว่าง = ใช้ทั้งเดือนตามเดิม
+  const [fromDay, setFromDay] = useState('')
+  const [toDay, setToDay] = useState('')
   // เริ่มที่วันนี้ ไม่ใช่ทั้งเดือน เพราะคำถามแรกคือ 'วันนี้ใครมา' และโหลดเบากว่ามาก
   // คิวรอตรวจไม่ควรผูกกับวันเดียว ของเมื่อวานที่ยังไม่ได้ตรวจต้องเห็นด้วย
   const [day, setDay] = useState('')
@@ -138,15 +132,16 @@ export default function Meetings() {
   const range = useMemo(() => monthRange(month), [month])
   const months = useMemo(() => monthOptions(), [])
 
-  const days = useAsync(() => listMeetingDays(), [])
   const rows = useAsync(
     () =>
       listMeetings(
-        day
-          ? { fromDay: day, toDay: day, status: status || undefined }
-          : { fromDay: range.from, toDay: range.to, status: status || undefined },
+        fromDay && toDay
+          ? { fromDay, toDay, status: status || undefined }
+          : day
+            ? { fromDay: day, toDay: day, status: status || undefined }
+            : { fromDay: range.from, toDay: range.to, status: status || undefined },
       ),
-    [day, range.from, range.to, status],
+    [day, fromDay, toDay, range.from, range.to, status],
   )
   const stats = useAsync(() => meetingStats(range.from, range.to), [range.from, range.to])
 
@@ -172,12 +167,6 @@ export default function Meetings() {
         .includes(q),
     )
   }, [stats.data, search])
-
-  // วันที่ที่มีคนเช็คอิน เฉพาะในเดือนที่เลือก
-  const dayOptions = useMemo(
-    () => (days.data ?? []).filter((d) => d.startsWith(month)),
-    [days.data, month],
-  )
 
   const allPicked = shown.length > 0 && shown.every((m) => picked.has(m.id))
 
@@ -271,25 +260,17 @@ export default function Meetings() {
         </div>
 
         <div>
-          <label className="label mb-1" htmlFor="mt-day">
-            วันที่
-          </label>
-          <select
-            id="mt-day"
-            className="input h-tap max-w-[220px]"
-            value={day}
-            onChange={(e) => {
-              setDay(e.target.value)
+          <DateRangePicker
+            from={fromDay || range.from}
+            to={toDay || range.to}
+            label="ช่วงวันที่"
+            onChange={(f, t) => {
+              setFromDay(f)
+              setToDay(t)
+              setDay('')
               setPicked(new Set())
             }}
-          >
-            <option value="">ทั้งเดือน</option>
-            {dayOptions.map((d) => (
-              <option key={d} value={d}>
-                {dayLabelTH(d)}
-              </option>
-            ))}
-          </select>
+          />
         </div>
 
         <div>

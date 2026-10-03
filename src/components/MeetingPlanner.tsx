@@ -2,7 +2,14 @@ import { useState } from 'react'
 import { describeWindow } from '../lib/meetingWindow'
 import { AudiencePicker, EMPTY_AUDIENCE, type Audience } from './AudiencePicker'
 import { useAsync } from '../lib/useAsync'
-import { cancelMeetingEvent, createMeetingEvent, deleteMeetingEvent, listUpcomingMeetings } from '../lib/api'
+import {
+  cancelMeetingEvent,
+  closeMeeting,
+  createMeetingEvent,
+  deleteMeetingEvent,
+  listUpcomingMeetings,
+  reopenMeeting,
+} from '../lib/api'
 import { readableError } from '../lib/supabase'
 import { Spinner } from './ui'
 import type { MeetingEvent } from '../lib/types'
@@ -346,7 +353,7 @@ export function MeetingPlanner({ onChanged }: { onChanged?: () => void }) {
                 <div className="min-w-0">
                   <p className="truncate font-display text-sm">
                     {e.title}
-                    {e.cancelled_at ? ' · ยกเลิกแล้ว' : ''}
+                    {e.cancelled_at ? ' · ยกเลิกแล้ว' : e.closed_at ? ' · ปิดแล้ว' : ''}
                   </p>
                   <p className="text-xs text-ink-500">
                     {whenTH(e.meet_at)}
@@ -355,7 +362,33 @@ export function MeetingPlanner({ onChanged }: { onChanged?: () => void }) {
                   </p>
                 </div>
                 <div className="flex shrink-0 gap-1">
-                  {!e.cancelled_at && (
+                  {/*
+                    ปิด ≠ ยกเลิก
+                      ปิด    ประชุมเกิดขึ้นจริงแล้วจบ รายชื่อใครมาใครขาดยังอยู่ครบ
+                      ยกเลิก ประชุมไม่ได้เกิด ทั้งใบหายไปพร้อมหลักฐาน
+                    เลิกประชุมแล้วต้องกดปิด ไม่ใช่กดยกเลิก
+                  */}
+                  {!e.cancelled_at &&
+                    (e.closed_at ? (
+                      <button
+                        type="button"
+                        className="btn-soft h-tap px-2 text-xs"
+                        disabled={busy}
+                        onClick={() => void act(() => reopenMeeting(e.id))}
+                      >
+                        เปิดใหม่
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn-primary h-tap px-2 text-xs"
+                        disabled={busy}
+                        onClick={() => void act(() => closeMeeting(e.id))}
+                      >
+                        ปิดประชุม
+                      </button>
+                    ))}
+                  {!e.cancelled_at && !e.closed_at && (
                     <button
                       type="button"
                       className="btn-soft h-tap px-2 text-xs"

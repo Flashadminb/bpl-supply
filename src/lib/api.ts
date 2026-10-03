@@ -1816,6 +1816,23 @@ export async function retireAnnouncement(id: string) {
   if (error) throw new Error(readableError(error))
 }
 
+/**
+ * ปิดประชุม — จบรอบนี้ กล้องเช็คชื่อปิดทันที
+ *
+ * ต่างจากยกเลิก · ปิด = ประชุมเกิดขึ้นจริงแล้วจบ รายชื่อใครมาใครขาดยังอยู่ครบ
+ * ส่วนยกเลิก = ประชุมไม่ได้เกิด ทั้งใบหายไปจากระบบพร้อมหลักฐาน
+ */
+export async function closeMeeting(id: string) {
+  const { error } = await supabase.rpc('close_meeting', { p_id: id })
+  if (error) throw new Error(readableError(error))
+}
+
+/** เผลอกดปิดเร็วไป เปิดใหม่ได้ · คนยังเช็คชื่อไม่ครบก็เกิดขึ้นได้ */
+export async function reopenMeeting(id: string) {
+  const { error } = await supabase.rpc('reopen_meeting', { p_id: id })
+  if (error) throw new Error(readableError(error))
+}
+
 export async function cancelMeetingEvent(id: string) {
   const { error } = await supabase.rpc('cancel_meeting_event', { p_id: id })
   if (error) throw new Error(readableError(error))
