@@ -1647,6 +1647,25 @@ export async function listUpcomingMeetings(limit = 10): Promise<MeetingEvent[]> 
   ) as unknown as MeetingEvent[]
 }
 
+/**
+ * นัดที่ยังเปิดให้เช็คชื่ออยู่ · ไม่สนว่าผ่านมานานแค่ไหน
+ *
+ * listUpcomingMeetings มองย้อนหลังแค่ 6 ชั่วโมง ซึ่งถูกสำหรับ "นัดที่กำลังจะถึง"
+ * แต่ผิดสำหรับ "นัดที่ลืมปิด" — ของที่ลืมปิดคือของที่ผ่านมานานแล้วทั้งนั้น
+ * ยิ่งเก่ายิ่งต้องเห็น ไม่ใช่ยิ่งเก่ายิ่งหาย
+ */
+export async function listOpenMeetings(limit = 20): Promise<MeetingEvent[]> {
+  return unwrap(
+    await supabase
+      .from('meeting_event_rows')
+      .select('*')
+      .is('cancelled_at', null)
+      .is('closed_at', null)
+      .order('meet_at', { ascending: false })
+      .limit(limit),
+  ) as unknown as MeetingEvent[]
+}
+
 /** นัดทั้งหมดในช่วงวัน — ใช้ในหน้าตรวจสอบ */
 export async function listMeetingEvents(fromDay: string, toDay: string): Promise<MeetingEvent[]> {
   return unwrap(

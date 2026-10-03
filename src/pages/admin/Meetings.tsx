@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { DateRangePicker } from '../../components/DateRangePicker'
-import { closeMeeting, listUpcomingMeetings, reopenMeeting } from '../../lib/api'
+import { closeMeeting, listOpenMeetings } from '../../lib/api'
 import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import {
@@ -119,7 +119,7 @@ export default function Meetings() {
   // นัดที่ยังเปิดอยู่ · ปุ่มปิดต้องอยู่ตรงนี้ ไม่ใช่ซ่อนในแผ่นเช็คอินของหน้าแรก
   // เพราะคนมาหน้านี้ตอนประชุมเลิกแล้ว มาดูว่าใครมาใครขาด ซึ่งเป็นจังหวะเดียวกับที่ควรกดปิด
   const [openTick, setOpenTick] = useState(0)
-  const openMeetings = useAsync(() => listUpcomingMeetings(10), [openTick])
+  const openMeetings = useAsync(() => listOpenMeetings(20), [openTick])
   const [toDay, setToDay] = useState('')
   // เริ่มที่วันนี้ ไม่ใช่ทั้งเดือน เพราะคำถามแรกคือ 'วันนี้ใครมา' และโหลดเบากว่ามาก
   // คิวรอตรวจไม่ควรผูกกับวันเดียว ของเมื่อวานที่ยังไม่ได้ตรวจต้องเห็นด้วย
@@ -242,7 +242,6 @@ export default function Meetings() {
 
       {/* --------------------------------------------- นัดที่ยังเปิดให้เช็คชื่ออยู่ */}
       {(openMeetings.data ?? [])
-        .filter((e) => !e.cancelled_at && !e.closed_at)
         .map((e) => (
           <div
             key={e.id}
@@ -278,33 +277,6 @@ export default function Meetings() {
           </div>
         ))}
 
-      {(openMeetings.data ?? []).filter((e) => !e.cancelled_at && e.closed_at).length > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-card border border-line bg-surface p-3 text-sm">
-          <span className="text-ink-500">
-            ปิดประชุมไปแล้ว ·{' '}
-            {(openMeetings.data ?? [])
-              .filter((e) => !e.cancelled_at && e.closed_at)
-              .map((e) => e.title)
-              .join(' · ')}
-          </span>
-          <button
-            type="button"
-            className="btn-soft h-tap ml-auto px-3 text-xs"
-            disabled={busy}
-            onClick={() => {
-              const first = (openMeetings.data ?? []).find((e) => !e.cancelled_at && e.closed_at)
-              if (!first) return
-              setBusy(true)
-              void reopenMeeting(first.id)
-                .then(() => setOpenTick((n) => n + 1))
-                .catch((x) => setError((x as Error).message))
-                .finally(() => setBusy(false))
-            }}
-          >
-            เปิดใหม่
-          </button>
-        </div>
-      )}
 
       {/* ------------------------------------------------------------ ตัวกรอง */}
       <div className="mb-3 flex flex-wrap items-end gap-2">
