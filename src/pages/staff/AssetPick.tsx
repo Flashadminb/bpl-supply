@@ -15,6 +15,12 @@ import { readableError } from '../../lib/supabase'
 import { StaffPage, TopBar } from '../../components/Shell'
 import { EmptyState, ErrorBox, Loading, Modal, Sheet, Spinner } from '../../components/ui'
 import { PhotoSteps, shotsToPhotos, type Shot } from '../../components/PhotoSteps'
+import {
+  IssuePhotosBlock,
+  flushIssuePhotos,
+  issuePhotosReady,
+  type IssueShots,
+} from '../../components/IssuePhotosBlock'
 import { CodeScanner } from '../../components/CodeScanner'
 import { stampLines } from '../../lib/image'
 import { fmtDateTime } from '../../lib/format'
@@ -128,6 +134,12 @@ export default function AssetPick() {
   const [picked, setPicked] = useState<string[]>([])
   const [shots, setShots] = useState<Shot[]>([])
   const [newIssues, setNewIssues] = useState<Record<string, string>>({})
+  // รูปอาการของเครื่องที่แจ้งเสียก่อนเบิก · คนละชุดกับรูปตอนเบิก
+  const [issueShots, setIssueShots] = useState<IssueShots>({})
+  const faulted = Object.keys(newIssues).filter(
+    (c) => (newIssues[c] ?? '').trim() !== '' && picked.includes(c),
+  )
+  const faultPhotosOk = issuePhotosReady(faulted, issueShots)
   const [issueFor, setIssueFor] = useState<string | null>(null)
   const [issueText, setIssueText] = useState('')
   const [busy, setBusy] = useState(false)
@@ -260,6 +272,8 @@ export default function AssetPick() {
         issues: issueList,
         forUserId: forUser?.id ?? null,
       })
+      // ใบเบิกผ่านแล้ว ย้อนกลับไม่ได้ · แนบรูปอาการต่อท้าย
+      await flushIssuePhotos(faulted, issueShots)
       nav(`/assets/done/${res.ref_no}`, {
         state: {
           kind: 'out',
@@ -546,15 +560,27 @@ export default function AssetPick() {
           )}
 
           {step === 'review' && (
-            <button
-              type="button"
-              className="btn-primary w-full py-4 text-md"
-              disabled={busy || picked.length === 0}
-              onClick={() => void submit()}
-            >
-              {busy ? <Spinner /> : null}
-              {busy ? 'กำลังบันทึก…' : `ยืนยันเบิก ${picked.length} เครื่อง`}
-            </button>
+            <>
+              <IssuePhotosBlock
+                codes={faulted}
+                value={issueShots}
+                onChange={setIssueShots}
+                nameOf={(c) => newIssues[c] ?? ''}
+              />
+              <button
+                type="button"
+                className="btn-primary mt-3 w-full py-4 text-md"
+                disabled={busy || picked.length === 0 || !faultPhotosOk}
+                onClick={() => void submit()}
+              >
+                {busy ? <Spinner /> : null}
+                {busy
+                  ? 'กำลังบันทึก…'
+                  : !faultPhotosOk
+                    ? 'ถ่ายรูปอาการของเครื่องที่แจ้งเสียก่อน'
+                    : `ยืนยันเบิก ${picked.length} เครื่อง`}
+              </button>
+            </>
           )}
         </div>
       </div>

@@ -14,6 +14,12 @@ import { readableError } from '../../lib/supabase'
 import { StaffPage, TopBar } from '../../components/Shell'
 import { ErrorBox, Loading, Spinner } from '../../components/ui'
 import { PhotoSteps, shotsToPhotos, type Shot } from '../../components/PhotoSteps'
+import {
+  IssuePhotosBlock,
+  flushIssuePhotos,
+  issuePhotosReady,
+  type IssueShots,
+} from '../../components/IssuePhotosBlock'
 import { PartBoundary } from '../../components/ErrorBoundary'
 import { ProxyPicker } from '../../components/ProxyPicker'
 import { stampLines } from '../../lib/image'
@@ -56,6 +62,8 @@ export default function AssetBasket() {
   const [openType, setOpenType] = useState<string | null>(null)
   const [picked, setPicked] = useState<Record<string, string[]>>({})
   const [newIssue, setNewIssue] = useState<Record<string, string>>({})
+  // รูปอาการของเครื่องที่แจ้งเสียก่อนเบิก · คนละชุดกับรูปตอนเบิก
+  const [issueShots, setIssueShots] = useState<IssueShots>({})
   const [shotsBy, setShotsBy] = useState<Record<string, Shot[]>>({})
   const [stepsBy, setStepsBy] = useState<Record<string, AssetPhotoStep[]>>({})
   const [forUser, setForUser] = useState<ProxyTarget | null>(null)
@@ -145,6 +153,11 @@ export default function AssetBasket() {
     return (types.data ?? []).find((t) => t.code === typeCode)?.photo_min ?? 1
   }
 
+  const faulted = photoGroups.flatMap((g) =>
+    g.codes.filter((c) => (newIssue[c] ?? '').trim() !== ''),
+  )
+  const faultPhotosOk = issuePhotosReady(faulted, issueShots)
+
   const photoReady = photoGroups.every((g) => {
     const shots = shotsBy[g.code] ?? []
     const done = shotsToPhotos(shots).length
@@ -175,6 +188,8 @@ export default function AssetBasket() {
       }))
 
       const res = await assetCheckoutMany({ groups, forUserId: forUser?.id ?? null })
+      // ใบเบิกผ่านแล้ว ย้อนกลับไม่ได้ · แนบรูปอาการต่อท้าย
+      await flushIssuePhotos(faulted, issueShots)
       nav(`/assets/done/${res.refs[0]}`, {
         state: {
           kind: 'out',
@@ -473,6 +488,13 @@ export default function AssetBasket() {
 
             <div aria-hidden className="h-[96px]" />
 
+            <IssuePhotosBlock
+              codes={faulted}
+              value={issueShots}
+              onChange={setIssueShots}
+              nameOf={(c) => newIssue[c] ?? ''}
+            />
+
             <div
               className={`fixed inset-x-0 ${OVER_NAV} z-40 border-t border-line bg-surface px-3 py-3 shadow-lg`}
             >
@@ -480,15 +502,17 @@ export default function AssetBasket() {
               <button
                 type="button"
                 className="btn-primary w-full py-4 text-md"
-                disabled={!photoReady || busy}
+                disabled={!photoReady || !faultPhotosOk || busy}
                 onClick={() => void submit()}
               >
                 {busy ? <Spinner /> : null}
                 {busy
                   ? 'กำลังบันทึก…'
-                  : photoReady
-                    ? `ยืนยันเบิก ${totalPicked} เครื่อง`
-                    : `ยังถ่ายไม่ครบ — เหลือ ${missing} ใบ`}
+                  : !photoReady
+                    ? `ยังถ่ายไม่ครบ — เหลือ ${missing} ใบ`
+                    : !faultPhotosOk
+                      ? 'ถ่ายรูปอาการของเครื่องที่แจ้งเสียก่อน'
+                      : `ยืนยันเบิก ${totalPicked} เครื่อง`}
                 </button>
               </div>
             </div>

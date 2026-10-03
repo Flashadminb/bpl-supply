@@ -299,9 +299,9 @@ export default function AssetMoves() {
   )
 }
 
-/** รูปทั้งหมดของใบนี้มีกี่ใบ · รวมรูปตอนคืนที่ผูกกับใบคืนด้วย */
-function shotsOf(r: { report_shots?: number; fix_shots?: number; txn_shots?: number }) {
-  return (r.report_shots ?? 0) + (r.fix_shots ?? 0) + (r.txn_shots ?? 0)
+/** รูปของการแจ้งเสียใบนี้ · รูปตอนเบิกคืนไม่นับ เป็นคนละเรื่องกัน */
+function shotsOf(r: { report_shots?: number; fix_shots?: number }) {
+  return (r.report_shots ?? 0) + (r.fix_shots ?? 0)
 }
 
 /**

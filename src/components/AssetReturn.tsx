@@ -12,6 +12,12 @@ import {
 import { readableError } from '../lib/supabase'
 import { ErrorBox, Loading, Spinner } from './ui'
 import { PhotoSteps, shotsToPhotos, type Shot } from './PhotoSteps'
+import {
+  IssuePhotosBlock,
+  flushIssuePhotos,
+  issuePhotosReady,
+  type IssueShots,
+} from './IssuePhotosBlock'
 import { PartBoundary } from './ErrorBoundary'
 import { stampLines } from '../lib/image'
 import { fmtDateTime, relativeAge } from '../lib/format'
@@ -43,6 +49,8 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
   const [shotsBy, setShotsBy] = useState<Record<string, Shot[]>>({})
   const [stepsBy, setStepsBy] = useState<Record<string, AssetPhotoStep[]>>({})
   const [newIssues, setNewIssues] = useState<Record<string, string>>({})
+  // รูปอาการของเครื่องที่แจ้งเสีย · คนละชุดกับรูปตอนคืน
+  const [issueShots, setIssueShots] = useState<IssueShots>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -116,6 +124,11 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
     setPicked((v) => (allOn ? v.filter((c) => !codes.includes(c)) : [...new Set([...v, ...codes])]))
   }
 
+  const faulted = Object.keys(newIssues).filter(
+    (c) => (newIssues[c] ?? '').trim() !== '' && picked.includes(c),
+  )
+  const faultPhotosOk = issuePhotosReady(faulted, issueShots)
+
   const photoReady = chosenTypes.every((code) => {
     const shots = shotsBy[code] ?? []
     return (
@@ -162,6 +175,8 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
         }
       })
       const res = await assetReturnGroups({ groups: payload })
+      // ใบคืนผ่านแล้ว ย้อนกลับไม่ได้ · แนบรูปอาการต่อท้าย ไม่ล้มทั้งก้อนถ้าใบใดใบหนึ่งพลาด
+      await flushIssuePhotos(faulted, issueShots)
       nav(`/assets/done/${res.refs[0]}`, {
         state: {
           kind: 'in',
@@ -380,6 +395,13 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
             )
           })}
 
+          <IssuePhotosBlock
+            codes={faulted}
+            value={issueShots}
+            onChange={setIssueShots}
+            nameOf={(c) => newIssues[c] ?? ''}
+          />
+
           {error && (
             <div className="mb-2">
               <ErrorBox message={error} />
@@ -389,15 +411,17 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
           <button
             type="button"
             className="btn-primary w-full py-4 text-md"
-            disabled={!photoReady || busy}
+            disabled={!photoReady || !faultPhotosOk || busy}
             onClick={() => void submit()}
           >
             {busy ? <Spinner /> : null}
             {busy
               ? 'กำลังบันทึก…'
-              : photoReady
-                ? `ยืนยันคืน ${pickedSummary}`
-                : `ยังถ่ายไม่ครบ — เหลือ ${missing} ใบ`}
+              : !photoReady
+                ? `ยังถ่ายไม่ครบ — เหลือ ${missing} ใบ`
+                : !faultPhotosOk
+                  ? `ถ่ายรูปอาการของเครื่องที่แจ้งเสียก่อน`
+                  : `ยืนยันคืน ${pickedSummary}`}
           </button>
 
           {photoReady && !busy && (
