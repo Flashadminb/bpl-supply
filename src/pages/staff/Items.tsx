@@ -6,6 +6,17 @@ import { useCart } from '../../lib/cart'
 import { StaffPage, TopBar } from '../../components/Shell'
 import { EmptyState, ErrorBox, Loading, QtyStepper, StockBadge } from '../../components/ui'
 
+/**
+ * หมวดที่ขึ้นเป็นปุ่มจิ้มได้เลย · ที่เหลืออยู่ในดรอปดาวน์
+ *
+ * ของเดิมเอาทุกหมวดมาเรียงเป็นแถวเลื่อนแนวนอน ซึ่งพังตอนหมวดเพิ่มขึ้น
+ * บนจอ 390px แถวนั้นใส่ได้จริงราวสามปุ่ม หมวดที่เพิ่มทีหลังจึงไปกองอยู่นอกจอ
+ * คนใช้งานเห็นแค่หมวดเก่าสามหมวดแล้วสรุปว่าของที่เพิ่งเพิ่มไม่ขึ้นในระบบ
+ *
+ * ชื่อที่ไม่มีอยู่จริงในตารางหมวดจะถูกข้ามไปเงียบ ๆ ไม่ขึ้นปุ่มค้างไว้ให้กดแล้วว่าง
+ */
+const QUICK_CATS = ['บัตรชั่วคราว', 'สำนักงาน', 'หน้างาน']
+
 export default function Items() {
   const nav = useNavigate()
   const cart = useCart()
@@ -14,6 +25,11 @@ export default function Items() {
 
   const cats = useAsync(() => listCategories(), [])
   const items = useAsync(() => listItems({ search, categoryId: cat }), [search, cat])
+
+  const allCats = cats.data ?? []
+  const quick = QUICK_CATS.map((n) => allCats.find((c) => c.name === n)).filter(
+    (c): c is NonNullable<typeof c> => Boolean(c),
+  )
 
   return (
     <>
@@ -27,24 +43,43 @@ export default function Items() {
           onChange={(e) => setSearch(e.target.value)}
         />
 
-        <div className="no-bar -mx-3 mt-3 flex gap-2 overflow-x-auto px-3 pb-1">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
-            className={`chip shrink-0 ${cat === null ? 'chip-on' : ''}`}
+            className={`chip ${cat === null ? 'chip-on' : ''}`}
             onClick={() => setCat(null)}
           >
             ทั้งหมด
           </button>
-          {(cats.data ?? []).map((c) => (
+          {quick.map((c) => (
             <button
               key={c.id}
               type="button"
-              className={`chip shrink-0 ${cat === c.id ? 'chip-on' : ''}`}
+              className={`chip ${cat === c.id ? 'chip-on' : ''}`}
               onClick={() => setCat(c.id)}
             >
               {c.name}
             </button>
           ))}
+
+          {/* ดรอปดาวน์ถือหมวดครบทุกหมวดเสมอ รวมหมวดที่เพิ่งเพิ่ม
+              ปุ่มด้านบนเป็นแค่ทางลัดของสามหมวดที่ใช้บ่อย ไม่ใช่รายการทั้งหมด */}
+          <label className="sr-only" htmlFor="it-cat">
+            เลือกหมวด
+          </label>
+          <select
+            id="it-cat"
+            className="input h-tap w-full max-w-[200px]"
+            value={cat ?? ''}
+            onChange={(e) => setCat(e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">ทุกหมวด</option>
+            {allCats.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="mt-3 space-y-2">
