@@ -33,20 +33,36 @@ export function CodeScanner({
   const [toast, setToast] = useState<{ ok: boolean; message: string } | null>(null)
   const [manual, setManual] = useState('')
 
-  const handle = useCallback(
-    (code: string) => {
-      const now = Date.now()
-      if (lastRef.current.code === code && now - lastRef.current.at < 1200) return
-      lastRef.current = { code, at: now }
-      const res = onCode(code.trim())
-      if (res) {
-        navigator.vibrate?.(res.ok ? 40 : [40, 60, 40])
-        setToast(res)
-        window.setTimeout(() => setToast(null), 2200)
-      }
-    },
-    [onCode],
-  )
+  /**
+   * เก็บ onCode ล่าสุดไว้ใน ref แทนที่จะผูกเป็น dependency
+   *
+   * ทุกหน้าที่เรียกตัวนี้ส่ง onCode เป็นฟังก์ชันเขียนสดตรงที่เรียก
+   * ซึ่งเป็นคนละตัวทุกครั้งที่หน้านั้น render แม้เนื้อในจะเหมือนเดิมเป๊ะ
+   * ถ้าเอาไปใส่ใน dependency ของ useCallback แล้วส่งต่อให้ effect ที่เปิดกล้อง
+   * effect จะคิดว่ามีอะไรเปลี่ยน แล้วปิดกล้องเปิดกล้องใหม่ทั้งชุดทุกครั้ง
+   *
+   * หน้ากระดานบัตรเบรคมีนาฬิกาเดินวินาทีละครั้ง จึง render วินาทีละครั้ง
+   * กล้องจึงถูกปิด-เปิดวินาทีละรอบ เห็นเป็นจอกระพริบ และสแกนไม่ค่อยติด
+   * เพราะกว่ากล้องจะโฟกัสเสร็จก็ถูกสั่งปิดพอดี
+   *
+   * ref ไม่ทำให้ค่าเก่าค้าง เพราะเขียนทับทุก render ก่อนจะมีใครยิงรหัสเข้ามา
+   */
+  const onCodeRef = useRef(onCode)
+  useEffect(() => {
+    onCodeRef.current = onCode
+  })
+
+  const handle = useCallback((code: string) => {
+    const now = Date.now()
+    if (lastRef.current.code === code && now - lastRef.current.at < 1200) return
+    lastRef.current = { code, at: now }
+    const res = onCodeRef.current(code.trim())
+    if (res) {
+      navigator.vibrate?.(res.ok ? 40 : [40, 60, 40])
+      setToast(res)
+      window.setTimeout(() => setToast(null), 2200)
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
