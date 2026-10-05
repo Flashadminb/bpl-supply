@@ -115,6 +115,13 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    title: 'การปล่อยรถ',
+    links: [
+      { to: '/trucks', label: 'กระดานปล่อยรถ', icon: 'clipboard', adminOnly: true },
+      { to: '/admin/trucks', label: 'ส่งชีต สาขา แจ้งเตือน', icon: 'sheet', adminOnly: true },
+    ],
+  },
+  {
     title: 'ทั่วไป',
     links: [
       { to: '/admin/qr', label: 'พิมพ์ QR', icon: 'qr' },

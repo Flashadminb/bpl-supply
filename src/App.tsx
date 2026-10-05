@@ -65,6 +65,7 @@ const BreakIssue = lazy(() => import('./pages/staff/BreakIssue'))
 const BreakGuard = lazy(() => import('./pages/staff/BreakGuard'))
 const BreakMine = lazy(() => import('./pages/staff/BreakMine'))
 const TruckBoard = lazy(() => import('./pages/trucks/TruckBoard'))
+const TruckAdmin = lazy(() => import('./pages/admin/TruckAdmin'))
 
 function Guard({
   children,
@@ -352,6 +353,9 @@ export default function App() {
             </Guard>
           }
         />
+        {/* การปล่อยรถ — งานตั้งค่าและเก็บประวัติ แยกจากกระดานที่หน้างานเปิดค้างไว้ทั้งกะ
+            ด่านจริงอยู่ที่ RLS เส้นทางนี้แค่ไม่ให้กดเข้ามาเจอหน้าว่าง */}
+        <Route path="trucks" element={<Guard roles={['admin']}><TruckAdmin /></Guard>} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

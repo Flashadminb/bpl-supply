@@ -19,7 +19,7 @@
 // ไม่บังคับ: GSHEET_MEETING_ID, GSHEET_SACK_ID, GSHEET_OSSCAN_ID (ไม่ตั้งก็ใช้ไฟล์ที่ฝังไว้ในโค้ด)
 // =====================================================================
 
-const VERSION = 'break-v14'
+const VERSION = 'truck-v15'
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
 
 const HEADER = ['เลขที่คำขอ', 'วันเวลา', 'ผู้เบิก (ฮับ)', 'วัสดุ', 'จำนวน', 'หลักฐาน', 'Drive File ID']
@@ -73,6 +73,35 @@ const MEETING_SHEET_ID = '15_ES88gZhq8ZWBaAwoFekP-3o3HKnNW52jPimSIjHRY'
 const SACK_SHEET_ID = '1ZqSEG1dTPlCcC9mAJJSwcOQz8vdXyF9rF-RfzB5bvSI'
 const OSSCAN_SHEET_ID = '1Suklni1sHj_waOIRMnu4TU71D8Cdujju6eJbFSddQ74'
 const BREAK_SHEET_ID = '1Mv7zInXLBid27HrdWlwkwbmrd1rHXcYjfhZeY-KYmno'
+const TRUCK_SHEET_ID = '1j9P4eKX9JBNfcYUqDNQzC_4yWk7zZQypVUaG8UPkt1c'
+
+/**
+ * ประวัติการปล่อยรถ
+ *
+ * ชีตนี้เป็นที่เก็บระยะยาว เพราะรถวันละ 200-400 คันคือปีละราวแสนแถว
+ * ซึ่งโตเร็วกว่าทุกอย่างในระบบนี้รวมกัน
+ *
+ * ส่งเฉพาะคันที่ปล่อยแล้ว คันที่ยังอยู่ในคลังยังไม่รู้ผลว่าตรงเวลาหรือไม่
+ */
+const TRUCK_HEADER = [
+  'สาขา',
+  'รหัสสาขา',
+  'ชื่อเต็ม',
+  'จังหวัด',
+  'อำเภอ',
+  'ตำบล',
+  'สาขา Id',
+  'ถึงคลัง',
+  'กำหนดออก',
+  'ให้เวลา (นาที)',
+  'ออกจริง',
+  'อยู่ในคลัง (นาที)',
+  'เกินเวลา (นาที)',
+  'ผล',
+  'คนบันทึก',
+  'คนกดปล่อย',
+  'หมายเหตุ',
+]
 
 /**
  * ประวัติบัตรเบรค
@@ -517,6 +546,27 @@ interface DbOsScan {
   imei: string | null
   guard_name: string | null
   guard_code: string | null
+}
+
+interface DbTruck {
+  id: number
+  branch_name: string
+  branch_code: string | null
+  branch_full: string | null
+  province: string | null
+  district: string | null
+  subdistrict: string | null
+  branch_ref: string | null
+  arrived_at: string
+  allow_min: number
+  due_at: string
+  left_at: string
+  late_min: number | null
+  on_time: boolean
+  dwell_min: number | null
+  note: string | null
+  by_name: string | null
+  closed_by_name: string | null
 }
 
 interface DbBreak {
@@ -1128,6 +1178,69 @@ Deno.serve(async (req) => {
                 ? { sack_id: r.key, tab: place.tab, row_no: place.row_no, exported_at: stamp }
                 : null
             }).filter(Boolean),
+          ),
+        })
+      }
+    }
+
+    /* --------------------------------------------- ประวัติการปล่อยรถ */
+    // ลงคนละไฟล์กับทุกอย่าง และไม่อยู่ใน scope 'all' ตั้งใจ
+    // โตเร็วที่สุดในระบบ พ่วงไปกับการส่งยอดเบิกประจำวันคือดึงของที่ไม่มีใครขอดู
+    if (scope === 'truck') {
+      const tkSheet = Deno.env.get('GSHEET_TRUCK_ID') || TRUCK_SHEET_ID
+      const tqs = new URLSearchParams({ select: '*', order: 'arrived_at.asc,id.asc' })
+      if (payload.from) tqs.append('arrived_at', `gte.${payload.from}`)
+      if (payload.to) tqs.append('arrived_at', `lte.${payload.to}`)
+
+      const runs = await dbPaged<DbTruck>(`truck_export_rows?${tqs}`)
+      const trows: OutRow[] = runs.map((t) => ({
+        key: t.id,
+        tab: `ปล่อยรถ ${monthOf(t.arrived_at)}`,
+        values: [
+          t.branch_name,
+          t.branch_code ?? '',
+          t.branch_full ?? '',
+          t.province ?? '',
+          t.district ?? '',
+          t.subdistrict ?? '',
+          t.branch_ref ?? '',
+          thaiDateTime(t.arrived_at),
+          thaiDateTime(t.due_at),
+          String(t.allow_min),
+          thaiDateTime(t.left_at),
+          t.dwell_min === null ? '' : String(t.dwell_min),
+          t.late_min ? String(t.late_min) : '',
+          t.on_time ? 'ตรงเวลา' : 'ตกเวลา',
+          t.by_name ?? '',
+          t.closed_by_name ?? '',
+          t.note ?? '',
+        ],
+      }))
+
+      if (trows.length > 0) {
+        const placed = await lookupPlaced('truck_sheet_exports', 'run_id', trows.map((r) => r.key))
+        const out = await pushRows(tkSheet, token, trows, placed, TRUCK_HEADER)
+        updated += out.updated
+        appended += out.appended
+        out.tabs.forEach((t) => tabs.add(t))
+
+        const stamp = new Date().toISOString()
+        await db('truck_sheet_exports?on_conflict=run_id', {
+          method: 'POST',
+          headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify(
+            trows
+              .map((r) => {
+                const fresh = out.fresh.findIndex((f) => f.key === r.key)
+                const place =
+                  fresh >= 0
+                    ? { tab: out.fresh[fresh].tab, row_no: out.rowNos[fresh] }
+                    : placed.get(r.key)
+                return place
+                  ? { run_id: r.key, tab: place.tab, row_no: place.row_no, exported_at: stamp }
+                  : null
+              })
+              .filter(Boolean),
           ),
         })
       }
