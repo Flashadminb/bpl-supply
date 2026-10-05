@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { WorkLinks } from '../../components/WorkLinks'
 import { useAuth } from '../../lib/auth'
 import { usePendingApprovals } from '../../lib/usePendingApprovals'
@@ -28,7 +28,21 @@ interface Link {
   audit?: boolean
 }
 
-const GROUPS: { title: string | null; links: Link[] }[] = [
+interface Group {
+  title: string | null
+  links?: Link[]
+  /**
+   * กลุ่มที่พับเก็บไว้ กดหัวข้อถึงจะกาง
+   *
+   * งาน STANDARD เป็นงานประจำสัปดาห์ ไม่ใช่งานประจำวัน แต่มีหน้าอยู่หกหน้า
+   * กางค้างไว้ตลอดแปลว่าเมนูที่เปิดทุกวันถูกดันลงไปจนต้องเลื่อนหา
+   * ของที่ใช้บ่อยในกลุ่มนี้คือสองหน้าประวัติ ซึ่งก็อปไปไว้ในกลุ่มตรวจสอบแล้ว
+   */
+  collapsible?: boolean
+  subs?: { title: string; links: Link[] }[]
+}
+
+const GROUPS: Group[] = [
   {
     title: null,
     links: [
@@ -45,6 +59,10 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
       { to: '/admin/meeting-evidence', label: 'หลักฐานการเข้าประชุม', icon: 'photo', audit: true },
       { to: '/admin/report/meeting', label: 'แดชบอร์ดประชุม', icon: 'pie', audit: true },
       { to: '/admin/supply-history', label: 'ประวัติเบิกสิ้นเปลือง', icon: 'history', audit: true },
+      // สองอันนี้อยู่ในงาน STANDARD ด้วย ตั้งใจให้ซ้ำ
+      // เพราะเปิดบ่อยพอ ๆ กับประวัติเบิก แต่ไปจมอยู่ในกลุ่มที่พับเก็บไว้
+      { to: '/admin/break/history', label: 'ประวัติเบรค', icon: 'history', audit: true },
+      { to: '/admin/os/scans', label: 'ประวัติการสแกน', icon: 'history', audit: true },
     ],
   },
   {
@@ -75,19 +93,25 @@ const GROUPS: { title: string | null; links: Link[] }[] = [
     ],
   },
   {
-    title: 'บัตร OS',
-    links: [
-      { to: '/guard', label: 'สแกนบัตร (หน้างาน)', icon: 'qr', audit: true },
-      { to: '/admin/os', label: 'รายชื่อและบัตร', icon: 'users', audit: true, end: true },
-      { to: '/admin/os/scans', label: 'ประวัติการสแกน', icon: 'history', audit: true },
-      { to: '/admin/os/print', label: 'พิมพ์บัตร', icon: 'qr', audit: true },
-    ],
-  },
-  {
-    title: 'บัตรเบรค',
-    links: [
-      { to: '/admin/break/history', label: 'ประวัติเบรค', icon: 'history', audit: true },
-      { to: '/admin/break/cards', label: 'จัดการบัตรเบรค', icon: 'qr', adminOnly: true },
+    title: 'งาน STANDARD',
+    collapsible: true,
+    subs: [
+      {
+        title: 'บัตร OS',
+        links: [
+          { to: '/guard', label: 'สแกนบัตร (หน้างาน)', icon: 'qr', audit: true },
+          { to: '/admin/os', label: 'รายชื่อและบัตร', icon: 'users', audit: true, end: true },
+          { to: '/admin/os/scans', label: 'ประวัติการสแกน', icon: 'history', audit: true },
+          { to: '/admin/os/print', label: 'พิมพ์บัตร', icon: 'qr', audit: true },
+        ],
+      },
+      {
+        title: 'บัตรเบรค',
+        links: [
+          { to: '/admin/break/history', label: 'ประวัติเบรค', icon: 'history', audit: true },
+          { to: '/admin/break/cards', label: 'จัดการบัตรเบรค', icon: 'qr', adminOnly: true },
+        ],
+      },
     ],
   },
   {
@@ -108,18 +132,82 @@ export default function AdminLayout() {
   const { profile, signOut, can } = useAuth()
   const isManager = can(...MANAGER_ROLES)
   const [menu, setMenu] = useState(false)
+  // null = ยังไม่เคยกด ให้ตัดสินจากหน้าที่ยืนอยู่ · true/false = คนกดเลือกเอง
+  const [openStd, setOpenStd] = useState<boolean | null>(null)
+  const here = useLocation().pathname
   const pending = usePendingApprovals()
   const exports = usePendingExports()
   const meetings = usePendingMeetings()
   const badgeOf = { approvals: pending.count, exports: exports.count, meetings: meetings.count }
 
+  const visible = (links: Link[]) =>
+    links
+      .filter((l) => !l.adminOnly || can('admin'))
+      // ผู้ตรวจสอบเข้าได้แค่สองหน้า ที่เหลือไม่ต้องขึ้นให้เห็นด้วยซ้ำ
+      .filter((l) => isManager || l.audit)
+
+  const item = (l: Link) => (
+    <NavLink
+      key={l.to}
+      to={l.to}
+      end={l.end}
+      onClick={() => setMenu(false)}
+      className={({ isActive }) =>
+        `flex min-h-tap items-center gap-[10px] rounded-btn px-3 text-base ${
+          isActive ? 'bg-dark-3 text-white' : 'text-dark-text hover:bg-dark-2'
+        }`
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <Icon name={l.icon} className={isActive ? '' : 'text-dark-muted'} />
+          <span className="flex-1 truncate">{l.label}</span>
+          {l.badge && badgeOf[l.badge] > 0 && (
+            <span className="rounded-pill bg-brand-500 px-2 font-display text-xs text-ink">
+              {badgeOf[l.badge] > 99 ? '99+' : badgeOf[l.badge]}
+            </span>
+          )}
+        </>
+      )}
+    </NavLink>
+  )
+
   const nav = (
     <nav className="flex flex-col gap-1">
       {GROUPS.map((g) => {
-        const links = g.links
-          .filter((l) => !l.adminOnly || can('admin'))
-          // ผู้ตรวจสอบเข้าได้แค่สองหน้า ที่เหลือไม่ต้องขึ้นให้เห็นด้วยซ้ำ
-          .filter((l) => isManager || l.audit)
+        if (g.collapsible) {
+          const subs = (g.subs ?? [])
+            .map((s) => ({ ...s, links: visible(s.links) }))
+            .filter((s) => s.links.length > 0)
+          if (subs.length === 0) return null
+          const inside = subs.some((s) => s.links.some((l) => here.startsWith(l.to)))
+          // ยืนอยู่ในหน้าของกลุ่มนี้แล้วยังพับไว้ คนจะหาไม่เจอว่าตัวเองอยู่ตรงไหน
+          const on = openStd ?? inside
+          return (
+            <div key={g.title} className="mt-3">
+              <button
+                type="button"
+                className="flex min-h-tap w-full items-center gap-2 rounded-btn px-3 text-left font-mono text-xs uppercase tracking-widest text-dark-muted hover:bg-dark-2"
+                onClick={() => setOpenStd(!on)}
+                aria-expanded={on}
+              >
+                <span className="flex-1">{g.title}</span>
+                <span aria-hidden>{on ? '▾' : '▸'}</span>
+              </button>
+              {on &&
+                subs.map((s) => (
+                  <div key={s.title} className="mt-1">
+                    <p className="mb-1 px-3 pl-5 font-mono text-[11px] uppercase tracking-widest text-dark-muted">
+                      {s.title}
+                    </p>
+                    {s.links.map(item)}
+                  </div>
+                ))}
+            </div>
+          )
+        }
+
+        const links = visible(g.links ?? [])
         if (links.length === 0) return null
         return (
           <div key={g.title ?? 'top'} className={g.title ? 'mt-3' : ''}>
@@ -128,31 +216,7 @@ export default function AdminLayout() {
                 {g.title}
               </p>
             )}
-            {links.map((l) => (
-              <NavLink
-                key={l.to}
-                to={l.to}
-                end={l.end}
-                onClick={() => setMenu(false)}
-                className={({ isActive }) =>
-                  `flex min-h-tap items-center gap-[10px] rounded-btn px-3 text-base ${
-                    isActive ? 'bg-dark-3 text-white' : 'text-dark-text hover:bg-dark-2'
-                  }`
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <Icon name={l.icon} className={isActive ? '' : 'text-dark-muted'} />
-                    <span className="flex-1 truncate">{l.label}</span>
-                    {l.badge && badgeOf[l.badge] > 0 && (
-                      <span className="rounded-pill bg-brand-500 px-2 font-display text-xs text-ink">
-                        {badgeOf[l.badge] > 99 ? '99+' : badgeOf[l.badge]}
-                      </span>
-                    )}
-                  </>
-                )}
-              </NavLink>
-            ))}
+            {links.map(item)}
           </div>
         )
       })}

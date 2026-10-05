@@ -378,6 +378,35 @@ export async function skipExportLines(
   return (data ?? 0) as number
 }
 
+/* ------------------------------------------------- สแกนอันเดียวจบ */
+
+export interface GuardScanHit {
+  kind: 'break' | 'os' | 'unknown'
+  code: string
+  /** มีเฉพาะตอน kind = 'break' · ผลเดียวกับที่หน้ากระดานเบรคใช้อยู่ */
+  scan?: unknown
+}
+
+/**
+ * โค้ดที่เพิ่งสแกนคือบัตรอะไร
+ *
+ * ฐานข้อมูลตัดสินจากการถามว่ามีอยู่จริงไหม ไม่ได้เดาจากหน้าตาของโค้ด
+ * และตั้งใจไม่เรียก os_scan ให้ เพราะ os_scan บันทึกประวัติทุกครั้งที่เรียก
+ * หน้าจอจึงไปเรียกเองตอนที่ตั้งใจจะสแกนจริงเท่านั้น
+ */
+export async function guardScan(code: string): Promise<GuardScanHit> {
+  const { data, error } = await supabase.rpc('guard_scan', { p_code: code })
+  if (error) throw new Error(readableError(error))
+  return data as GuardScanHit
+}
+
+/** ออกบัตร OS ใหม่ให้ทุกคนที่ยังใช้โค้ดรุ่นเก่า · ใบที่ปริ้นไปแล้วใช้ไม่ได้ทันที */
+export async function reissueOldOsCards(): Promise<{ reissued: number }> {
+  const { data, error } = await supabase.rpc('os_reissue_old_tokens')
+  if (error) throw new Error(readableError(error))
+  return (data ?? { reissued: 0 }) as { reissued: number }
+}
+
 /* ------------------------------------------------------- สถานะระบบ */
 
 /** โควตาแผนฟรีเหลือเท่าไหร่ — แอดมินและผู้ตรวจสอบเรียกได้ */

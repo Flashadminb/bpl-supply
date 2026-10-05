@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { guardScan } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { useAsync } from '../../lib/useAsync'
 import { stampLines } from '../../lib/image'
@@ -40,6 +42,8 @@ type Pending = { pass: Extract<BreakScan, { state: 'ready' | 'out' }>; code: str
 
 export default function BreakGuard() {
   const { profile } = useAuth()
+  const nav = useNavigate()
+  const [sp] = useSearchParams()
   const [tick, setTick] = useState(0)
   const board = useAsync(() => listBreakBoard(), [tick])
   const recent = useAsync(() => listBreakRecent(), [tick])
@@ -73,11 +77,20 @@ export default function BreakGuard() {
   // ใบที่ยังค้างขึ้นกระดานข้างบนอยู่แล้ว ตรงนี้เอาไว้ตอบว่า "เมื่อกี้ใบไหนออกไปตอนกี่โมง"
   const history = (recent.data ?? []).filter((r) => r.closed_at)
 
+  /**
+   * ส่องอะไรมาก็รับ · เป็นบัตร OS ก็ส่งต่อไปหน้าสแกนบัตร OS ให้เลย
+   * เหตุผลเดียวกับฝั่งโน้น รปภ ยืนประตูเดียว ของที่เดินผ่านมีสองอย่าง
+   */
   async function look(code: string) {
     setBusy(true)
     setErr(null)
     setMsg(null)
     try {
+      const what = await guardScan(code)
+      if (what.kind === 'os') {
+        nav(`/guard?token=${encodeURIComponent(what.code)}`)
+        return
+      }
       setHit(await scanBreakCard(code))
     } catch (e) {
       setErr((e as Error).message)
@@ -85,6 +98,16 @@ export default function BreakGuard() {
       setBusy(false)
     }
   }
+
+  // อีกหน้าส่งโค้ดมาให้ · ดูให้เลยครั้งเดียว
+  const fired = useRef('')
+  useEffect(() => {
+    const c = sp.get('code')
+    if (!c || fired.current === c) return
+    fired.current = c
+    void look(c)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sp])
 
   async function act(fn: () => Promise<unknown>, ok: string) {
     setBusy(true)
@@ -362,8 +385,8 @@ export default function BreakGuard() {
 
       {open && (
         <CodeScanner
-          title="ส่องที่ QR บนบัตรเบรค"
-          hint="ถือให้ QR อยู่กลางกรอบ"
+          title="ส่องที่ QR บนบัตร"
+          hint="ส่องได้ทั้งบัตรเบรคและบัตร OS ระบบแยกให้เอง"
           formats={['qr_code']}
           onCode={(code) => {
             setOpen(false)

@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { flagOsScan, scanOsCard } from '../../lib/api'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { flagOsScan, guardScan, scanOsCard } from '../../lib/api'
 import { readableError } from '../../lib/supabase'
 import { CodeScanner } from '../../components/CodeScanner'
 import { EvidenceImg } from '../../components/EvidenceThumbs'
@@ -28,6 +29,8 @@ const REASONS = [
 ]
 
 export default function GuardScan() {
+  const nav = useNavigate()
+  const [sp] = useSearchParams()
   const [open, setOpen] = useState(false)
   const [hit, setHit] = useState<OsScanHit | null>(null)
   const [busy, setBusy] = useState(false)
@@ -41,11 +44,38 @@ export default function GuardScan() {
   const [flagOpen, setFlagOpen] = useState(false)
   const [flagged, setFlagged] = useState(false)
 
+  // อีกหน้าส่งโค้ดมาให้ · สแกนให้เลยครั้งเดียว ไม่ต้องให้ยกมือถือส่องซ้ำ
+  const fired = useRef('')
+  useEffect(() => {
+    const t = sp.get('token')
+    if (!t || fired.current === t) return
+    fired.current = t
+    void handle(t)
+    // handle เป็นฟังก์ชันใหม่ทุก render ใส่เป็น dependency แล้วจะยิงซ้ำไม่จบ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sp])
+
+  /**
+   * สแกนอะไรมาก็รับ แล้วให้ฐานข้อมูลบอกว่าเป็นบัตรอะไร
+   *
+   * รปภ ยืนที่ประตูเดียว แต่ของที่เดินผ่านมีสองอย่าง บัตร OS กับบัตรเบรค
+   * บังคับให้เลือกหน้าก่อนสแกนคือบังคับให้เดาถูกก่อนจะได้เห็นคำตอบ
+   * ซึ่งเดาผิดเมื่อไหร่ก็ขึ้นว่าไม่รู้จักบัตร ทั้งที่บัตรนั้นใช้ได้ปกติ
+   *
+   * ไม่เรียก os_scan ก่อนถาม เพราะมันบันทึกประวัติทุกครั้งที่เรียก
+   * ยิงบัตรเบรคเข้าไปลองก็จะได้ประวัติสแกนปลอมเก็บไว้ทุกครั้ง
+   */
   async function handle(code: string) {
     setBusy(true)
     setErr(null)
     setFlagged(false)
     try {
+      const what = await guardScan(code)
+      if (what.kind === 'break') {
+        setOpen(false)
+        nav(`/break/board?code=${encodeURIComponent(what.code)}`)
+        return
+      }
       const res = await scanOsCard(code)
       setHit(res)
       setAt(new Date().toISOString())
@@ -234,7 +264,7 @@ export default function GuardScan() {
       {open && (
         <CodeScanner
           title="ส่องที่ QR บนบัตร"
-          hint="ถือให้ QR อยู่กลางกรอบ"
+          hint="ส่องได้ทั้งบัตร OS และบัตรเบรค ระบบแยกให้เอง"
           formats={['qr_code']}
           onCode={(code) => {
             void handle(code)

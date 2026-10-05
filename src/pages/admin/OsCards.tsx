@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import QRCode from 'qrcode'
-import { listOsPeople } from '../../lib/api'
+import { listOsPeople, reissueOldOsCards } from '../../lib/api'
 import { useAsync } from '../../lib/useAsync'
 import { useEvidenceImage } from '../../components/EvidenceThumbs'
-import { EmptyState, ErrorBox, Loading } from '../../components/ui'
+import { EmptyState, ErrorBox, Loading, Modal, Spinner } from '../../components/ui'
 import type { OsPerson } from '../../lib/types'
 
 /**
@@ -234,6 +234,20 @@ export default function OsCards() {
 
   const noCard = (list.data ?? []).filter((p) => p.is_active && !p.has_card).length
 
+  /**
+   * บัตรที่ยังใช้โค้ดรุ่นเก่า
+   *
+   * รุ่นเก่ายาว 32 ตัว พิมพ์เล็กใหญ่ปนกัน QR จึงต้องเข้ารหัสแบบไบต์
+   * ได้ตาราง 29x29 ช่อง ยัดลงบัตรกว้าง 54 มม. แล้วเหลือช่องละ 0.47 มม.
+   * เล็กเกินกว่ากล้องจะจับไว · รุ่นใหม่ 16 ตัวพิมพ์ใหญ่ล้วนได้ตาราง 21x21
+   * ขนาดเท่าเดิมแต่ช่องโตขึ้นเกือบเท่าตัว
+   */
+  const old = rows.filter((p) => (p.card_token?.length ?? 0) > 20)
+  const [reBusy, setReBusy] = useState(false)
+  const [reErr, setReErr] = useState<string | null>(null)
+  const [reDone, setReDone] = useState<number | null>(null)
+  const [reAsk, setReAsk] = useState(false)
+
   return (
     <div>
       <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -265,6 +279,71 @@ export default function OsCards() {
 
       {list.loading && <Loading />}
       {list.error && <ErrorBox message={list.error} onRetry={list.reload} />}
+
+      {reErr && (
+        <div className="no-print mb-3">
+          <ErrorBox message={reErr} />
+        </div>
+      )}
+      {reDone !== null && (
+        <p className="no-print mb-3 rounded-card border border-success/30 bg-success-bg p-3 text-sm text-success-txt">
+          ออกโค้ดใหม่ให้ {reDone} ใบแล้ว · บัตรเก่าที่ปริ้นไปแล้วใช้ไม่ได้ตั้งแต่ตอนนี้ กดพิมพ์ใหม่ได้เลย
+        </p>
+      )}
+
+      {old.length > 0 && (
+        <div className="no-print mb-3 rounded-card border border-warn/30 bg-warn-bg p-3 text-sm text-warn-txt">
+          <p className="font-display">มี {old.length} ใบที่ยังใช้โค้ดรุ่นเก่า QR จึงถี่และสแกนช้ากว่าที่ควร</p>
+          <p className="mt-1">
+            ออกโค้ดใหม่ได้ ช่องใน QR จะโตขึ้นเกือบเท่าตัวโดยบัตรขนาดเท่าเดิม
+            <br />
+            กดแล้วบัตรเก่าที่ปริ้นไปแล้วใช้ไม่ได้ทันที จึงควรกดตอนที่พร้อมปริ้นใหม่เท่านั้น
+          </p>
+          <button
+            type="button"
+            className="btn-primary mt-2 px-4 py-2 text-sm"
+            disabled={reBusy}
+            onClick={() => setReAsk(true)}
+          >
+            ออกโค้ดใหม่ {old.length} ใบ
+          </button>
+        </div>
+      )}
+
+      <Modal open={reAsk} onClose={() => setReAsk(false)} title={`ออกโค้ดใหม่ ${old.length} ใบ`}>
+        <p className="rounded-btn bg-danger-bg px-3 py-3 text-sm text-danger-txt">
+          บัตรเก่าที่ปริ้นแจกไปแล้วจะสแกนไม่ผ่านทันทีที่กด
+        </p>
+        <p className="mt-2 text-sm text-ink-500">
+          รายชื่อ รูป IMEI และเลขใบยังอยู่ครบ เปลี่ยนแค่โค้ดใน QR กับเลขรุ่นของใบ
+          <br />
+          กดแล้วให้พิมพ์บัตรชุดใหม่แจกแทนในรอบเดียวกันเลย
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" className="btn-ghost" onClick={() => setReAsk(false)}>
+            ยังไม่เอา
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={reBusy}
+            onClick={() => {
+              setReBusy(true)
+              setReErr(null)
+              void reissueOldOsCards()
+                .then((r) => {
+                  setReDone(r.reissued)
+                  setReAsk(false)
+                  list.reload()
+                })
+                .catch((e) => setReErr((e as Error).message))
+                .finally(() => setReBusy(false))
+            }}
+          >
+            {reBusy ? <Spinner /> : null} ออกโค้ดใหม่
+          </button>
+        </div>
+      </Modal>
 
       {noCard > 0 && (
         <p className="no-print mb-3 rounded-card border border-warn/30 bg-warn-bg p-3 text-sm text-warn-txt">
