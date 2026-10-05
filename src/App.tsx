@@ -64,6 +64,7 @@ const BreakHistory = lazy(() => import('./pages/admin/BreakHistory'))
 const BreakIssue = lazy(() => import('./pages/staff/BreakIssue'))
 const BreakGuard = lazy(() => import('./pages/staff/BreakGuard'))
 const BreakMine = lazy(() => import('./pages/staff/BreakMine'))
+const TruckBoard = lazy(() => import('./pages/trucks/TruckBoard'))
 
 function Guard({
   children,
@@ -240,6 +241,10 @@ export default function App() {
       {/* บัตรเบรค OS — หัวหน้างานปล่อย รปภ สแกน · คนอื่นไม่เห็นเมนูและเข้าไม่ได้ */}
       <Route path="/break" element={<Guard needsBreak="any"><BreakEntry /></Guard>} />
       <Route path="/break/board" element={<Guard needsBreak="any"><BreakBoardEntry /></Guard>} />
+      {/* ตารางปล่อยรถ — หน้าเต็มจอของตัวเอง ไม่ใช้กรอบของแอพเบิกของ
+          รอบแรกเปิดให้เจ้าของระบบคนเดียวตามที่สั่ง ยังไม่เปิดให้หน้างาน
+          ด่านจริงอยู่ที่ RLS ใน my_can_truck() เส้นทางนี้แค่ไม่ให้กดเข้ามาเจอหน้าว่าง */}
+      <Route path="/trucks" element={<Guard roles={['admin']}><TruckBoard /></Guard>} />
       <Route path="/assets" element={<Guard><AssetBasket /></Guard>} />
       <Route path="/assets/done/:refNo" element={<Guard><AssetDone /></Guard>} />
       <Route path="/assets/:typeCode" element={<Guard><AssetPick /></Guard>} />
