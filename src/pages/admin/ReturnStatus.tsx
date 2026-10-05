@@ -124,6 +124,18 @@ function mergeCards(rows: ReturnCard[]): Merged[] {
   return [...out.values()]
 }
 
+/**
+ * กะของใบนี้เป็นข้อความสั้น ๆ · ว่าง = ตอนเบิกคนนั้นยังไม่ได้ตั้งกะไว้
+ *
+ * กะถูกคัดลอกลงใบตั้งแต่ตอนเบิก ไม่ได้ join สดกับโปรไฟล์
+ * ตัวเลือกในดรอปดาวน์จึงต้องสร้างจากใบที่โหลดมาจริง ไม่ใช่จากตารางกะ
+ * ไม่งั้นจะมีกะที่เลือกแล้วว่างเปล่าให้กดอยู่เต็มไปหมด
+ */
+function shiftOf(c: { shift_start: string | null; shift_end: string | null }): string {
+  if (!c.shift_start || !c.shift_end) return ''
+  return `${c.shift_start.slice(0, 5)}–${c.shift_end.slice(0, 5)}`
+}
+
 /** สรุปทั้งใบ — นับเฉพาะของที่ต้องคืนจริง ตัวที่โอนไปแล้วไม่ใช่ภาระของคนนี้ */
 function summarise(c: { items: CardItem[] }) {
   const need = c.items.reduce((n, i) => n + i.need, 0)
@@ -148,6 +160,8 @@ export default function ReturnStatus() {
   // เลือกหลายใบเพื่อลบทีเดียว · เก็บเป็น key ของการ์ด แล้วค่อยแตกเป็นรหัสใบตอนลบ
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [showHistory, setShowHistory] = useState(false)
+  const [dept, setDept] = useState('')
+  const [shift, setShift] = useState('')
   const [view, setView] = useState<{ ids: string[]; at: number; title: string } | null>(null)
 
   const feed = useAsync(
@@ -156,19 +170,32 @@ export default function ReturnStatus() {
     [tab, from, to],
   )
 
+  // ตัวเลือกสร้างจากใบที่โหลดมาจริง · เปลี่ยนช่วงวันแล้วตัวเลือกเปลี่ยนตาม
+  const merged = useMemo(() => mergeCards(feed.data ?? []), [feed.data])
+  const deptOptions = useMemo(
+    () => [...new Set(merged.map((c) => c.dept_code).filter(Boolean) as string[])].sort(),
+    [merged],
+  )
+  const shiftOptions = useMemo(
+    () => [...new Set(merged.map(shiftOf).filter(Boolean))].sort(),
+    [merged],
+  )
+
   const cards = useMemo(() => {
     const s = search.trim().toLowerCase()
-    return mergeCards(feed.data ?? [])
+    return merged
       .map((c) => ({ c, sum: summarise(c) }))
       .filter(({ c, sum }) => {
         if (openOnly && sum.done) return false
+        if (dept && c.dept_code !== dept) return false
+        if (shift && shiftOf(c) !== shift) return false
         if (!s) return true
         const hay = `${c.refs.join(' ')} ${c.who} ${c.employee_code} ${c.dept_code ?? ''} ${c.items
           .map((i) => `${i.label} ${i.sub ?? ''}`)
           .join(' ')}`
         return hay.toLowerCase().includes(s)
       })
-  }, [feed.data, search, openOnly])
+  }, [merged, search, openOnly, dept, shift])
 
   function isOpen(c: Merged, done: boolean) {
     // ใบที่ยังไม่ครบกางไว้เลย ที่เหลือย่อไว้จนกว่าจะกด
@@ -215,6 +242,8 @@ export default function ReturnStatus() {
             onClick={() => {
               setTab('asset')
               setPicked(new Set())
+              setDept('')
+              setShift('')
             }}
           >
             อุปกรณ์ Asset
@@ -225,6 +254,8 @@ export default function ReturnStatus() {
             onClick={() => {
               setTab('supply')
               setPicked(new Set())
+              setDept('')
+              setShift('')
             }}
           >
             วัสดุสิ้นเปลือง
@@ -246,6 +277,46 @@ export default function ReturnStatus() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        <label className="sr-only" htmlFor="rs-dept">
+          แผนก
+        </label>
+        <select
+          id="rs-dept"
+          className="input h-tap max-w-[160px]"
+          value={dept}
+          onChange={(e) => {
+            setDept(e.target.value)
+            setPicked(new Set())
+          }}
+        >
+          <option value="">ทุกแผนก</option>
+          {deptOptions.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </select>
+
+        <label className="sr-only" htmlFor="rs-shift">
+          กะ
+        </label>
+        <select
+          id="rs-shift"
+          className="input h-tap max-w-[160px]"
+          value={shift}
+          onChange={(e) => {
+            setShift(e.target.value)
+            setPicked(new Set())
+          }}
+        >
+          <option value="">ทุกกะ</option>
+          {shiftOptions.map((v) => (
+            <option key={v} value={v}>
+              กะ {v}
+            </option>
+          ))}
+        </select>
+
         <button
           type="button"
           className={`chip ${openOnly ? 'chip-on' : ''}`}
@@ -300,7 +371,10 @@ export default function ReturnStatus() {
       {feed.error && <ErrorBox message={feed.error} onRetry={feed.reload} />}
 
       {!feed.loading && cards.length === 0 && (
-        <EmptyState title="ไม่มีใบเบิกในช่วงนี้" hint="ลองขยายช่วงวันที่ หรือล้างคำค้น" />
+        <EmptyState
+          title="ไม่มีใบเบิกตามตัวกรอง"
+          hint="ลองขยายช่วงวันที่ ล้างคำค้น หรือเลือกทุกแผนกกับทุกกะ"
+        />
       )}
 
       <BulkDeleteBar
