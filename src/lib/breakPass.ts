@@ -340,6 +340,21 @@ export async function listBreakRecent(hours = 24, limit = 80): Promise<BreakRow[
   return (data ?? []) as BreakRow[]
 }
 
+/**
+ * ลบใบเบรคถาวร · ย่อเป็นข้อความเก็บไว้ในประวัติให้ก่อนเสมอ
+ *
+ * ใบที่ยังไม่ปิดลบไม่ได้ ฐานข้อมูลจะปฏิเสธพร้อมบอกรหัสบัตร
+ * เพราะบัตรใบนั้นจะค้างสถานะถูกใช้อยู่ตลอดกาล เอาไปปล่อยซ้ำไม่ได้อีก
+ */
+export async function deleteBreakPasses(ids: number[], why?: string): Promise<number> {
+  const { data, error } = await supabase.rpc('break_passes_delete', {
+    p_ids: ids,
+    p_why: why?.trim() || null,
+  })
+  if (error) throw new Error(readableError(error))
+  return (data ?? 0) as number
+}
+
 export interface BreakPhoto {
   id: number
   phase: 'issue' | 'return'

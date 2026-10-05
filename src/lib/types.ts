@@ -364,8 +364,8 @@ export interface CardEvent {
  */
 export interface HistoryNote {
   id: number
-  /** 'issue' แจ้งเสีย · 'asset' เบิกคืนเครื่อง · 'supply' เบิกวัสดุ */
-  kind: 'issue' | 'asset' | 'supply'
+  /** 'issue' แจ้งเสีย · 'asset' เบิกคืนเครื่อง · 'supply' เบิกวัสดุ · 'break' บัตรเบรค */
+  kind: 'issue' | 'asset' | 'supply' | 'break'
   ref_no: string | null
   subject: string | null
   who: string | null

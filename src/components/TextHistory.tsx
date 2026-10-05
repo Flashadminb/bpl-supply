@@ -18,6 +18,7 @@ const KIND_TH: Record<HistoryNote['kind'], string> = {
   issue: 'แจ้งเสีย',
   asset: 'เบิก-คืนเครื่อง',
   supply: 'เบิกวัสดุ',
+  break: 'บัตรเบรค',
 }
 
 export function TextHistory({

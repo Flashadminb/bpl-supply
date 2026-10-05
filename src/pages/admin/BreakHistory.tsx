@@ -1,11 +1,14 @@
 import { Fragment, useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
 import { DateRangePicker } from '../../components/DateRangePicker'
+import { BulkDeleteBar, PickBox } from '../../components/BulkDeleteBar'
+import { TextHistory } from '../../components/TextHistory'
 import { EvidenceImg } from '../../components/EvidenceThumbs'
 import { EmptyState, ErrorBox, Loading, Spinner } from '../../components/ui'
 import { fmtDateTime } from '../../lib/format'
 import {
   closeBreakPasses,
+  deleteBreakPasses,
   countdown,
   listBreakBoard,
   listBreakPhotos,
@@ -26,7 +29,7 @@ import {
  * ไม่ใช่คนนั้นอยู่ข้างนอกจริง ๆ ถ้านับรวมสถิติทั้งเดือนจะเพี้ยนไปเลย
  */
 
-type Tab = 'history' | 'stuck'
+type Tab = 'history' | 'stuck' | 'trash'
 
 function dayKey(offset = 0): string {
   const d = new Date()
@@ -105,6 +108,9 @@ export default function BreakHistory() {
   const [onlyBan, setOnlyBan] = useState(false)
   const [onlyProblem, setOnlyProblem] = useState(false)
   const [open, setOpen] = useState<number | null>(null)
+  // ค้นหาด้วยรหัสบัตรหรือชื่อคนปล่อย · สองอย่างนี้คือสิ่งที่คนจำได้ตอนตามเรื่องย้อนหลัง
+  const [search, setSearch] = useState('')
+  const [picked, setPicked] = useState<Set<number>>(new Set())
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
@@ -123,8 +129,27 @@ export default function BreakHistory() {
   )
   const stuck = useAsync(() => listBreakBoard(), [tick])
 
-  const list = rows.data ?? []
+  const all = rows.data ?? []
+  const list = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return all
+    return all.filter((r) =>
+      `${r.card_code} ${r.issued_by_name} ${r.issued_by_code} ${r.nickname ?? ''} ${r.ref_no}`
+        .toLowerCase()
+        .includes(q),
+    )
+  }, [all, search])
   const stuckList = stuck.data ?? []
+  const allPicked = list.length > 0 && list.every((r) => picked.has(r.id))
+
+  function toggle(id: number) {
+    setPicked((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
   const now = Date.now()
 
   const sum = useMemo(() => {
@@ -165,6 +190,7 @@ export default function BreakHistory() {
           [
             ['history', 'ประวัติ'],
             ['stuck', `ใบที่ค้างอยู่ (${stuckList.length})`],
+            ['trash', 'ที่ลบแล้ว'],
           ] as [Tab, string][]
         ).map(([k, label]) => (
           <button
@@ -184,7 +210,9 @@ export default function BreakHistory() {
         </div>
       )}
 
-      {tab === 'stuck' ? (
+      {tab === 'trash' ? (
+        <TextHistory kind="break" fromISO={range.from} toISO={range.to} />
+      ) : tab === 'stuck' ? (
         <>
           <p className="mb-3 rounded-card border border-line bg-surface p-3 text-sm text-ink-500">
             ไม่มีปิดอัตโนมัติ · ใบที่ไม่มีใครมารับกลับจะมากองที่นี่รอคุณปิดเอง
@@ -247,6 +275,17 @@ export default function BreakHistory() {
             }}
           />
 
+          <input
+            className="input mt-3 max-w-[320px]"
+            type="search"
+            placeholder="ค้นหารหัสบัตร หรือชื่อคนปล่อย"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              setPicked(new Set())
+            }}
+          />
+
           <div className="my-3 flex flex-wrap gap-2">
             {(
               [
@@ -288,10 +327,38 @@ export default function BreakHistory() {
                 )}
               </p>
 
+              <BulkDeleteBar
+                n={picked.size}
+                noun="ใบ"
+                confirmLabel={`ลบ ${picked.size} ใบ`}
+                warning={
+                  <>
+                    ใบเบรคที่เลือกจะหายออกจากประวัติถาวร กู้คืนไม่ได้
+                    <br />
+                    ใบที่ยังไม่ปิดลบไม่ได้ ต้องไปกดปิดที่แท็บ &ldquo;ใบที่ค้างอยู่&rdquo; ก่อน
+                  </>
+                }
+                onClear={() => setPicked(new Set())}
+                onDelete={async (why) => {
+                  await deleteBreakPasses([...picked], why)
+                  setPicked(new Set())
+                  setTick((n) => n + 1)
+                }}
+              />
+
               <div className="overflow-x-auto rounded-card border border-line">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-line text-left text-xs text-ink-500">
+                      <th className="w-[44px] p-2">
+                        <PickBox
+                          on={allPicked}
+                          label="เลือกทั้งหมด"
+                          onToggle={() =>
+                            setPicked(allPicked ? new Set() : new Set(list.map((r) => r.id)))
+                          }
+                        />
+                      </th>
                       <th className="p-2">บัตร</th>
                       <th className="p-2">เหตุผล · ปล่อยโดย</th>
                       <th className="p-2">ยื่น</th>
@@ -311,6 +378,14 @@ export default function BreakHistory() {
                           className="cursor-pointer border-b border-line-2 hover:bg-ink/5"
                           onClick={() => setOpen(open === r.id ? null : r.id)}
                         >
+                          {/* กดช่องติ๊กต้องไม่พาแถวกางออกด้วย คนละความตั้งใจกัน */}
+                          <td className="p-2" onClick={(e) => e.stopPropagation()}>
+                            <PickBox
+                              on={picked.has(r.id)}
+                              label={`เลือกใบ ${r.card_code}`}
+                              onToggle={() => toggle(r.id)}
+                            />
+                          </td>
                           <td className="p-2 font-mono font-bold">{r.card_code}</td>
                           <td className="p-2">
                             {r.reason_label}
@@ -331,7 +406,7 @@ export default function BreakHistory() {
                         </tr>
                         {open === r.id && (
                           <tr className="border-b border-line-2 bg-ink/5">
-                            <td colSpan={8} className="p-3">
+                            <td colSpan={9} className="p-3">
                               <p className="mb-2 text-xs text-ink-500">
                                 {r.ref_no} · ขอ {r.minutes} นาที · {r.people} คน
                                 {r.returned_people !== null && ` · กลับ ${r.returned_people} คน`}

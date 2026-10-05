@@ -318,7 +318,7 @@ export async function listReturnCards(args: {
  * อ่านย้อนหลังได้โดยไม่ต้องโหลดรูปสักใบ ซึ่งเร็วกว่ามากและไม่กินโควตา
  */
 export async function listHistoryNotes(args: {
-  kind?: 'issue' | 'asset' | 'supply'
+  kind?: 'issue' | 'asset' | 'supply' | 'break'
   fromISO?: string
   toISO?: string
   limit?: number
