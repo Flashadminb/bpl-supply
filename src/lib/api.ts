@@ -889,7 +889,7 @@ export async function exportToSheet(payload: {
    * ว่าง = ส่งทุกชุด · 'sack' = เฉพาะกระสอบ ซึ่งลงคนละไฟล์กับของเบิก
    * 'osscan' = ประวัติสแกนบัตร OS ซึ่งไม่อยู่ใน 'all' เพราะโตวันละหลายร้อยแถว
    */
-  scope?: 'all' | 'supply' | 'asset' | 'by' | 'meeting' | 'sack' | 'osscan'
+  scope?: 'all' | 'supply' | 'asset' | 'by' | 'meeting' | 'sack' | 'osscan' | 'break'
 }) {
   return callFunction<{ updated: number; appended: number; sheet: string }>(
     'export-sheet',

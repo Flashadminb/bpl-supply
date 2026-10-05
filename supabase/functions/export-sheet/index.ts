@@ -19,7 +19,7 @@
 // ไม่บังคับ: GSHEET_MEETING_ID, GSHEET_SACK_ID, GSHEET_OSSCAN_ID (ไม่ตั้งก็ใช้ไฟล์ที่ฝังไว้ในโค้ด)
 // =====================================================================
 
-const VERSION = 'skip-v13'
+const VERSION = 'break-v14'
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
 
 const HEADER = ['เลขที่คำขอ', 'วันเวลา', 'ผู้เบิก (ฮับ)', 'วัสดุ', 'จำนวน', 'หลักฐาน', 'Drive File ID']
@@ -72,6 +72,39 @@ const BY_HEADER = [
 const MEETING_SHEET_ID = '15_ES88gZhq8ZWBaAwoFekP-3o3HKnNW52jPimSIjHRY'
 const SACK_SHEET_ID = '1ZqSEG1dTPlCcC9mAJJSwcOQz8vdXyF9rF-RfzB5bvSI'
 const OSSCAN_SHEET_ID = '1Suklni1sHj_waOIRMnu4TU71D8Cdujju6eJbFSddQ74'
+const BREAK_SHEET_ID = '1Mv7zInXLBid27HrdWlwkwbmrd1rHXcYjfhZeY-KYmno'
+
+/**
+ * ประวัติบัตรเบรค
+ *
+ * ชีตนี้เป็นที่เก็บระยะยาวแทนฐานข้อมูล เพราะแผนคือลบใบที่เก่ากว่าสามเดือนทิ้ง
+ * จึงใส่ลิงก์รูปในไดร์ฟลงไปด้วย ลบจากฐานข้อมูลแล้วยังตามดูรูปจากชีตได้
+ *
+ * ส่งเฉพาะใบที่ปิดแล้ว ใบที่ยังค้างอยู่ยังไม่รู้ผล ส่งไปก็ต้องส่งซ้ำอยู่ดี
+ * และการเห็นใบค้างในชีตทำให้คนอ่านเข้าใจผิดว่ามีคนยังไม่กลับ
+ */
+const BREAK_HEADER = [
+  'เลขที่ใบ',
+  'บัตร',
+  'เหตุผล',
+  'จำนวนคน',
+  'ขอไว้ (นาที)',
+  'ยื่นบัตร',
+  'ผ่านประตู',
+  'กลับ',
+  'เดิน',
+  'อยู่ข้างนอก',
+  'เกินเวลา',
+  'กลับครบไหม',
+  'ปล่อยโดย',
+  'รหัสพนักงาน',
+  'รับกลับโดย',
+  'ปิดแบบ',
+  'ช่วงห้าม',
+  'หมายเหตุ',
+  'รูปตอนปล่อย',
+  'รูปตอนรับกลับ',
+]
 
 /**
  * ประวัติการสแกนบัตร OS ที่ป้อม
@@ -486,6 +519,34 @@ interface DbOsScan {
   guard_code: string | null
 }
 
+interface DbBreak {
+  id: number
+  ref_no: string
+  card_code: string
+  reason_label: string
+  people: number
+  minutes: number
+  nickname: string | null
+  issued_at: string
+  gate_out_at: string | null
+  gate_out_people: number | null
+  closed_at: string | null
+  close_kind: string | null
+  returned_people: number | null
+  problem_note: string | null
+  in_ban: boolean
+  ban_reason: string | null
+  issued_by_name: string | null
+  issued_by_code: string | null
+  closed_by_name: string | null
+  walk_sec: number | null
+  out_sec: number | null
+  over_sec: number | null
+  missing_people: number
+  issue_links: string | null
+  return_links: string | null
+}
+
 interface DbBy {
   id: string
   ref_no: string
@@ -525,6 +586,13 @@ function monthOf(iso: string): string {
   const y = Number(parts.find((p) => p.type === 'year')?.value ?? '0') + 543
   const m = parts.find((p) => p.type === 'month')?.value ?? '01'
   return `${y}-${m}`
+}
+
+/** วินาทีเป็น นาที:วินาที · ช่องนี้คนอ่านด้วยตาในชีต ไม่ได้เอาไปคำนวณต่อ */
+function mmss(sec: number | null): string {
+  if (sec === null || sec === undefined) return ''
+  const n = Math.max(0, Math.round(sec))
+  return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`
 }
 
 function thaiDateTime(iso: string): string {
@@ -1060,6 +1128,78 @@ Deno.serve(async (req) => {
                 ? { sack_id: r.key, tab: place.tab, row_no: place.row_no, exported_at: stamp }
                 : null
             }).filter(Boolean),
+          ),
+        })
+      }
+    }
+
+    /* ------------------------------------------------ ประวัติบัตรเบรค */
+    // ลงคนละไฟล์กับของเบิก คนที่เปิดดูคือฝ่ายมาตรฐานกับผู้ตรวจสอบ
+    //
+    // ไม่อยู่ใน scope 'all' ตั้งใจ เหตุผลเดียวกับประวัติสแกน
+    // ใบเบรคเกิดวันละหลายสิบใบ พ่วงไปกับการส่งยอดเบิกประจำวันคือดึงของที่ไม่มีใครขอดู
+    if (scope === 'break') {
+      const bkSheet = Deno.env.get('GSHEET_BREAK_ID') || BREAK_SHEET_ID
+      const bqs = new URLSearchParams({
+        select: '*',
+        order: 'issued_at.asc,id.asc',
+      })
+      if (payload.from) bqs.append('issued_at', `gte.${payload.from}`)
+      if (payload.to) bqs.append('issued_at', `lte.${payload.to}`)
+
+      const passes = await dbPaged<DbBreak>(`break_export_rows?${bqs}`)
+      const brows: OutRow[] = passes.map((b) => ({
+        key: b.id,
+        tab: `เบรค ${monthOf(b.issued_at)}`,
+        values: [
+          b.ref_no,
+          b.card_code,
+          b.reason_label + (b.nickname ? ` · ${b.nickname}` : ''),
+          String(b.people),
+          String(b.minutes),
+          thaiDateTime(b.issued_at),
+          b.gate_out_at ? thaiDateTime(b.gate_out_at) : '',
+          b.closed_at ? thaiDateTime(b.closed_at) : '',
+          mmss(b.walk_sec),
+          mmss(b.out_sec),
+          (b.over_sec ?? 0) > 0 ? mmss(b.over_sec) : '',
+          b.missing_people > 0 ? `ขาด ${b.missing_people} คน` : 'ครบ',
+          b.issued_by_name ?? '',
+          b.issued_by_code ?? '',
+          b.closed_by_name ?? '',
+          b.close_kind ?? '',
+          b.in_ban ? (b.ban_reason ? `ใช่ · ${b.ban_reason}` : 'ใช่') : '',
+          b.problem_note ?? '',
+          b.issue_links ?? '',
+          b.return_links ?? '',
+        ],
+      }))
+
+      if (brows.length > 0) {
+        const placed = await lookupPlaced('break_sheet_exports', 'pass_id', brows.map((r) => r.key))
+        const out = await pushRows(bkSheet, token, brows, placed, BREAK_HEADER)
+        updated += out.updated
+        appended += out.appended
+        out.tabs.forEach((t) => tabs.add(t))
+
+        // แถวที่เคยส่งแล้วก็ต้องอัปเวลาด้วย ไม่งั้นตัวนับ needs_push จะค้างอยู่ตลอด
+        const stamp = new Date().toISOString()
+        await db('break_sheet_exports?on_conflict=pass_id', {
+          method: 'POST',
+          headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify(
+            brows
+              .map((r) => {
+                const fresh = out.fresh.findIndex((f) => f.key === r.key)
+                const place =
+                  fresh >= 0
+                    ? { tab: out.fresh[fresh].tab, row_no: out.rowNos[fresh] }
+                    : placed.get(r.key)
+                return place
+                  ? { pass_id: r.key, tab: place.tab, row_no: place.row_no, exported_at: stamp }
+                  : null
+              })
+              .filter(Boolean),
           ),
         })
       }

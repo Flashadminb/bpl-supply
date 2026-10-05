@@ -4,11 +4,14 @@ import { DateRangePicker } from '../../components/DateRangePicker'
 import { BulkDeleteBar, PickBox } from '../../components/BulkDeleteBar'
 import { TextHistory } from '../../components/TextHistory'
 import { EvidenceImg } from '../../components/EvidenceThumbs'
-import { EmptyState, ErrorBox, Loading, Spinner } from '../../components/ui'
+import { EmptyState, ErrorBox, Loading, Modal, Spinner } from '../../components/ui'
 import { fmtDateTime } from '../../lib/format'
+import { exportToSheet } from '../../lib/api'
 import {
   closeBreakPasses,
+  countBreakExportRows,
   deleteBreakPasses,
+  purgeExportedBreaks,
   countdown,
   listBreakBoard,
   listBreakPhotos,
@@ -128,6 +131,28 @@ export default function BreakHistory() {
     [range, onlyOver, onlyBan, onlyProblem, tick],
   )
   const stuck = useAsync(() => listBreakBoard(), [tick])
+  const pendingRange = useAsync(() => countBreakExportRows(range), [range, tick])
+  const pendingAll = useAsync(() => countBreakExportRows(), [tick])
+  const outside = Math.max(0, (pendingAll.data ?? 0) - (pendingRange.data ?? 0))
+
+  const [pushing, setPushing] = useState(false)
+  const [pushed, setPushed] = useState<string | null>(null)
+  const [purgeAsk, setPurgeAsk] = useState(false)
+
+  async function pushSheet() {
+    setPushing(true)
+    setPushed(null)
+    setErr(null)
+    try {
+      const res = await exportToSheet({ scope: 'break', from: range.from, to: range.to })
+      setPushed(`เพิ่มใหม่ ${res.appended} แถว · อัปของเดิม ${res.updated} แถว · ${res.sheet}`)
+      setTick((n) => n + 1)
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setPushing(false)
+    }
+  }
 
   const all = rows.data ?? []
   const list = useMemo(() => {
@@ -184,6 +209,77 @@ export default function BreakHistory() {
           ช่อง &ldquo;เดิน&rdquo; ต่างกันตามระยะทาง ไม่ใช่ความขยัน
         </p>
       </div>
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        <button type="button" className="btn-ghost px-4 py-2 text-sm" onClick={pushSheet} disabled={pushing}>
+          {pushing ? <Spinner /> : 'ส่งลง Google Sheet'}
+          {!pushing && (pendingRange.data ?? 0) > 0 && (
+            <span className="ml-1 rounded-pill bg-brand-500 px-2 font-display text-xs text-ink">
+              {(pendingRange.data ?? 0) > 99 ? '99+' : pendingRange.data}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          className="btn-ghost px-4 py-2 text-sm"
+          onClick={() => setPurgeAsk(true)}
+          disabled={busy || pushing}
+        >
+          ลบของเก่ากว่า 3 เดือน
+        </button>
+      </div>
+
+      {pushed && (
+        <div className="mb-3 rounded-card border border-success/25 bg-success-bg p-3 text-sm text-success-txt">
+          ส่งลงชีตแล้ว · {pushed}
+          <button type="button" className="ml-2 underline" onClick={() => setPushed(null)}>
+            ปิด
+          </button>
+        </div>
+      )}
+
+      {outside > 0 && (
+        <p className="mb-3 rounded-card border border-warn/30 bg-warn-bg p-3 text-sm text-warn-txt">
+          ยังมีอีก {outside} ใบที่ยังไม่ได้ส่งลงชีต แต่อยู่นอกช่วงวันที่ที่เลือกอยู่ —
+          ต้องขยายช่วงวันที่ก่อน ถึงจะกดส่งของพวกนั้นได้
+        </p>
+      )}
+
+      <Modal open={purgeAsk} onClose={() => setPurgeAsk(false)} title="ลบประวัติเบรคที่เก่ากว่า 3 เดือน">
+        <p className="rounded-btn bg-danger-bg px-3 py-3 text-sm text-danger-txt">
+          ลบใบที่ปิดแล้วและเก่ากว่า 90 วันออกจากฐานข้อมูลถาวร
+        </p>
+        <p className="mt-2 text-sm text-ink-500">
+          ลบได้เฉพาะใบที่ส่งลงชีตไปแล้วเท่านั้น ถ้ามีใบที่ยังไม่ได้ส่งปนอยู่ ระบบจะไม่ลบอะไรเลย
+          และบอกว่าเหลือกี่ใบที่ต้องกดส่งก่อน
+          <br />
+          ชีตเก็บครบทุกช่องรวมลิงก์รูปในไดร์ฟ ย้อนดูได้เหมือนเดิมทุกอย่าง
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" className="btn-ghost" onClick={() => setPurgeAsk(false)}>
+            ยกเลิก
+          </button>
+          <button
+            type="button"
+            className="h-tap rounded-btn bg-danger px-4 text-white"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true)
+              setErr(null)
+              void purgeExportedBreaks(90)
+                .then((r) => {
+                  setPushed(`ลบของเก่าไป ${r.deleted} ใบ`)
+                  setPurgeAsk(false)
+                  setTick((n) => n + 1)
+                })
+                .catch((e) => setErr((e as Error).message))
+                .finally(() => setBusy(false))
+            }}
+          >
+            {busy ? <Spinner /> : null} ลบของเก่า
+          </button>
+        </div>
+      </Modal>
 
       <div className="mb-4 flex gap-2">
         {(

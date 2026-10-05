@@ -355,6 +355,39 @@ export async function deleteBreakPasses(ids: number[], why?: string): Promise<nu
   return (data ?? 0) as number
 }
 
+/**
+ * ใบที่ปิดแล้วและยังไม่ได้ส่งลงชีต
+ *
+ * ไม่ใส่ช่วงวัน = นับทั้งหมด ไว้เตือนว่ามีของค้างอยู่นอกช่วงที่กำลังดู
+ * ซึ่งเป็นกับดักที่เจอจริงกับฝั่งประวัติสแกนมาแล้ว กดส่งแล้วตัวเลขไม่ลด
+ * เพราะของค้างอยู่เดือนก่อนหน้า โดยหน้าจอไม่ได้บอกอะไรเลย
+ */
+export async function countBreakExportRows(args?: {
+  from: string
+  to: string
+}): Promise<number> {
+  let q = supabase
+    .from('break_export_rows')
+    .select('id', { count: 'exact', head: true })
+    .eq('needs_push', true)
+  if (args) q = q.gte('issued_at', args.from).lte('issued_at', args.to)
+  const { count, error } = await q
+  if (error) throw new Error(readableError(error))
+  return count ?? 0
+}
+
+/**
+ * ลบใบที่เก่ากว่าที่กำหนด โดยต้องส่งลงชีตไปแล้วเท่านั้น
+ *
+ * ฐานข้อมูลจะปฏิเสธถ้ามีใบที่เก่าพอจะลบแต่ยังไม่ได้ส่ง
+ * เพราะเจตนาของการลบคือย้ายที่เก็บไปไว้ที่ชีต ไม่ใช่ทำข้อมูลหาย
+ */
+export async function purgeExportedBreaks(days = 90): Promise<{ deleted: number }> {
+  const { data, error } = await supabase.rpc('break_purge_exported', { p_days: days })
+  if (error) throw new Error(readableError(error))
+  return (data ?? { deleted: 0 }) as { deleted: number }
+}
+
 export interface BreakPhoto {
   id: number
   phase: 'issue' | 'return'
