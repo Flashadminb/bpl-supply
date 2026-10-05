@@ -98,21 +98,6 @@ export default function Home() {
             <div className="flex flex-col items-end gap-1">
               <span className="flex items-center gap-2">
                 <MeetingCheckIn />
-                {/* ตารางปล่อยรถ · ยังเปิดให้เจ้าของระบบคนเดียว ตามที่สั่งไว้ว่าขอดูก่อน */}
-                {can('admin') && (
-                  <Link
-                    to="/trucks"
-                    aria-label="ตารางปล่อยรถ"
-                    className="flex h-tap w-tap items-center justify-center rounded-btn"
-                  >
-                    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <path d="M2 7h10v9H2z" />
-                      <path d="M12 10h4.5l3.5 3.5V16H12z" />
-                      <circle cx="7" cy="18" r="1.8" />
-                      <circle cx="17" cy="18" r="1.8" />
-                    </svg>
-                  </Link>
-                )}
                 <WorkLinks />
               </span>
               <Link to="/account" className="min-h-tap px-1 py-2 text-sm underline">
@@ -185,6 +170,31 @@ export default function Home() {
             <span className="flex items-center gap-2">
               {/* เช็คอินประชุมเห็นทุกคน ไม่ใช่ของแอดมิน */}
               <MeetingCheckIn />
+              {/* ตารางปล่อยรถ · ยังเปิดให้เจ้าของระบบคนเดียว ตามที่สั่งไว้ว่าขอดูก่อน */}
+              {can('admin') && (
+                <Link
+                  to="/trucks"
+                  aria-label="ตารางปล่อยรถ"
+                  className="flex h-tap w-tap items-center justify-center rounded-btn"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="26"
+                    height="26"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.9"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                  >
+                    <path d="M2 7h10v9H2z" />
+                    <path d="M12 10h4.5l3.5 3.5V16H12z" />
+                    <circle cx="7" cy="18" r="1.8" />
+                    <circle cx="17" cy="18" r="1.8" />
+                  </svg>
+                </Link>
+              )}
               {/* ลิงก์งาน — เห็นเฉพาะแอดมิน เจ้าของระบบ และผู้ตรวจสอบ */}
               <WorkLinks />
               {can(...MANAGER_ROLES) && <NotifyBell />}
