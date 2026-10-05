@@ -13,9 +13,11 @@ import {
   breakProblem,
   breakReturn,
   countdown,
+  secToMMSS,
   breakBanNext,
   breakBanNow,
   listBreakBoard,
+  listBreakRecent,
   scanBreakCard,
   type BreakScan,
 } from '../../lib/breakPass'
@@ -40,6 +42,7 @@ export default function BreakGuard() {
   const { profile } = useAuth()
   const [tick, setTick] = useState(0)
   const board = useAsync(() => listBreakBoard(), [tick])
+  const recent = useAsync(() => listBreakRecent(), [tick])
   const ban = useAsync(() => breakBanNow(), [tick])
   const banNext = useAsync(() => breakBanNext(), [tick])
   const [open, setOpen] = useState(false)
@@ -67,6 +70,8 @@ export default function BreakGuard() {
   }, [])
 
   const rows = board.data ?? []
+  // ใบที่ยังค้างขึ้นกระดานข้างบนอยู่แล้ว ตรงนี้เอาไว้ตอบว่า "เมื่อกี้ใบไหนออกไปตอนกี่โมง"
+  const history = (recent.data ?? []).filter((r) => r.closed_at)
 
   async function look(code: string) {
     setBusy(true)
@@ -316,12 +321,50 @@ export default function BreakGuard() {
             })}
           </ul>
         )}
+
+        {/* ───────── ประวัติวันนี้ ───────── */}
+        {history.length > 0 && (
+          <>
+            <h2 className="mb-2 mt-6 font-display text-sm text-ink-500">
+              ปิดไปแล้วใน 24 ชั่วโมง · {history.length} ใบ
+            </h2>
+            <ul className="space-y-1.5">
+              {history.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex flex-wrap items-center gap-2 rounded-card border border-line-2 bg-surface px-3 py-2 text-xs"
+                >
+                  <span className="font-mono text-sm font-bold">{r.card_code}</span>
+                  <span className="min-w-0 flex-1 text-ink-500">
+                    ออก {fmtDateTime(r.gate_out_at ?? r.issued_at).slice(-5)} · กลับ{' '}
+                    {r.closed_at ? fmtDateTime(r.closed_at).slice(-5) : '—'}
+                    <br />
+                    {r.reason_label} · {r.gate_out_people ?? r.people} คน · ปล่อยโดย{' '}
+                    {r.issued_by_name}
+                  </span>
+                  {(r.over_sec ?? 0) > 0 ? (
+                    <span className="badge-dang">เกิน {secToMMSS(r.over_sec)}</span>
+                  ) : (
+                    <span className="badge-ok">ตรงเวลา</span>
+                  )}
+                  {r.missing_people > 0 && (
+                    <span className="badge-dang">ขาด {r.missing_people} คน</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 rounded-btn bg-ink/5 px-3 py-2 text-xs text-ink-500">
+              เก็บย้อนหลัง 24 ชั่วโมงพอให้ตอบที่ประตูได้ · ประวัติเต็มอยู่ในเมนูหลังบ้าน
+            </p>
+          </>
+        )}
       </StaffPage>
 
       {open && (
         <CodeScanner
           title="ส่องที่ QR บนบัตรเบรค"
           hint="ถือให้ QR อยู่กลางกรอบ"
+          formats={['qr_code']}
           onCode={(code) => {
             setOpen(false)
             void look(code)

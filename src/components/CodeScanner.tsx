@@ -14,12 +14,20 @@ export function CodeScanner({
   hint,
   onCode,
   onClose,
+  formats = ['qr_code', 'code_128', 'ean_13'],
 }: {
   title: string
   hint?: string
   /** คืนข้อความสั้น ๆ ไปโชว์เป็นแถบผลลัพธ์ · ok=false จะขึ้นสีแดง */
   onCode: (code: string) => { ok: boolean; message: string } | void
   onClose: () => void
+  /**
+   * ชนิดโค้ดที่หน้านั้นต้องอ่านจริง
+   *
+   * ตัวอ่านต้องลองถอดรหัสทีละชนิดจนครบทุกชนิดที่สั่งไว้ก่อนจะบอกว่าเฟรมนี้ไม่มีอะไร
+   * หน้าที่อ่านแค่ QR จึงไม่ควรสั่งให้มันไล่หาบาร์โค้ดเส้นด้วย เสียเวลาทุกเฟรมเปล่า ๆ
+   */
+  formats?: string[]
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const controlsRef = useRef<IScannerControls | null>(null)
@@ -52,6 +60,10 @@ export function CodeScanner({
     onCodeRef.current = onCode
   })
 
+  // ด้วยเหตุผลเดียวกัน · อาร์เรย์ที่เขียนสดตรงที่เรียกก็เป็นของใหม่ทุก render
+  const formatsRef = useRef(formats)
+  formatsRef.current = formats
+
   const handle = useCallback((code: string) => {
     const now = Date.now()
     if (lastRef.current.code === code && now - lastRef.current.at < 1200) return
@@ -70,7 +82,13 @@ export function CodeScanner({
     async function start() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } },
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            // QR บนบัตรเล็กและอยู่ใกล้มือถือ กล้องหลังส่วนใหญ่ตั้งโฟกัสไกลไว้เป็นค่าเริ่มต้น
+            // ขอโฟกัสต่อเนื่องไว้ ภาพจะคมพอให้ถอดรหัสได้เองโดยไม่ต้องขยับหาระยะ
+            focusMode: 'continuous',
+          } as MediaTrackConstraints,
           audio: false,
         })
         if (cancelled) {
@@ -98,7 +116,26 @@ export function CodeScanner({
         ).BarcodeDetector
 
         if (Detector) {
-          const detector = new Detector({ formats: ['qr_code', 'code_128', 'ean_13'] })
+          const detector = new Detector({ formats: formatsRef.current })
+
+          /**
+           * ขอเฟรมถัดไปของวิดีโอ ไม่ใช่เฟรมถัดไปของการวาดจอ
+           *
+           * requestAnimationFrame ยิงตามรอบรีเฟรชจอ ซึ่งมักเร็วกว่าเฟรมที่กล้องส่งมาจริง
+           * ครึ่งหนึ่งของรอบจึงเอาภาพเดิมไปถอดรหัสซ้ำ เปลืองซีพียูโดยไม่ได้ข้อมูลใหม่
+           * แล้วพอซีพียูตัน รอบที่มีเฟรมใหม่จริงก็ช้าตามไปด้วย
+           *
+           * requestVideoFrameCallback ยิงเมื่อมีเฟรมใหม่จากกล้องเท่านั้น
+           * เบราว์เซอร์ที่ไม่มีให้ใช้ก็ตกลงไปใช้ของเดิม
+           */
+          const nextFrame = (fn: () => void) => {
+            const v = videoRef.current as (HTMLVideoElement & {
+              requestVideoFrameCallback?: (cb: () => void) => number
+            }) | null
+            if (v?.requestVideoFrameCallback) v.requestVideoFrameCallback(fn)
+            else rafRef.current = requestAnimationFrame(fn)
+          }
+
           const loop = async () => {
             if (cancelled || !videoRef.current) return
             try {
@@ -107,9 +144,9 @@ export function CodeScanner({
             } catch {
               /* เฟรมนี้อ่านไม่ได้ ข้ามไป */
             }
-            rafRef.current = requestAnimationFrame(() => void loop())
+            nextFrame(() => void loop())
           }
-          rafRef.current = requestAnimationFrame(() => void loop())
+          nextFrame(() => void loop())
         } else {
           const reader = new BrowserMultiFormatReader()
           controlsRef.current = await reader.decodeFromVideoElement(video, (result) => {

@@ -63,6 +63,7 @@ const BreakCards = lazy(() => import('./pages/admin/BreakCards'))
 const BreakHistory = lazy(() => import('./pages/admin/BreakHistory'))
 const BreakIssue = lazy(() => import('./pages/staff/BreakIssue'))
 const BreakGuard = lazy(() => import('./pages/staff/BreakGuard'))
+const BreakMine = lazy(() => import('./pages/staff/BreakMine'))
 
 function Guard({
   children,
@@ -147,6 +148,19 @@ function BreakEntry() {
 }
 
 /**
+ * กระดานของใครของมัน
+ *
+ * รปภ ได้กระดานที่มีปุ่มสแกน เพราะเขายืนอยู่ที่ประตูและเป็นคนกดรับกลับ
+ * หัวหน้างานได้บัตรของตัวเอง เพราะเขาไม่ได้ยืนที่ประตู ไม่มีอะไรให้สแกน
+ * ของเดิมสองคนนี้เห็นหน้าเดียวกัน หัวหน้าจึงมีปุ่มสแกนที่กดได้จริง
+ * ทั้งที่การกดรับกลับเป็นหน้าที่ของ รปภ คนเดียว
+ */
+function BreakBoardEntry() {
+  const { profile } = useAuth()
+  return canBreakGuard(profile) ? <BreakGuard /> : <BreakMine />
+}
+
+/**
  * หน้าแรกของฝั่งแอดมิน
  *
  * แดชบอร์ดเป็นของแอดมินขึ้นไป ผู้ตรวจสอบเปิดไม่ได้
@@ -225,7 +239,7 @@ export default function App() {
       />
       {/* บัตรเบรค OS — หัวหน้างานปล่อย รปภ สแกน · คนอื่นไม่เห็นเมนูและเข้าไม่ได้ */}
       <Route path="/break" element={<Guard needsBreak="any"><BreakEntry /></Guard>} />
-      <Route path="/break/board" element={<Guard needsBreak="any"><BreakGuard /></Guard>} />
+      <Route path="/break/board" element={<Guard needsBreak="any"><BreakBoardEntry /></Guard>} />
       <Route path="/assets" element={<Guard><AssetBasket /></Guard>} />
       <Route path="/assets/done/:refNo" element={<Guard><AssetDone /></Guard>} />
       <Route path="/assets/:typeCode" element={<Guard><AssetPick /></Guard>} />

@@ -235,6 +235,7 @@ export default function GuardScan() {
         <CodeScanner
           title="ส่องที่ QR บนบัตร"
           hint="ถือให้ QR อยู่กลางกรอบ"
+          formats={['qr_code']}
           onCode={(code) => {
             void handle(code)
           }}

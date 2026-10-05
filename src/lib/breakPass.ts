@@ -50,6 +50,8 @@ export interface BreakBoardRow {
 /** ประวัติ · ผู้ตรวจสอบเท่านั้น (RLS ของ break_passes คุมอยู่) */
 export interface BreakRow extends BreakBoardRow {
   reason_code: string
+  /** uuid ของคนปล่อย · ไว้กรองว่าใบไหนเป็นของเราเอง */
+  issued_by: string
   closed_at: string | null
   close_kind: 'guard' | 'problem' | 'supervisor' | 'admin' | null
   returned_people: number | null
@@ -295,6 +297,45 @@ export async function listBreakRows(args: {
   if (args.onlyProblem) q = q.eq('close_kind', 'problem')
   if (args.onlyOver) q = q.gt('over_sec', 0)
   const { data, error } = await q
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as BreakRow[]
+}
+
+/**
+ * บัตรที่ฉันปล่อยเอง · ใบที่ยังไม่ปิดมาก่อน แล้วค่อยไล่ลงไปตามเวลา
+ *
+ * กรองด้วย issued_by ตรง ๆ ไม่ได้พึ่ง RLS อย่างเดียว
+ * เพราะเจ้าของระบบกับผู้ตรวจสอบอ่านได้ทุกใบอยู่แล้ว ถ้าไม่กรอง
+ * หน้านี้จะกลายเป็นประวัติทั้งฮับทันทีที่เขาเปิดดู ซึ่งไม่ใช่ของเขา
+ */
+export async function listMyBreakRows(userId: string, limit = 60): Promise<BreakRow[]> {
+  const { data, error } = await supabase
+    .from('break_rows')
+    .select('*')
+    .eq('issued_by', userId)
+    .order('issued_at', { ascending: false })
+    .limit(limit)
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as BreakRow[]
+}
+
+/**
+ * ใบของทั้งฮับในช่วงที่ผ่านมา · หน้าของ รปภ ใช้ตอบคำถามที่ประตู
+ *
+ * กดรับกลับแล้วใบหายจากกระดานทันที ซึ่งถูกสำหรับ "ใครยังอยู่ข้างนอก"
+ * แต่ตอบไม่ได้เลยว่า "บัตรใบนี้เมื่อกี้ออกไปตอนกี่โมง" หรือ "วันนี้ออกไปกี่รอบแล้ว"
+ * ซึ่งเป็นคำถามที่เกิดขึ้นจริงทุกกะ
+ *
+ * RLS เปิดให้ รปภ อ่านย้อนหลังได้ 24 ชั่วโมงตั้งแต่ 097
+ */
+export async function listBreakRecent(hours = 24, limit = 80): Promise<BreakRow[]> {
+  const from = new Date(Date.now() - hours * 3600_000).toISOString()
+  const { data, error } = await supabase
+    .from('break_rows')
+    .select('*')
+    .gte('issued_at', from)
+    .order('issued_at', { ascending: false })
+    .limit(limit)
   if (error) throw new Error(readableError(error))
   return (data ?? []) as BreakRow[]
 }

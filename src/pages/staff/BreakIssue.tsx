@@ -171,7 +171,7 @@ export default function BreakIssue() {
         back
         right={
           <Link to="/break/board" className="btn-ghost px-3 py-1.5 text-sm">
-            กระดาน
+            บัตรของฉัน
           </Link>
         }
       />
