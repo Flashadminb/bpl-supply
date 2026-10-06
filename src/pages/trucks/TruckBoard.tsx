@@ -528,38 +528,18 @@ export default function TruckBoard() {
             <div className="mb-1 text-xs" style={{ color: '#AFC0D4' }}>
               ถึงคลังเมื่อ
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={5}
-                aria-label="เวลาที่รถถึงคลัง"
-                className="h-tap w-[104px] rounded-lg px-3 text-center font-mono text-xl font-bold outline-none"
-                style={{
-                  background: '#141920',
-                  border: `1px solid ${atTouched ? (HM_OK.test(atHM) ? '#FFC400' : '#FF5C5C') : '#2A313B'}`,
-                  color: '#F0F4F9',
-                }}
-                value={atHM}
-                onChange={(e) => {
-                  setAtHM(fmtHM(e.target.value))
-                  setAtTouched(true)
-                }}
-              />
-              {atTouched && (
-                <button
-                  type="button"
-                  className="h-tap rounded-lg px-3 text-sm font-bold"
-                  style={{ background: '#1B2430', color: '#AFC0D4' }}
-                  onClick={() => {
-                    setAtHM(nowHM())
-                    setAtTouched(false)
-                  }}
-                >
-                  ตอนนี้
-                </button>
-              )}
-            </div>
+            <TimeField
+              value={atHM}
+              touched={atTouched}
+              onChange={(v) => {
+                setAtHM(v)
+                setAtTouched(true)
+              }}
+              onNow={() => {
+                setAtHM(nowHM())
+                setAtTouched(false)
+              }}
+            />
           </div>
 
           <div>
@@ -652,7 +632,8 @@ export default function TruckBoard() {
             </div>
           ) : (
             <p className="mt-2 text-xs" style={{ color: '#AFC0D4' }}>
-              ช่องเวลาเป็นแบบ 24 ชั่วโมง พิมพ์แต่ตัวเลขได้เลย เช่น 0930 · ตั้งต้นเป็นเวลาตอนนี้และเดินตามนาฬิกาเอง
+              ช่องเวลาเป็นแบบ 24 ชั่วโมง · พิมพ์ตัวเลขได้เลย เช่น 0930 หรือกดรูปนาฬิกาเพื่อเลือก ·
+              ตั้งต้นเป็นเวลาตอนนี้และเดินตามนาฬิกาเอง
               <br />
               กรอกเวลาที่มากกว่าตอนนี้ ระบบถือว่าเป็นเมื่อวาน เพราะงานรันยี่สิบสี่ชั่วโมง ·
               ระบบจำชั่วโมงที่เลือกล่าสุดไว้ให้
@@ -909,6 +890,168 @@ function Row({
       >
         ปล่อยรถ
       </button>
+    </div>
+  )
+}
+
+/**
+ * ช่องเวลา · กดเลือกก็ได้ พิมพ์ก็ได้
+ *
+ * ไม่ใช้ช่องเวลาของเบราว์เซอร์ เพราะมันขึ้นรูปแบบตามภาษาของเครื่อง
+ * เครื่องที่ตั้งเป็นอังกฤษจะได้ AM PM ซึ่งหน้างานต้องแปลในหัวทุกครั้ง
+ *
+ * คนรีบ ๆ พิมพ์สี่ตัวเลขเร็วกว่ากดเลือกสองที
+ * คนที่ใส่ถุงมือหรือจำเวลาไม่แม่น กดเลือกง่ายกว่าพิมพ์
+ * สองแบบนี้จึงต้องมีคู่กัน ไม่ใช่เลือกอย่างใดอย่างหนึ่งแทนคนอื่น
+ *
+ * นาทีให้เลือกทีละห้านาที เพราะหกสิบปุ่มคือตารางที่หาของไม่เจอ
+ * ส่วนนาทีที่ไม่ลงตัวพิมพ์เอาได้อยู่แล้ว
+ */
+function TimeField({
+  value,
+  touched,
+  onChange,
+  onNow,
+}: {
+  value: string
+  touched: boolean
+  onChange: (v: string) => void
+  onNow: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const h = value.slice(0, 2)
+  const m = value.slice(3, 5)
+  const okH = /^([01]\d|2[0-3])$/.test(h)
+  const okM = /^[0-5]\d$/.test(m)
+
+  const pickH = (v: string) => onChange(`${v}:${okM ? m : '00'}`)
+  const pickM = (v: string) => onChange(`${okH ? h : p2(new Date().getHours())}:${v}`)
+
+  return (
+    <div className="relative flex items-center gap-2">
+      <div className="flex">
+        <input
+          type="text"
+          inputMode="numeric"
+          maxLength={5}
+          aria-label="เวลาที่รถถึงคลัง"
+          className="h-tap w-[96px] rounded-l-lg px-3 text-center font-mono text-xl font-bold outline-none"
+          style={{
+            background: '#141920',
+            border: `1px solid ${touched ? (HM_OK.test(value) ? '#FFC400' : '#FF5C5C') : '#2A313B'}`,
+            borderRight: 'none',
+            color: '#F0F4F9',
+          }}
+          value={value}
+          onChange={(e) => onChange(fmtHM(e.target.value))}
+        />
+        <button
+          type="button"
+          aria-label="เลือกเวลา"
+          className="h-tap w-tap rounded-r-lg"
+          style={{
+            background: open ? '#FFC400' : '#1B2430',
+            border: `1px solid ${touched ? '#FFC400' : '#2A313B'}`,
+            color: open ? '#0B0E11' : '#AFC0D4',
+          }}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
+               strokeWidth="2" strokeLinecap="round" className="mx-auto" aria-hidden>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v5l3 2" />
+          </svg>
+        </button>
+      </div>
+
+      {touched && (
+        <button
+          type="button"
+          className="h-tap rounded-lg px-3 text-sm font-bold"
+          style={{ background: '#1B2430', color: '#AFC0D4' }}
+          onClick={() => {
+            onNow()
+            setOpen(false)
+          }}
+        >
+          ตอนนี้
+        </button>
+      )}
+
+      {open && (
+        <>
+          {/* กดที่อื่นแล้วปิด · จอทีวีกับมือถือไม่มีปุ่ม Esc ให้กด */}
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div
+            className="absolute right-0 top-full z-40 mt-2 w-[300px] rounded-xl p-3"
+            style={{ background: '#141920', border: '1px solid #2A313B', boxShadow: '0 10px 30px rgba(0,0,0,.6)' }}
+          >
+            <p className="mb-1 text-xs" style={{ color: '#AFC0D4' }}>
+              ชั่วโมง
+            </p>
+            <div className="grid grid-cols-6 gap-1">
+              {Array.from({ length: 24 }, (_, i) => p2(i)).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  className="rounded-md py-2 font-mono text-sm font-bold"
+                  style={
+                    v === h
+                      ? { background: '#FFC400', color: '#0B0E11' }
+                      : { background: '#1B2430', color: '#F0F4F9' }
+                  }
+                  onClick={() => pickH(v)}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+
+            <p className="mb-1 mt-3 text-xs" style={{ color: '#AFC0D4' }}>
+              นาที · ไม่ลงตัวให้พิมพ์เอาในช่อง
+            </p>
+            <div className="grid grid-cols-6 gap-1">
+              {Array.from({ length: 12 }, (_, i) => p2(i * 5)).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  className="rounded-md py-2 font-mono text-sm font-bold"
+                  style={
+                    v === m
+                      ? { background: '#FFC400', color: '#0B0E11' }
+                      : { background: '#1B2430', color: '#F0F4F9' }
+                  }
+                  onClick={() => pickM(v)}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                className="h-tap flex-1 rounded-lg text-sm font-bold"
+                style={{ background: '#1B2430', color: '#AFC0D4' }}
+                onClick={() => {
+                  onNow()
+                  setOpen(false)
+                }}
+              >
+                เวลาตอนนี้
+              </button>
+              <button
+                type="button"
+                className="h-tap flex-1 rounded-lg text-sm font-extrabold"
+                style={{ background: '#FFC400', color: '#0B0E11' }}
+                onClick={() => setOpen(false)}
+              >
+                เสร็จ
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }
