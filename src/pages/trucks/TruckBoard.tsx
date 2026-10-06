@@ -40,6 +40,23 @@ function nowHM(): string {
 }
 
 /**
+ * จัดรูปเวลาที่พิมพ์เข้ามาให้เป็น HH:MM แบบไทย
+ *
+ * ไม่ใช้ช่องเวลาของเบราว์เซอร์ เพราะมันขึ้นรูปแบบตามภาษาของเครื่อง
+ * เครื่องที่ตั้งเป็นอังกฤษจะได้ 12:45 PM ซึ่งหน้างานต้องแปลในหัวทุกครั้ง
+ * และแปลผิดตอนตีหนึ่งกับบ่ายโมงได้ง่ายมาก
+ *
+ * ช่องนี้จึงรับแต่ตัวเลข แล้วใส่จุดคู่ให้เอง · พิมพ์ 0930 ได้ 09:30
+ */
+function fmtHM(raw: string): string {
+  const d = raw.replace(/\D/g, '').slice(0, 4)
+  if (d.length <= 2) return d
+  return `${d.slice(0, 2)}:${d.slice(2)}`
+}
+
+const HM_OK = /^([01]\d|2[0-3]):[0-5]\d$/
+
+/**
  * แปลงเวลาที่กรอก (HH:MM) เป็นเวลาจริง
  *
  * งานรันยี่สิบสี่ชั่วโมง ตีหนึ่งแล้วกรอกย้อนว่า 23:50 คือเมื่อวาน ไม่ใช่คืนนี้
@@ -244,6 +261,10 @@ export default function TruckBoard() {
   async function save(force = false) {
     const q = name.trim()
     if (!q) return
+    if (!HM_OK.test(atHM)) {
+      setErr('เวลาที่รถถึงคลังต้องอยู่ในรูป ชั่วโมง:นาที แบบ 24 ชั่วโมง เช่น 09:30 หรือ 21:05')
+      return
+    }
     if (!force) {
       const hits = openDuplicates(q)
       if (hits.length > 0) {
@@ -507,20 +528,38 @@ export default function TruckBoard() {
             <div className="mb-1 text-xs" style={{ color: '#AFC0D4' }}>
               ถึงคลังเมื่อ
             </div>
-            <input
-              type="time"
-              className="h-tap rounded-lg px-3 font-mono text-base outline-none"
-              style={{
-                background: '#141920',
-                border: `1px solid ${atTouched ? '#FFC400' : '#2A313B'}`,
-                color: '#F0F4F9',
-              }}
-              value={atHM}
-              onChange={(e) => {
-                setAtHM(e.target.value)
-                setAtTouched(true)
-              }}
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={5}
+                aria-label="เวลาที่รถถึงคลัง"
+                className="h-tap w-[104px] rounded-lg px-3 text-center font-mono text-xl font-bold outline-none"
+                style={{
+                  background: '#141920',
+                  border: `1px solid ${atTouched ? (HM_OK.test(atHM) ? '#FFC400' : '#FF5C5C') : '#2A313B'}`,
+                  color: '#F0F4F9',
+                }}
+                value={atHM}
+                onChange={(e) => {
+                  setAtHM(fmtHM(e.target.value))
+                  setAtTouched(true)
+                }}
+              />
+              {atTouched && (
+                <button
+                  type="button"
+                  className="h-tap rounded-lg px-3 text-sm font-bold"
+                  style={{ background: '#1B2430', color: '#AFC0D4' }}
+                  onClick={() => {
+                    setAtHM(nowHM())
+                    setAtTouched(false)
+                  }}
+                >
+                  ตอนนี้
+                </button>
+              )}
+            </div>
           </div>
 
           <div>
@@ -613,7 +652,7 @@ export default function TruckBoard() {
             </div>
           ) : (
             <p className="mt-2 text-xs" style={{ color: '#AFC0D4' }}>
-              ช่องเวลาตั้งต้นเป็นเวลาตอนนี้และเดินตามนาฬิกาเอง · แก้ได้ถ้าลืมกรอกตอนรถเข้าจริง
+              ช่องเวลาเป็นแบบ 24 ชั่วโมง พิมพ์แต่ตัวเลขได้เลย เช่น 0930 · ตั้งต้นเป็นเวลาตอนนี้และเดินตามนาฬิกาเอง
               <br />
               กรอกเวลาที่มากกว่าตอนนี้ ระบบถือว่าเป็นเมื่อวาน เพราะงานรันยี่สิบสี่ชั่วโมง ·
               ระบบจำชั่วโมงที่เลือกล่าสุดไว้ให้

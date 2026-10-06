@@ -170,9 +170,8 @@ export default function Home() {
             <span className="flex items-center gap-2">
               {/* เช็คอินประชุมเห็นทุกคน ไม่ใช่ของแอดมิน */}
               <MeetingCheckIn />
-              {/* ตารางปล่อยรถ · เจ้าของระบบกับผู้ตรวจสอบ */}
-              {(can('admin') || profile?.can_dispatch) && (
-                <Link
+              {/* ตารางปล่อยรถ · เห็นทุกคน ยกเว้น รปภ ซึ่งออกไปทางสาขาอื่นของหน้านี้แล้ว */}
+              <Link
                   to="/trucks"
                   aria-label="ตารางปล่อยรถ"
                   className="flex h-tap w-tap items-center justify-center rounded-btn"
@@ -194,7 +193,6 @@ export default function Home() {
                     <circle cx="17" cy="18" r="1.8" />
                   </svg>
                 </Link>
-              )}
               {/* ลิงก์งาน — เห็นเฉพาะแอดมิน เจ้าของระบบ และผู้ตรวจสอบ */}
               <WorkLinks />
               {can(...MANAGER_ROLES) && <NotifyBell />}

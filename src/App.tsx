@@ -247,10 +247,13 @@ export default function App() {
       {/* ตารางปล่อยรถ — หน้าเต็มจอของตัวเอง ไม่ใช้กรอบของแอพเบิกของ
           รอบแรกเปิดให้เจ้าของระบบคนเดียวตามที่สั่ง ยังไม่เปิดให้หน้างาน
           ด่านจริงอยู่ที่ RLS ใน my_can_truck() เส้นทางนี้แค่ไม่ให้กดเข้ามาเจอหน้าว่าง */}
-      {/* ตารางปล่อยรถ · เจ้าของระบบกับผู้ตรวจสอบ · งานหลังบ้านยังเป็นของแอดมินคนเดียว */}
-      <Route path="/trucks" element={<Guard roles={['admin']} allowDispatch><TruckBoard /></Guard>} />
-      <Route path="/trucks/tv" element={<Guard roles={['admin']} allowDispatch><TruckTv /></Guard>} />
-      <Route path="/trucks/stats" element={<Guard roles={['admin']} allowDispatch><TruckStats /></Guard>} />
+{/*
+        ตารางปล่อยรถ · เปิดให้หน้างานทุกคน ตามที่สั่งไว้ตั้งแต่วันแรกว่าทุกคนพิมพ์ได้
+        งานหลังบ้านที่ /admin/trucks ยังเป็นของผู้ดูแลระบบคนเดียวเหมือนเดิม
+      */}
+      <Route path="/trucks" element={<Guard><TruckBoard /></Guard>} />
+      <Route path="/trucks/tv" element={<Guard><TruckTv /></Guard>} />
+      <Route path="/trucks/stats" element={<Guard><TruckStats /></Guard>} />
       <Route path="/assets" element={<Guard><AssetBasket /></Guard>} />
       <Route path="/assets/done/:refNo" element={<Guard><AssetDone /></Guard>} />
       <Route path="/assets/:typeCode" element={<Guard><AssetPick /></Guard>} />
