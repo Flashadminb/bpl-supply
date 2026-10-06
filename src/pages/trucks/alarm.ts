@@ -167,10 +167,36 @@ export function useTruckAlarm(items: { id: number; sec: number }[], enabled: boo
   }, [items, enabled])
 }
 
-/** จำไว้ว่าเคยเลือกเปิดเสียง · แต่ยังต้องแตะหนึ่งครั้งทุกครั้งที่โหลดหน้าใหม่ ตามกฎเบราว์เซอร์ */
+/**
+ * จำคำตอบไว้ ถามครั้งเดียวจบ
+ *
+ * เบราว์เซอร์ยังบังคับให้มีคนแตะจอหนึ่งครั้งต่อการโหลดหน้าหนึ่งครั้งอยู่ดี
+ * แต่ไม่ได้แปลว่าต้องเอากล่องเต็มจอมาขวางทุกครั้ง
+ *
+ * ตอบไปแล้วครั้งหนึ่ง กล่องจะไม่ขึ้นอีกเลย
+ * ถ้าตอบว่าเปิด ระบบจะลองเปิดเสียงเองก่อน ไม่สำเร็จก็รอให้แตะอะไรก็ได้บนหน้านั้น
+ * แตะปุ่มไหนก็ได้ เลื่อนจอก็ได้ เสียงจะกลับมาเองโดยไม่ต้องกดอะไรเพิ่ม
+ */
 export function useAlarmPref() {
   const [on, setOn] = useState(() => audioOn())
-  const [asked, setAsked] = useState(() => localStorage.getItem(PREF) === 'off')
+  const [asked, setAsked] = useState(() => localStorage.getItem(PREF) !== null)
+
+  useEffect(() => {
+    if (localStorage.getItem(PREF) !== 'on' || audioOn()) return
+    let dead = false
+    const wake = () => {
+      void unlockAudio().then((ok) => {
+        if (!dead && ok) setOn(true)
+      })
+    }
+    wake()
+    const evs: (keyof DocumentEventMap)[] = ['pointerdown', 'keydown', 'touchstart']
+    evs.forEach((e) => document.addEventListener(e, wake, { once: true, passive: true }))
+    return () => {
+      dead = true
+      evs.forEach((e) => document.removeEventListener(e, wake))
+    }
+  }, [])
 
   async function turnOn() {
     const ok = await unlockAudio()

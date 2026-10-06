@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import {
@@ -645,7 +645,7 @@ export default function TruckBoard() {
             </div>
           ) : (
             <p className="mt-2 text-xs" style={{ color: '#AFC0D4' }}>
-              ช่องเวลาเป็นแบบ 24 ชั่วโมง · พิมพ์ตัวเลขได้เลย เช่น 0930 หรือกดรูปนาฬิกาเพื่อเลือก ·
+              ช่องเวลาเป็นแบบ 24 ชั่วโมง · พิมพ์ตัวเลขได้เลย เช่น 0930 หรือกดรูปนาฬิกาแล้วเลื่อนเลือกนาทีต่อนาที ·
               ตั้งต้นเป็นเวลาตอนนี้และเดินตามนาฬิกาเอง
               <br />
               กรอกเวลาที่มากกว่าตอนนี้ ระบบถือว่าเป็นเมื่อวาน เพราะงานรันยี่สิบสี่ชั่วโมง ·
@@ -920,6 +920,60 @@ function Row({
  * นาทีให้เลือกทีละห้านาที เพราะหกสิบปุ่มคือตารางที่หาของไม่เจอ
  * ส่วนนาทีที่ไม่ลงตัวพิมพ์เอาได้อยู่แล้ว
  */
+const HOURS = Array.from({ length: 24 }, (_, i) => p2(i))
+const MINUTES = Array.from({ length: 60 }, (_, i) => p2(i))
+
+/** คอลัมน์เลื่อนหาเลข · ตัวที่เลือกอยู่ถูกเลื่อนมาให้เห็นตอนเปิด */
+function Wheel({
+  label,
+  items,
+  value,
+  onPick,
+  open,
+}: {
+  label: string
+  items: string[]
+  value: string
+  onPick: (v: string) => void
+  open: boolean
+}) {
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open || !box.current) return
+    const el = box.current.querySelector('[data-on="1"]') as HTMLElement | null
+    if (el) box.current.scrollTop = el.offsetTop - box.current.clientHeight / 2 + el.clientHeight / 2
+  }, [open, value])
+
+  return (
+    <div className="min-w-0 flex-1">
+      <p className="mb-1 text-center text-xs" style={{ color: '#AFC0D4' }}>
+        {label}
+      </p>
+      <div
+        ref={box}
+        className="no-bar overflow-y-auto rounded-lg"
+        style={{ maxHeight: 206, background: '#0F141B', scrollBehavior: 'smooth' }}
+      >
+        {items.map((v) => {
+          const on = v === value
+          return (
+            <button
+              key={v}
+              type="button"
+              data-on={on ? '1' : '0'}
+              className="block w-full py-2.5 text-center font-mono text-lg font-bold"
+              style={on ? { background: '#FFC400', color: '#0B0E11' } : { color: '#F0F4F9' }}
+              onClick={() => onPick(v)}
+            >
+              {v}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function TimeField({
   value,
   touched,
@@ -999,46 +1053,14 @@ function TimeField({
             className="absolute right-0 top-full z-40 mt-2 w-[300px] rounded-xl p-3"
             style={{ background: '#141920', border: '1px solid #2A313B', boxShadow: '0 10px 30px rgba(0,0,0,.6)' }}
           >
-            <p className="mb-1 text-xs" style={{ color: '#AFC0D4' }}>
-              ชั่วโมง
-            </p>
-            <div className="grid grid-cols-6 gap-1">
-              {Array.from({ length: 24 }, (_, i) => p2(i)).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  className="rounded-md py-2 font-mono text-sm font-bold"
-                  style={
-                    v === h
-                      ? { background: '#FFC400', color: '#0B0E11' }
-                      : { background: '#1B2430', color: '#F0F4F9' }
-                  }
-                  onClick={() => pickH(v)}
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
-
-            <p className="mb-1 mt-3 text-xs" style={{ color: '#AFC0D4' }}>
-              นาที · ไม่ลงตัวให้พิมพ์เอาในช่อง
-            </p>
-            <div className="grid grid-cols-6 gap-1">
-              {Array.from({ length: 12 }, (_, i) => p2(i * 5)).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  className="rounded-md py-2 font-mono text-sm font-bold"
-                  style={
-                    v === m
-                      ? { background: '#FFC400', color: '#0B0E11' }
-                      : { background: '#1B2430', color: '#F0F4F9' }
-                  }
-                  onClick={() => pickM(v)}
-                >
-                  {v}
-                </button>
-              ))}
+            {/*
+              สองคอลัมน์เลื่อนได้ · ชั่วโมงกับนาทีครบทุกค่า นาทีต่อนาที
+              คนถนัดเลื่อนก็ปัดหา คนถนัดจิ้มก็กดตรง ๆ คนถนัดพิมพ์ก็พิมพ์ในช่องข้างบน
+              เปิดมาแล้วเลื่อนไปที่ค่าปัจจุบันให้เอง จะได้ไม่ต้องปัดหาจากศูนย์ทุกครั้ง
+            */}
+            <div className="flex gap-2">
+              <Wheel label="ชั่วโมง" items={HOURS} value={h} onPick={pickH} open={open} />
+              <Wheel label="นาที" items={MINUTES} value={m} onPick={pickM} open={open} />
             </div>
 
             <div className="mt-3 flex gap-2">
