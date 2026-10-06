@@ -183,7 +183,7 @@ export default function TruckTv() {
       ) : (
         <>
           {/* การ์ดตัวเลขรวม · ตัวที่ต้องลงไปทำอะไรจะกระพริบ */}
-          <div className="mb-4 grid grid-cols-2 gap-4 xl:grid-cols-4">
+          <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
             <StatCard label="อยู่ในคลัง" n={c?.in_hub ?? live.length} color="#FBFBFB" />
             <StatCard
               label="เลยกำหนด"
@@ -203,10 +203,32 @@ export default function TruckTv() {
               label="ปล่อยไปแล้ว"
               n={c?.done ?? 0}
               color="#35D98A"
+              foot={c ? undefined : 'เริ่มนับใหม่ได้ที่หลังบ้าน'}
+            />
+
+            {/*
+              แยกผลออกเป็นสองใบ ตัวเล็กกว่าสี่ใบแรก
+
+              สี่ใบแรกตอบว่าตอนนี้ต้องไปทำอะไร สองใบนี้ตอบว่าที่ทำไปแล้วผลเป็นยังไง
+              คนละคำถามกัน และคำถามหลังไม่เร่งด่วนเท่า จึงไม่ควรกินพื้นที่เท่ากัน
+            */}
+            <StatCard
+              label="ออกตรงเวลา"
+              n={c?.on_time ?? 0}
+              color="#35D98A"
+              size={42}
+              foot={c && c.done > 0 ? `${Math.round((c.on_time / c.done) * 100)}% ของที่ปล่อยไป` : undefined}
+            />
+            <StatCard
+              label="ออกเกินเวลา"
+              n={c ? c.done - c.on_time : 0}
+              color="#FF5C5C"
+              ring="rgba(255,92,92,.45)"
+              size={42}
               foot={
                 c && c.done > 0
-                  ? `ตรงเวลา ${c.on_time} คัน · ${Math.round((c.on_time / c.done) * 100)}%`
-                  : 'เริ่มนับใหม่ได้ที่หลังบ้าน'
+                  ? `${Math.round(((c.done - c.on_time) / c.done) * 100)}% ของที่ปล่อยไป`
+                  : undefined
               }
             />
           </div>

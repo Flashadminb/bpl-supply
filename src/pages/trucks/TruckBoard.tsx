@@ -330,8 +330,33 @@ export default function TruckBoard() {
         </div>
       )}
 
-      {/* ───────── เพิ่มรถ ───────── */}
+      {/* ───────── เพิ่มรถ ─────────
+          ตีกรอบเหลืองไว้ชัด ๆ เพราะหน้านี้มีของเยอะขึ้นเรื่อย ๆ
+          ทั้งการ์ดตัวเลข กราฟ ชิป ช่องค้น และรายการรถ
+          คนที่เพิ่งเดินมาถึงต้องรู้ภายในวินาทีเดียวว่าต้องพิมพ์ตรงไหน
+          ไม่ใช่กวาดตาหาช่องที่หน้าตาเหมือนช่องค้นอีกช่องหนึ่ง */}
       <div className="px-4 pt-4">
+        <div
+          className="rounded-2xl p-4"
+          style={{
+            background: '#151C26',
+            border: '2px solid #FFC400',
+            boxShadow: '0 0 0 4px rgba(255,196,0,.10)',
+          }}
+        >
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span
+              className="rounded-md px-2.5 py-1 text-sm font-extrabold"
+              style={{ background: '#FFC400', color: '#0B0E11' }}
+            >
+              กรอกตรงนี้
+            </span>
+            <span className="text-base font-bold">รถเข้าคลัง</span>
+            <span className="text-xs" style={{ color: '#AFC0D4' }}>
+              พิมพ์สาขา เลือกชั่วโมง แล้วกดบันทึก
+            </span>
+          </div>
+
         <div className="flex flex-wrap items-end gap-3">
           <div className="relative min-w-[220px] flex-1">
             <div className="mb-1 text-xs" style={{ color: '#AFC0D4' }}>
@@ -415,7 +440,13 @@ export default function TruckBoard() {
             บันทึก
           </button>
 
-          <span className="flex-1" />
+          </div>
+          <p className="mt-2 text-xs" style={{ color: '#AFC0D4' }}>
+            เวลาถึงคลังใช้เวลาที่กดบันทึก · ระบบจำชั่วโมงที่เลือกล่าสุดไว้ให้
+          </p>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
           <a
             href="/trucks/stats"
             className="h-tap rounded-lg px-4 text-sm font-bold leading-[44px]"
@@ -431,9 +462,6 @@ export default function TruckBoard() {
             จอทีวี
           </a>
         </div>
-        <p className="mt-2 text-xs" style={{ color: '#AFC0D4' }}>
-          เวลาถึงคลังใช้เวลาที่กดบันทึก · ระบบจำชั่วโมงที่เลือกล่าสุดไว้ให้
-        </p>
       </div>
 
       {/* ───────── ชิปกรองและช่องค้น ───────── */}
