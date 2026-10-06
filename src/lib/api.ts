@@ -513,6 +513,69 @@ export async function deleteDepartment(code: string) {
   if (error) throw new Error(readableError(error))
 }
 
+/* ---------------------------------------------------------- แผนกย่อย */
+
+export interface SubDept {
+  dept_code: string
+  code: string
+  name: string
+  sort_no: number
+  is_active: boolean
+}
+
+export async function listSubDepts(): Promise<SubDept[]> {
+  return unwrap(
+    await supabase.from('sub_depts').select('*').eq('is_active', true).order('dept_code').order('sort_no'),
+  ) as unknown as SubDept[]
+}
+
+export async function saveSubDept(s: { dept_code: string; code: string; name: string; sort_no?: number }) {
+  const { error } = await supabase.from('sub_depts').upsert({
+    dept_code: s.dept_code,
+    code: s.code.trim(),
+    name: s.name.trim() || s.code.trim(),
+    sort_no: s.sort_no ?? 0,
+    is_active: true,
+  })
+  if (error) throw new Error(readableError(error))
+}
+
+export async function deleteSubDept(dept: string, code: string) {
+  const { error } = await supabase.from('sub_depts').delete().eq('dept_code', dept).eq('code', code)
+  if (error) throw new Error(readableError(error))
+}
+
+/** แผนกย่อยของเครื่อง · ว่าง = ของกลางของแผนก ทุกคนในแผนกเห็น */
+export async function setAssetSubDept(code: string, sub: string | null) {
+  const { error } = await supabase.rpc('set_asset_sub_dept', { p_code: code, p_sub: sub })
+  if (error) throw new Error(readableError(error))
+}
+
+/** แผนกย่อยของคน · ว่าง = เห็นทั้งแผนกรวมทุกย่อย ใช้กับหัวหน้าแผนก */
+export async function setUserSubDept(userId: string, sub: string | null) {
+  const { error } = await supabase.rpc('set_user_sub_dept', { p_user: userId, p_sub: sub })
+  if (error) throw new Error(readableError(error))
+}
+
+export interface SubDeptCoverage {
+  dept_code: string
+  dept_name: string
+  total: number
+  no_sub: number
+}
+
+/**
+ * แผนกไหนมีคนยังไม่ได้ใส่แผนกย่อยบ้าง
+ *
+ * ว่าง = เห็นทั้งแผนก ซึ่งถูกตามกติกา แต่ถ้าลืมใส่ให้พนักงานธรรมดา
+ * เขาจะเห็นของทุกย่อยเหมือนหัวหน้าโดยไม่มีใครรู้ · หน้าจอจึงต้องบอกไว้
+ */
+export async function listSubDeptCoverage(): Promise<SubDeptCoverage[]> {
+  const { data, error } = await supabase.rpc('sub_dept_coverage')
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as SubDeptCoverage[]
+}
+
 /* ------------------------------------------------------------------ admin */
 
 export async function listProfiles(): Promise<Profile[]> {
