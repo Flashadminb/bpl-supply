@@ -11,6 +11,7 @@ import {
   type TruckBoardRow,
   type TruckBranch,
 } from '../../lib/trucks'
+import { Countdown, DAY_TH, Density, dmy, hm, p2, tone } from './parts'
 
 /**
  * ตารางปล่อยรถ — หน้าเต็มจอ พื้นดำ ไม่ใช้กรอบของแอพเบิกของ
@@ -25,73 +26,6 @@ import {
  */
 
 const ALLOW = [120, 180, 240]
-const DAY = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
-
-const p2 = (n: number) => String(n).padStart(2, '0')
-const hm = (d: Date) => `${p2(d.getHours())}:${p2(d.getMinutes())}`
-const dmy = (d: Date) => `${p2(d.getDate())}/${p2(d.getMonth() + 1)}`
-
-/** สีเดียวกันทั้งหน้า · เขียวยังมีเวลา ส้มเหลือไม่ถึง 30 นาที แดงเลยกำหนด */
-function tone(sec: number) {
-  if (sec < 0) return '#FF5C5C'
-  if (sec <= 30 * 60) return '#FFB038'
-  return '#35D98A'
-}
-
-/**
- * ป้ายตัวเลขแบบป้ายพับ
- *
- * พื้นขาวตัวดำบนจอดำอ่านได้จากไกลที่สุดเท่าที่ทำได้ด้วยตัวอักษรอย่างเดียว
- * เลยกำหนดแล้วสลับเป็นพื้นแดงตัวขาว เพราะตอนนั้นต้องสะดุดตา ไม่ใช่แค่อ่านออก
- */
-function Flip({ v, label, size, late }: { v: string; label?: string; size: number; late: boolean }) {
-  return (
-    <span className="inline-flex flex-col items-center" style={{ gap: Math.round(size * 0.1) }}>
-      <span
-        className="relative inline-flex items-center justify-center"
-        style={{
-          width: size,
-          height: Math.round(size * 0.82),
-          background: late ? '#FF4040' : '#FBFBFB',
-          borderRadius: Math.round(size * 0.11),
-          boxShadow: '0 2px 0 rgba(0,0,0,.45)',
-        }}
-      >
-        <span
-          className="font-mono font-extrabold leading-none"
-          style={{ fontSize: Math.round(size * 0.62), color: late ? '#fff' : '#101316', letterSpacing: -1 }}
-        >
-          {v}
-        </span>
-        <span className="absolute inset-x-0 top-1/2 h-[2px]" style={{ background: 'rgba(0,0,0,.22)' }} />
-      </span>
-      {label && (
-        <span className="text-[11px] font-bold tracking-widest" style={{ color: '#AFC0D4' }}>
-          {label}
-        </span>
-      )}
-    </span>
-  )
-}
-
-function Countdown({ sec, size }: { sec: number; size: number }) {
-  const late = sec < 0
-  const a = Math.abs(sec)
-  return (
-    <span className="inline-flex items-center gap-[6px]">
-      {late && (
-        <span className="font-extrabold" style={{ fontSize: size * 0.6, color: '#FF4040' }}>
-          −
-        </span>
-      )}
-      <Flip v={p2(Math.floor(a / 3600))} size={size} late={late} />
-      <span className="font-extrabold" style={{ fontSize: size * 0.45, color: late ? '#FF4040' : '#5A646F' }}>
-        :
-      </span>
-      <Flip v={p2(Math.floor(a / 60) % 60)} size={size} late={late} />
-    </span>
-  )
-}
 
 export default function TruckBoard() {
   const nav = useNavigate()
@@ -180,6 +114,7 @@ export default function TruckBoard() {
   }
 
   const clock = new Date(now)
+  const openSecs = live.map((x) => x.sec)
 
   return (
     <div className="min-h-dvh" style={{ background: '#0B0E11', color: '#F0F4F9' }}>
@@ -206,7 +141,7 @@ export default function TruckBoard() {
         <span className="text-lg font-bold">ตารางปล่อยรถ · 21BPL</span>
         <span className="flex-1" />
         <span className="text-sm" style={{ color: '#AFC0D4' }}>
-          {DAY[clock.getDay()]} {dmy(clock)}
+          {DAY_TH[clock.getDay()]} {dmy(clock)}
         </span>
         <span className="font-mono text-xl font-bold" style={{ color: '#FFC400' }}>
           {hm(clock)}:{p2(clock.getSeconds())}
@@ -252,6 +187,21 @@ export default function TruckBoard() {
           >
             เลิกทำ
           </button>
+        </div>
+      )}
+
+      {/* ───────── รถครบกำหนดช่วงไหน ───────── */}
+      {live.length > 0 && (
+        <div className="px-4 pt-4">
+          <div className="mb-2 flex flex-wrap items-baseline gap-2">
+            <span className="text-base font-bold">รถครบกำหนดช่วงไหนบ้าง</span>
+            <span className="text-xs" style={{ color: '#AFC0D4' }}>
+              แท่งละ 15 นาที · ตัวเลขคือจำนวนคัน
+            </span>
+          </div>
+          <div className="rounded-xl p-3" style={{ background: '#121820' }}>
+            <Density secs={openSecs} now={now} />
+          </div>
         </div>
       )}
 
@@ -339,6 +289,22 @@ export default function TruckBoard() {
           >
             บันทึก
           </button>
+
+          <span className="flex-1" />
+          <a
+            href="/trucks/stats"
+            className="h-tap rounded-lg px-4 text-sm font-bold leading-[44px]"
+            style={{ background: '#1B2430', color: '#AFC0D4' }}
+          >
+            สถิติ
+          </a>
+          <a
+            href="/trucks/tv"
+            className="h-tap rounded-lg px-4 text-sm font-bold leading-[44px]"
+            style={{ background: '#1B2430', color: '#AFC0D4' }}
+          >
+            จอทีวี
+          </a>
         </div>
         <p className="mt-2 text-xs" style={{ color: '#AFC0D4' }}>
           เวลาถึงคลังใช้เวลาที่กดบันทึก · ระบบจำชั่วโมงที่เลือกล่าสุดไว้ให้
@@ -452,7 +418,7 @@ function Row({
         {dmy(due)}
       </div>
 
-      <Countdown sec={sec} size={46} />
+      <Countdown sec={sec} size={46} showSec />
 
       <button
         type="button"
