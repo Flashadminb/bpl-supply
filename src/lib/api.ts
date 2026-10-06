@@ -1031,7 +1031,7 @@ export async function listAssets(typeCodes?: string | string[]): Promise<Asset[]
   let q = supabase
     .from('assets')
     .select(
-      'code,type_code,dept_code,share_depts,is_enabled,note,held_item_id,loan_user,created_at,asset_types(code,name)',
+      'code,type_code,dept_code,sub_dept,share_depts,is_enabled,note,held_item_id,loan_user,created_at,asset_types(code,name)',
     )
     .order('code')
   if (list && list.length > 0) q = q.in('type_code', list)

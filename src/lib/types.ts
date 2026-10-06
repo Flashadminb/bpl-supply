@@ -226,6 +226,8 @@ export interface Asset {
   code: string
   type_code: string
   dept_code: string | null
+  /** แผนกย่อยเจ้าของ · ว่าง = ของกลางของแผนก ทุกคนในแผนกเห็น */
+  sub_dept: string | null
   share_depts: string[]
   /** คนที่ได้รับเครื่องนี้มาใช้ชั่วคราวจากการโอน · ว่าง = อยู่บ้านตัวเอง */
   loan_user: string | null

@@ -12,6 +12,8 @@ import {
   resolveAssetIssue,
   resolveAssetIssuesFor,
   setAssetDepts,
+  setAssetSubDept,
+  listSubDepts,
   setAssetEnabled,
 } from '../../lib/api'
 import { EmptyState, ErrorBox, Loading, Modal, Sheet, Spinner } from '../../components/ui'
@@ -41,6 +43,7 @@ export default function AssetRegistry() {
   const mayTransfer = canProxy(profile)
   const types = useAsync(() => listAssetTypes(), [])
   const depts = useAsync(() => listDepartments(), [])
+  const subs = useAsync(() => listSubDepts(), [])
   const assets = useAsync(() => listAssets(), [])
   const held = useAsync(() => listAssetHoldings(false), [])
   const issues = useAsync(() => listAssetOpenIssues(), [])
@@ -346,6 +349,11 @@ export default function AssetRegistry() {
                     <td className="p-2 text-ink-500">{a.asset_types?.name ?? a.type_code}</td>
                     <td className="p-2 text-ink-500">
                       {deptName.get(a.dept_code ?? 'ALL') ?? a.dept_code ?? 'ส่วนกลาง'}
+                      {a.sub_dept && (
+                        <span className="ml-1 rounded-pill bg-brand-50 px-1.5 font-display text-[11px] text-ink">
+                          {a.sub_dept}
+                        </span>
+                      )}
                       {a.share_depts?.length > 0 && (
                         <p className="text-xs text-ink-400">
                           + {a.share_depts.map((c) => deptName.get(c) ?? c).join(', ')}
@@ -419,6 +427,7 @@ export default function AssetRegistry() {
         <AssetSheet
           asset={open}
           departments={depts.data ?? []}
+          subDepts={subs.data ?? []}
           canMove={can(...MANAGER_ROLES)}
           holder={holdBy.get(open.code) ?? null}
           onClose={() => setOpen(null)}
@@ -670,6 +679,7 @@ export default function AssetRegistry() {
 function AssetSheet({
   asset,
   departments,
+  subDepts,
   canMove,
   holder,
   onClose,
@@ -679,6 +689,8 @@ function AssetSheet({
 }: {
   asset: Asset
   departments: Department[]
+  /** แผนกย่อยทั้งหมดที่ลงทะเบียนไว้ · กรองตามแผนกเจ้าของในแผงนี้อีกที */
+  subDepts: { dept_code: string; code: string }[]
   /** จัดการเครื่องได้ — แอดมินและเจ้าของระบบ */
   canMove: boolean
   holder: { holder_name: string; holder_code: string; taken_at: string; ref_no: string } | null
@@ -703,8 +715,11 @@ function AssetSheet({
   const [enabled, setEnabled] = useState(asset.is_enabled)
   const [home, setHome] = useState(asset.dept_code ?? 'ALL')
   const [shares, setShares] = useState<string[]>(asset.share_depts ?? [])
+  const [sub, setSub] = useState(asset.sub_dept ?? '')
+  const subOptions = subDepts.filter((o) => o.dept_code === home)
   const deptsDirty =
     home !== (asset.dept_code ?? 'ALL') ||
+    sub !== (asset.sub_dept ?? '') ||
     shares.slice().sort().join(',') !== (asset.share_depts ?? []).slice().sort().join(',')
 
   const rows = log.data ?? []
@@ -834,6 +849,27 @@ function AssetSheet({
                   })}
               </div>
               <p className="mt-1 text-xs text-ink-400">ไม่ติ๊กเลยก็ได้ — มีแค่แผนกเจ้าของที่ใช้ได้</p>
+
+              {subOptions.length > 0 && (
+                <>
+                  <p className="label mt-3">แผนกย่อยเจ้าของ</p>
+                  <select
+                    className="input h-tap"
+                    value={sub}
+                    onChange={(e) => setSub(e.target.value)}
+                  >
+                    <option value="">ของกลางของแผนก · ทุกคนในแผนกเห็น</option>
+                    {subOptions.map((o) => (
+                      <option key={o.code} value={o.code}>
+                        {o.code}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-ink-400">
+                    ใส่ย่อยแล้วจะเห็นเฉพาะคนที่อยู่ย่อยนั้น กับคนที่ปล่อยช่องย่อยว่างไว้
+                  </p>
+                </>
+              )}
             </>
           )}
 
@@ -846,6 +882,7 @@ function AssetSheet({
                 onClick={() => {
                   setHome(asset.dept_code ?? 'ALL')
                   setShares(asset.share_depts ?? [])
+                  setSub(asset.sub_dept ?? '')
                 }}
               >
                 ยกเลิก
@@ -857,7 +894,15 @@ function AssetSheet({
                 onClick={() =>
                   void run(async () => {
                     await setAssetDepts(asset.code, home, home === 'ALL' ? [] : shares)
-                    if (home === 'ALL') setShares([])
+                    // แผนกย่อยต้องตั้งหลังแผนกเสมอ เพราะฐานข้อมูลตรวจว่าย่อยนั้นอยู่ใต้แผนกจริงไหม
+                    const nextSub = home === 'ALL' ? '' : sub
+                    if (nextSub !== (asset.sub_dept ?? '')) {
+                      await setAssetSubDept(asset.code, nextSub || null)
+                    }
+                    if (home === 'ALL') {
+                      setShares([])
+                      setSub('')
+                    }
                   })
                 }
               >

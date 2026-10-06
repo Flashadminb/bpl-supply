@@ -7,6 +7,7 @@ import {
   createEmployee,
   listDepartments,
   listProfiles,
+  listSubDepts,
   renameEmployee,
   resetEmployeePassword,
   updateProfile,
@@ -17,6 +18,52 @@ import type { Profile } from '../../lib/types'
 import { POSTS, ROLE_TH, postOf, postPatch, type PostKey } from '../../lib/roles'
 
 const MIN_PASSWORD = 8
+
+/**
+ * ช่องเลือกแผนกย่อย
+ *
+ * เป็นดรอปดาวน์ไม่ใช่ช่องพิมพ์ เพราะชื่อย่อยคุมสิทธิ์การมองเห็น
+ * พิมพ์ผิดเป็น abc แทน ABC หรือมีเว้นวรรคท้าย จะกลายเป็นคนละกลุ่มสิทธิ์ทันที
+ * แล้วเจ้าตัวจะมองไม่เห็นของทีมตัวเองโดยไม่มีใครรู้ว่าเพราะอะไร
+ *
+ * ป้ายเก่าที่ยังไม่ได้ลงทะเบียน จะโชว์ไว้ไม่ลบทิ้ง แต่บอกว่ายังไม่มีผลกับสิทธิ์
+ */
+function SubDeptSelect({
+  dept,
+  value,
+  options,
+  disabled,
+  onPick,
+  className,
+}: {
+  dept: string | null
+  value: string | null
+  options: { dept_code: string; code: string }[]
+  disabled?: boolean
+  onPick: (v: string | null) => void
+  className?: string
+}) {
+  const list = options.filter((o) => o.dept_code === dept)
+  const cur = (value ?? '').trim()
+  const stale = cur !== '' && !list.some((o) => o.code === cur)
+  if (!dept || dept === 'ALL' || (list.length === 0 && !stale)) return null
+  return (
+    <select
+      className={className ?? 'input h-tap mt-1 w-full px-2 text-xs'}
+      value={cur}
+      disabled={disabled}
+      onChange={(e) => onPick(e.target.value || null)}
+    >
+      <option value="">ทั้งแผนก (ไม่ใส่ย่อย)</option>
+      {list.map((o) => (
+        <option key={o.code} value={o.code}>
+          {o.code}
+        </option>
+      ))}
+      {stale && <option value={cur}>{cur} · ป้ายเก่า ยังไม่มีผลกับสิทธิ์</option>}
+    </select>
+  )
+}
 
 const RBAC: { action: string; staff: boolean; dispatcher: boolean; supervisor: boolean; admin: boolean }[] = [
   { action: 'เบิก / คืนวัสดุ', staff: true, dispatcher: true, supervisor: true, admin: true },
@@ -60,6 +107,7 @@ interface Draft {
 export default function Users() {
   const users = useAsync(() => listProfiles(), [])
   const depts = useAsync(() => listDepartments(), [])
+  const subs = useAsync(() => listSubDepts(), [])
   const [error, setError] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
 
@@ -319,14 +367,13 @@ export default function Users() {
                     {u.role === 'staff' && !(u.shift_start && u.shift_end) && (
                       <p className="mt-1 text-xs text-warn-txt">ยังไม่ได้ตั้งกะ</p>
                     )}
-                    <input
-                      className="input h-tap mt-1 w-full px-2 text-xs"
-                      placeholder="แผนกย่อย"
-                      defaultValue={u.sub_dept ?? ''}
+                    <SubDeptSelect
+                      dept={u.dept_code}
+                      value={u.sub_dept}
+                      options={subs.data ?? []}
                       disabled={savingId === u.id}
-                      onBlur={(e) => {
-                        const v = e.target.value.trim()
-                        if (v !== (u.sub_dept ?? '')) void patch(u.id, { sub_dept: v || null })
+                      onPick={(v) => {
+                        if ((v ?? '') !== (u.sub_dept ?? '')) void patch(u.id, { sub_dept: v })
                       }}
                     />
                   </td>
@@ -513,16 +560,21 @@ export default function Users() {
               </p>
             </div>
             <div className="sm:col-span-2">
-              <label className="label" htmlFor="sub-dept">แผนกย่อย (ไม่บังคับ)</label>
-              <input
-                id="sub-dept"
-                className="input"
-                placeholder="เช่น DO1"
+              <label className="label">แผนกย่อย (ไม่บังคับ)</label>
+              <SubDeptSelect
+                dept={draft.dept_code || null}
                 value={draft.sub_dept}
-                onChange={(e) => setDraft({ ...draft, sub_dept: e.target.value })}
+                options={subs.data ?? []}
+                className="input"
+                onPick={(v) => setDraft({ ...draft, sub_dept: v ?? '' })}
               />
+              {(subs.data ?? []).filter((o) => o.dept_code === draft.dept_code).length === 0 && (
+                <p className="mt-1 text-xs text-ink-400">
+                  แผนกนี้ยังไม่มีแผนกย่อย · เพิ่มได้ที่ปุ่มจัดการแผนกในหน้าทะเบียนเครื่อง
+                </p>
+              )}
               <p className="mt-1 text-xs text-ink-400">
-                เป็นป้ายกำกับอย่างเดียว ไม่มีผลกับสิทธิ์การมองเห็น · จะขึ้นต่อท้ายแผนก เช่น OUT 4W · DO1
+                ปล่อยว่าง = เห็นของทั้งแผนกรวมทุกย่อย · ใส่ย่อย = เห็นของกลางของแผนก บวกของย่อยนั้น
               </p>
             </div>
             <div>

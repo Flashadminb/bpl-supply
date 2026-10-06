@@ -1,5 +1,15 @@
-import { useState } from 'react'
-import { createDepartment, deleteDepartment, renameDepartment } from '../lib/api'
+import { useEffect, useState } from 'react'
+import {
+  createDepartment,
+  deleteDepartment,
+  deleteSubDept,
+  listSubDeptCoverage,
+  listSubDepts,
+  renameDepartment,
+  saveSubDept,
+  type SubDept,
+  type SubDeptCoverage,
+} from '../lib/api'
 import { readableError } from '../lib/supabase'
 import { ErrorBox, Modal, Spinner } from './ui'
 import type { Department } from '../lib/types'
@@ -27,11 +37,34 @@ export function DepartmentManager({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  /* แผนกย่อย · โหลดเองเพราะใช้แค่ในกล่องนี้ */
+  const [subs, setSubs] = useState<SubDept[]>([])
+  const [cover, setCover] = useState<SubDeptCoverage[]>([])
+  const [openSub, setOpenSub] = useState<string | null>(null)
+  const [newSub, setNewSub] = useState('')
+
+  async function reloadSubs() {
+    try {
+      const [a, b] = await Promise.all([listSubDepts(), listSubDeptCoverage()])
+      setSubs(a)
+      setCover(b)
+    } catch {
+      /* ไม่ใช่แอดมินก็อ่านตัวนับไม่ได้ ปล่อยว่างไว้ ไม่ต้องทำให้ทั้งกล่องพัง */
+    }
+  }
+  useEffect(() => {
+    if (open) void reloadSubs()
+  }, [open])
+
+  const subsOf = (dept: string) => subs.filter((s) => s.dept_code === dept)
+  const coverOf = (dept: string) => cover.find((c) => c.dept_code === dept)
+
   async function run(fn: () => Promise<void>) {
     setBusy(true)
     setError(null)
     try {
       await fn()
+      await reloadSubs()
       onChanged()
     } catch (e) {
       setError(readableError(e))
@@ -47,6 +80,17 @@ export function DepartmentManager({
         และตั้งแผนกให้<b>ของ</b>ตอนเพิ่ม/แก้วัสดุ
         <br />
         ของที่ตั้งเป็น <b>ทุกแผนก</b> ทุกคนเห็นหมด
+      </p>
+
+      <p className="mb-3 rounded-card border border-line-2 px-3 py-2 text-sm text-ink-500">
+        <b className="text-ink">แผนกย่อย</b> ใช้แยกของกันเองในแผนกเดียว เช่น OUT 4W มี DO1 DO2 DO3
+        <br />
+        คนที่<b>ปล่อยช่องย่อยว่าง</b> เห็นทั้งแผนกรวมทุกย่อย · คนที่<b>ใส่ย่อย</b> เห็นของกลางของแผนก
+        บวกของย่อยตัวเองเท่านั้น
+        <br />
+        เครื่องที่ไม่ใส่ย่อยเป็นของกลาง ทุกคนในแผนกเห็นเหมือนเดิม · ข้ามแผนกยังไม่ได้เหมือนเดิม
+        <br />
+        ชื่อย่อยตั้งเป็นอะไรก็ได้ · ชื่อที่เพิ่มไว้ตรงนี้แล้วเท่านั้นจึงจะมีผลกับสิทธิ์
       </p>
 
       <ul className="space-y-2">
@@ -96,6 +140,14 @@ export function DepartmentManager({
                     </button>
                     <button
                       type="button"
+                      className="btn-soft h-tap px-3 text-sm"
+                      disabled={busy}
+                      onClick={() => setOpenSub(openSub === d.code ? null : d.code)}
+                    >
+                      แผนกย่อย {subsOf(d.code).length > 0 ? subsOf(d.code).length : ''}
+                    </button>
+                    <button
+                      type="button"
                       className="btn-danger h-tap px-3 text-sm"
                       disabled={busy}
                       onClick={() => {
@@ -107,6 +159,78 @@ export function DepartmentManager({
                   </>
                 )}
               </>
+            )}
+
+            {openSub === d.code && (
+              <div className="mt-2 w-full rounded-card bg-canvas p-3">
+                {subsOf(d.code).length === 0 ? (
+                  <p className="mb-2 text-sm text-ink-500">
+                    ยังไม่มีแผนกย่อย · ตอนนี้ทุกคนในแผนกนี้เห็นของในแผนกเหมือนเดิมทั้งหมด
+                  </p>
+                ) : (
+                  <ul className="mb-2 flex flex-wrap gap-2">
+                    {subsOf(d.code).map((s) => (
+                      <li
+                        key={s.code}
+                        className="flex items-center gap-2 rounded-pill border border-line-2 px-3 py-1.5 text-sm"
+                      >
+                        <b>{s.code}</b>
+                        <button
+                          type="button"
+                          aria-label={`ลบแผนกย่อย ${s.code}`}
+                          className="text-danger"
+                          disabled={busy}
+                          onClick={() => {
+                            if (confirm(`ลบแผนกย่อย "${s.code}" ของ ${d.name} ?`))
+                              void run(() => deleteSubDept(d.code, s.code))
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    className="input min-w-0 flex-1"
+                    placeholder="ชื่อแผนกย่อย เช่น DO1 หรือ ABC"
+                    value={newSub}
+                    onChange={(e) => setNewSub(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newSub.trim())
+                        void run(async () => {
+                          await saveSubDept({ dept_code: d.code, code: newSub.trim(), name: newSub.trim() })
+                          setNewSub('')
+                        })
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={busy || !newSub.trim()}
+                    onClick={() =>
+                      void run(async () => {
+                        await saveSubDept({ dept_code: d.code, code: newSub.trim(), name: newSub.trim() })
+                        setNewSub('')
+                      })
+                    }
+                  >
+                    เพิ่มแผนกย่อย
+                  </button>
+                </div>
+
+                {coverOf(d.code) && coverOf(d.code)!.no_sub > 0 && (
+                  <p className="mt-2 rounded-btn bg-warn-bg px-3 py-2 text-xs text-warn-txt">
+                    แผนกนี้มีคน {coverOf(d.code)!.total} คน ·{' '}
+                    <b>ยังไม่ได้ใส่แผนกย่อย {coverOf(d.code)!.no_sub} คน</b>
+                    <br />
+                    คนที่ยังว่างจะเห็นของทุกย่อยเหมือนหัวหน้า · ตั้งใจแบบนั้นก็ปล่อยไว้ได้
+                    ถ้าไม่ได้ตั้งใจให้ไปใส่ที่หน้าผู้ใช้และสิทธิ์
+                  </p>
+                )}
+              </div>
             )}
           </li>
         ))}
