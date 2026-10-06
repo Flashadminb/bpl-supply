@@ -334,6 +334,7 @@ export default function AssetRegistry() {
                 <th className="p-2 font-medium">รหัสเครื่อง</th>
                 <th className="p-2 font-medium">ประเภท</th>
                 <th className="p-2 font-medium">แผนก</th>
+                <th className="p-2 font-medium">แผนกย่อย</th>
                 <th className="p-2 font-medium">สถานะ</th>
                 <th className="p-2 font-medium">อาการค้าง</th>
                 <th className="p-2 font-medium" />
@@ -349,11 +350,6 @@ export default function AssetRegistry() {
                     <td className="p-2 text-ink-500">{a.asset_types?.name ?? a.type_code}</td>
                     <td className="p-2 text-ink-500">
                       {deptName.get(a.dept_code ?? 'ALL') ?? a.dept_code ?? 'ส่วนกลาง'}
-                      {a.sub_dept && (
-                        <span className="ml-1 rounded-pill bg-brand-50 px-1.5 font-display text-[11px] text-ink">
-                          {a.sub_dept}
-                        </span>
-                      )}
                       {a.share_depts?.length > 0 && (
                         <p className="text-xs text-ink-400">
                           + {a.share_depts.map((c) => deptName.get(c) ?? c).join(', ')}
@@ -363,6 +359,16 @@ export default function AssetRegistry() {
                         <p className="text-xs text-warn-txt">
                           โอนให้ {loanName.get(a.loan_user) ?? 'คนอื่น'} ใช้ชั่วคราว
                         </p>
+                      )}
+                    </td>
+                    {/* แผนกย่อยเป็นคอลัมน์ของตัวเอง · ขีดกลางแปลว่าของกลาง ทุกคนในแผนกเห็น */}
+                    <td className="p-2">
+                      {a.sub_dept ? (
+                        <span className="rounded-pill bg-brand-50 px-2 py-0.5 font-display text-xs text-ink">
+                          {a.sub_dept}
+                        </span>
+                      ) : (
+                        <span className="text-ink-400">—</span>
                       )}
                     </td>
                     <td className="p-2">
@@ -717,6 +723,8 @@ function AssetSheet({
   const [shares, setShares] = useState<string[]>(asset.share_depts ?? [])
   const [sub, setSub] = useState(asset.sub_dept ?? '')
   const subOptions = subDepts.filter((o) => o.dept_code === home)
+  const deptNameOf = (c: string) =>
+    c === 'ALL' ? 'ทุกแผนก' : (departments.find((d) => d.code === c)?.name ?? c)
   const deptsDirty =
     home !== (asset.dept_code ?? 'ALL') ||
     sub !== (asset.sub_dept ?? '') ||
@@ -850,9 +858,14 @@ function AssetSheet({
               </div>
               <p className="mt-1 text-xs text-ink-400">ไม่ติ๊กเลยก็ได้ — มีแค่แผนกเจ้าของที่ใช้ได้</p>
 
-              {subOptions.length > 0 && (
+              {/*
+                โชว์เสมอแม้แผนกนั้นยังไม่มีย่อย
+                ซ่อนทั้งก้อนตอนยังไม่มีอะไรให้เลือก แปลว่าคนหาไม่เจอว่าฟีเจอร์นี้อยู่ไหน
+                แล้วจะคิดว่าระบบไม่มีให้ ทั้งที่แค่ยังไม่ได้ตั้งชื่อย่อย
+              */}
+              <p className="label mt-3">แผนกย่อยเจ้าของ</p>
+              {subOptions.length > 0 ? (
                 <>
-                  <p className="label mt-3">แผนกย่อยเจ้าของ</p>
                   <select
                     className="input h-tap"
                     value={sub}
@@ -869,6 +882,13 @@ function AssetSheet({
                     ใส่ย่อยแล้วจะเห็นเฉพาะคนที่อยู่ย่อยนั้น กับคนที่ปล่อยช่องย่อยว่างไว้
                   </p>
                 </>
+              ) : (
+                <p className="rounded-btn bg-canvas px-3 py-2 text-xs text-ink-500">
+                  แผนก{deptNameOf(home)}ยังไม่มีแผนกย่อย · กดปุ่ม <b>จัดการแผนก</b> ด้านบนของหน้านี้
+                  แล้วกด <b>แผนกย่อย</b> ที่แถวของแผนกนั้น เพื่อเพิ่มชื่อก่อน
+                  <br />
+                  ตั้งชื่อเป็นอะไรก็ได้ เช่น DO1 หรือ ABC
+                </p>
               )}
             </>
           )}
