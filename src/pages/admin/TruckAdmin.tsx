@@ -212,7 +212,9 @@ function BranchTab() {
     const all = list.data ?? []
     if (!s) return all
     return all.filter((b) =>
-      `${b.name} ${b.code ?? ''} ${b.full_name ?? ''} ${b.province ?? ''}`.toLowerCase().includes(s),
+      `${b.name} ${b.code ?? ''} ${b.full_name ?? ''} ${b.province ?? ''} ${b.zone ?? ''}`
+        .toLowerCase()
+        .includes(s),
     )
   }, [list.data, q])
 
@@ -322,6 +324,7 @@ function BranchTab() {
                 <th className="px-3 py-2 font-medium">ชื่อ</th>
                 <th className="w-[110px] px-3 py-2 font-medium">รหัส</th>
                 <th className="px-3 py-2 font-medium">ชื่อเต็ม</th>
+                <th className="w-[80px] px-3 py-2 font-medium">โซน</th>
                 <th className="px-3 py-2 font-medium">พื้นที่</th>
                 <th className="w-[110px] px-3 py-2 font-medium">สถานะ</th>
                 <th className="w-[80px] px-3 py-2" />
@@ -347,6 +350,7 @@ function BranchTab() {
                   <td className="px-3 py-2 font-medium">{b.name}</td>
                   <td className="px-3 py-2 font-mono text-xs">{b.code ?? '—'}</td>
                   <td className="px-3 py-2 text-xs text-ink-500">{b.full_name ?? '—'}</td>
+                  <td className="px-3 py-2 font-mono text-xs font-bold">{b.zone ?? '—'}</td>
                   <td className="px-3 py-2 text-xs text-ink-500">
                     {[b.province, b.district, b.subdistrict].filter(Boolean).join(' · ') || '—'}
                   </td>
@@ -436,6 +440,18 @@ function BranchEdit({
           <span className="label">รหัสอ้างอิงในชีต</span>
           <input className="input w-full font-mono" value={d.branch_ref ?? ''} onChange={f('branch_ref')} />
         </label>
+        <label className="block">
+          <span className="label">โซน</span>
+          <input
+            className="input w-full font-mono"
+            placeholder="เช่น D05"
+            value={d.zone ?? ''}
+            onChange={f('zone')}
+          />
+          <span className="mt-1 block text-xs text-ink-400">
+            มาจากคอลัมน์เลขสายพานในชีตขององค์กร · จอทีวีใช้ค่านี้แยกการ์ดรายโซน
+          </span>
+        </label>
       </div>
 
       <div className="mt-3 space-y-2">
@@ -482,6 +498,7 @@ function BranchEdit({
               district: (d.district ?? '').trim() || null,
               subdistrict: (d.subdistrict ?? '').trim() || null,
               branch_ref: (d.branch_ref ?? '').trim() || null,
+              zone: (d.zone ?? '').trim().toUpperCase() || null,
               is_open: d.is_open ?? true,
               is_active: d.is_active ?? true,
             })

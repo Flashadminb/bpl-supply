@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { STAGE_COLOR, STAGE_PUSH, STAGE_TH, previewAll, stageOf, type Stage } from './alarm'
 import { hm, p2 } from './parts'
 
@@ -134,26 +135,72 @@ export function AlarmChip({ on, onClick }: { on: boolean; onClick: () => void })
  * แถบที่ค่อย ๆ หดบอกความเร่งด่วนได้เร็วกว่าตัวเลข เพราะตามองเห็นของที่สั้นลง
  * ตั้งแต่ยังอ่านไม่ทัน · และเห็นได้จากหางตา ไม่ต้องหันไปจ้อง
  */
+/**
+ * แถบเร่งด่วน · ไม่ซ่อนคันไหนเลย
+ *
+ * วิธีรับมือเมื่อของเยอะคือย่อก่อน แล้วค่อยหมุน ไม่ใช่ตัดทิ้ง
+ * ย่อก่อนเพราะของที่เล็กลงยังอยู่บนจอ ส่วนของที่ถูกตัดคือของที่ไม่มีใครเห็นเลย
+ * เกินหนึ่งหน้าแล้วค่อยหมุน และบอกไว้ว่าหน้าที่เท่าไหร่จากกี่หน้า
+ * จะได้ไม่มีใครยืนรอของที่เพิ่งผ่านไปโดยไม่รู้ว่าต้องรออีกนานแค่ไหน
+ */
 export function UrgentRail({
   items,
-  max = 3,
   big = false,
   onPick,
+  rotateMs = 7000,
 }: {
-  items: { id: number; code: string | null; name: string; due: string; sec: number }[]
-  max?: number
+  items: { id: number; code: string | null; name: string; due: string; sec: number; zone?: string | null }[]
   big?: boolean
   onPick?: (id: number) => void
+  rotateMs?: number
 }) {
-  const list = items.filter((x) => stageOf(x.sec) !== null).sort((a, b) => a.sec - b.sec).slice(0, max)
-  if (list.length === 0) return null
+  const all = items.filter((x) => stageOf(x.sec) !== null).sort((a, b) => a.sec - b.sec)
+  const PER = big ? 12 : 8
+  const pages = Math.max(1, Math.ceil(all.length / PER))
+  const [pg, setPg] = useState(0)
+  useEffect(() => {
+    if (pages <= 1) {
+      setPg(0)
+      return
+    }
+    const t = setInterval(() => setPg((p) => (p + 1) % pages), rotateMs)
+    return () => clearInterval(t)
+  }, [pages, rotateMs])
+
+  if (all.length === 0) return null
+  const list = all.slice(pg * PER, pg * PER + PER)
+  // ย่อเมื่อเยอะ · การ์ดใหญ่มีค่าเฉพาะตอนมีไม่กี่ใบ
+  const dense = all.length > (big ? 4 : 3)
+  const cols = dense
+    ? 'sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+    : all.length > 1
+      ? 'md:grid-cols-2 xl:grid-cols-3'
+      : ''
 
   return (
-    <div className={`grid gap-3 ${list.length > 1 ? 'md:grid-cols-2 xl:grid-cols-3' : ''}`}>
+    <>
+      {pages > 1 && (
+        <div className="mb-2 flex items-center gap-2 text-sm" style={{ color: '#AFC0D4' }}>
+          <Bell size={16} color="#FF5C5C" />
+          <b style={{ color: '#FF5C5C' }}>{all.length} คัน</b> ที่ต้องเร่ง · หมุนโชว์หน้า {pg + 1} จาก{' '}
+          {pages}
+          <span className="flex gap-1">
+            {Array.from({ length: pages }, (_, i) => (
+              <span
+                key={i}
+                className="inline-block h-[6px] w-[6px] rounded-full"
+                style={{ background: i === pg ? '#FFC400' : '#2A313B' }}
+              />
+            ))}
+          </span>
+        </div>
+      )}
+      <div className={`grid gap-3 ${cols}`}>
       {list.map((x) => {
         const st = stageOf(x.sec) as Stage
         const c = STAGE_COLOR[st]
         const late = st === 'late'
+        const bigCard = big && !dense
         // ยี่สิบนาทีสุดท้ายคือความยาวเต็มของแถบ · เลยกำหนดแล้วแถบหมดเกลี้ยง
         const left = Math.max(0, Math.min(1, x.sec / (20 * 60)))
         const mins = Math.max(0, Math.round(Math.abs(x.sec) / 60))
@@ -171,34 +218,50 @@ export function UrgentRail({
             }}
           >
             <div className="flex items-center gap-2">
-              <Bell size={big ? 30 : 22} color={c} />
+              <Bell size={bigCard ? 30 : 20} color={c} />
               <span
-                className={`font-extrabold ${big ? 'text-3xl' : 'text-xl'}`}
+                className={`font-extrabold ${bigCard ? 'text-3xl' : 'text-lg'}`}
                 style={{ color: c }}
               >
                 {STAGE_PUSH[st]}
               </span>
               <span className="flex-1" />
-              <span className={`font-mono font-extrabold ${big ? 'text-3xl' : 'text-xl'}`} style={{ color: c }}>
+              <span
+                className={`font-mono font-extrabold ${bigCard ? 'text-3xl' : 'text-lg'}`}
+                style={{ color: c }}
+              >
                 {late ? `เลย ${mins} นาที` : `${mins} นาที`}
               </span>
             </div>
 
-            <div className={`mt-1 flex flex-wrap items-baseline gap-x-2 ${big ? 'text-3xl' : 'text-xl'}`}>
+            <div className={`mt-1 flex flex-wrap items-baseline gap-x-2 ${bigCard ? 'text-3xl' : 'text-xl'}`}>
+              {x.zone && (
+                <span
+                  className="rounded-md px-1.5 font-mono text-base font-extrabold"
+                  style={{ background: '#1B2430', color: '#7FD1FF' }}
+                >
+                  {x.zone}
+                </span>
+              )}
               {x.code && (
                 <span className="font-mono font-extrabold" style={{ color: '#FFC400' }}>
                   {x.code}
                 </span>
               )}
               <span className="truncate font-extrabold">{x.name}</span>
-              <span className={big ? 'text-lg' : 'text-sm'} style={{ color: '#AFC0D4' }}>
+            </div>
+            <div className="mt-1">
+              <span
+                className={`rounded-md px-2 py-0.5 font-mono font-extrabold ${bigCard ? 'text-2xl' : 'text-base'}`}
+                style={{ background: '#FFC400', color: '#0B0E11' }}
+              >
                 ต้องออก {hm(new Date(x.due))}
               </span>
             </div>
 
             <div
               className="mt-2 overflow-hidden rounded-full"
-              style={{ height: big ? 14 : 10, background: '#0B0E11' }}
+              style={{ height: bigCard ? 14 : 8, background: '#0B0E11' }}
             >
               <div
                 className="h-full rounded-full"
@@ -208,7 +271,8 @@ export function UrgentRail({
           </div>
         )
       })}
-    </div>
+      </div>
+    </>
   )
 }
 

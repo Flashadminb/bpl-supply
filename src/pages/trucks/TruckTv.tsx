@@ -9,7 +9,7 @@ import {
   truckCounts,
   type TruckBoardRow,
 } from '../../lib/trucks'
-import { Countdown, DAY_TH, Density, dmy, hm, MiniGrid, p2, StatCard, tone } from './parts'
+import { Countdown, DAY_TH, dmy, hm, MiniGrid, p2, StatCard, tone, ZoneCards } from './parts'
 import { useAlarmPref, useTruckAlarm } from './alarm'
 import { AlarmChip, AlarmGate, EdgeGlow, UrgentRail, worstStage } from './alert-ui'
 
@@ -82,6 +82,19 @@ export default function TruckTv() {
    * ค่าเก็บในเครื่อง ไม่ใช่ในฐานข้อมูล
    * เพราะจอทีวีที่แขวนในคลังกับมือถือที่เปิดดูเฉย ๆ ควรตั้งคนละแบบได้
    */
+  /**
+   * โหมดเต็มจอ
+   *
+   * จอที่แขวนในคลังไม่ได้ต่อคีย์บอร์ด การจะกด F11 จึงไม่มีทางเกิดขึ้นจริง
+   * ปุ่มบนหน้าจึงเป็นทางเดียวที่คนตั้งจอจะเข้าโหมดเต็มจอได้
+   */
+  const [full, setFull] = useState(false)
+  useEffect(() => {
+    const f = () => setFull(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', f)
+    return () => document.removeEventListener('fullscreenchange', f)
+  }, [])
+
   // จอแคบ = มือถือ · เช็กตอนหมุนเครื่องด้วย ไม่ใช่เช็กครั้งเดียวตอนเปิด
   const [narrow, setNarrow] = useState(() => window.innerWidth < 768)
   const [force, setForce] = useState(false)
@@ -121,6 +134,7 @@ export default function TruckTv() {
         due: r.due_at,
         sec,
         seq: seq.get(r.id),
+        zone: r.zone,
       })),
     [live, seq],
   )
@@ -139,6 +153,7 @@ export default function TruckTv() {
     name: x.r.branch_name,
     due: x.r.due_at,
     sec: x.sec,
+    zone: x.r.zone,
   }))
   const askRow = ask === null ? null : (live.find((x) => x.r.id === ask) ?? null)
   const clock = new Date(now)
@@ -227,7 +242,13 @@ export default function TruckTv() {
           </div>
           {mini.length > BIG_CARDS && (
             <div className="mt-4">
-              <MiniGrid rows={mini.slice(BIG_CARDS)} now={now} title="คันอื่นที่อยู่ในคลัง" onPick={setAsk} />
+              <MiniGrid
+                rows={mini.slice(BIG_CARDS)}
+                now={now}
+                title="คันอื่นที่อยู่ในคลัง"
+                onPick={setAsk}
+                byZone
+              />
             </div>
           )}
         </>
@@ -236,7 +257,7 @@ export default function TruckTv() {
           {/* กิมิกของหน้านี้ · บอกตรง ๆ ว่าต้องเร่งคันไหน ไม่ต้องให้แปลจากตัวเลขเอง */}
           {urgent.some((x) => x.sec <= 20 * 60) && (
             <div className="mb-4">
-              <UrgentRail items={urgent} big max={3} onPick={setAsk} />
+              <UrgentRail items={urgent} big onPick={setAsk} />
             </div>
           )}
 
@@ -291,13 +312,13 @@ export default function TruckTv() {
             />
           </div>
 
-          <div className="mb-4 rounded-2xl p-5" style={{ background: '#121820' }}>
-            <p className="mb-3 text-xl font-bold">รถครบกำหนดช่วงไหนบ้าง</p>
-            <Density secs={live.map((x) => x.sec)} now={now} big />
+          <div className="mb-4">
+            <p className="mb-2 text-xl font-bold">แยกตามโซน</p>
+            <ZoneCards rows={live.map((x) => ({ zone: x.r.zone, sec: x.sec }))} />
           </div>
 
-          {/* ทุกคันที่อยู่ในคลัง · ช่องย่อลงเองตามจำนวนเพื่อให้จบในหน้าเดียว */}
-          <MiniGrid rows={mini} now={now} title="ทุกคันที่อยู่ในคลังตอนนี้" onPick={setAsk} />
+          {/* ทุกคันที่อยู่ในคลัง · แยกหัวข้อตามโซน และย่อลงเองตามจำนวน */}
+          <MiniGrid rows={mini} now={now} title="ทุกคันที่อยู่ในคลังตอนนี้" onPick={setAsk} byZone />
         </>
       )}
 
@@ -317,6 +338,14 @@ export default function TruckTv() {
               ปล่อยรถคันนี้ใช่ไหม
             </p>
             <p className="mt-2 flex flex-wrap items-baseline justify-center gap-x-3 text-4xl">
+              {askRow.r.zone && (
+                <span
+                  className="rounded-md px-2 font-mono text-2xl font-extrabold"
+                  style={{ background: '#1B2430', color: '#7FD1FF' }}
+                >
+                  {askRow.r.zone}
+                </span>
+              )}
               {askRow.r.branch_code && (
                 <span className="font-mono font-extrabold" style={{ color: '#FFC400' }}>
                   {askRow.r.branch_code}
@@ -403,6 +432,17 @@ export default function TruckTv() {
         >
           สลับหน้า
         </button>
+        <button
+          type="button"
+          className="h-tap rounded-lg px-5 text-base font-bold"
+          style={{ background: '#1B2430', color: '#F0F4F9' }}
+          onClick={() => {
+            if (document.fullscreenElement) void document.exitFullscreen()
+            else void document.documentElement.requestFullscreen().catch(() => {})
+          }}
+        >
+          {full ? 'ออกจากเต็มจอ' : 'เต็มจอ'}
+        </button>
         <AlarmChip on={pref.on} onClick={() => void pref.turnOn()} />
         <label
           className="h-tap flex cursor-pointer items-center gap-3 rounded-lg px-4 text-base"
@@ -481,6 +521,14 @@ function Card({
           late ? 'text-4xl' : near ? 'text-2xl' : 'text-xl'
         }`}
       >
+        {row.zone && (
+          <span
+            className="rounded-md px-2 font-mono text-xl font-extrabold"
+            style={{ background: '#1B2430', color: '#7FD1FF' }}
+          >
+            {row.zone}
+          </span>
+        )}
         {row.branch_code && (
           <span className="font-mono font-extrabold" style={{ color: '#FFC400' }}>
             {row.branch_code}
@@ -511,15 +559,18 @@ function Card({
             {hm(arr)} <span style={{ fontSize: Math.round(size * 0.21) }}>{dmy(arr)}</span>
           </div>
 
-          <div className="mt-1" style={{ color: '#7D8B9B', fontSize: Math.round(size * 0.2) }}>
-            ควรออก
-          </div>
-          <div
-            className="font-mono font-extrabold"
-            style={{ color: '#FFC400', fontSize: Math.round(size * 0.52) }}
-          >
-            {hm(due)}{' '}
-            <span style={{ fontSize: Math.round(size * 0.26), color: '#AFC0D4' }}>{dmy(due)}</span>
+          {/*
+            เวลาที่ต้องออกคือตัวเลขที่ใช้ตัดสินใจ ไม่ใช่ข้อมูลประกอบ
+            ตัวเหลืองบนพื้นดำยังจมหายไปกับตัวเลขอื่นบนจอที่เหลืองเหมือนกัน
+            กลับสีเป็นพื้นเหลืองตัวดำ จึงเป็นก้อนเดียวบนการ์ดที่สว่างกว่าทุกอย่างรอบตัว
+          */}
+          <div className="mt-1.5 inline-flex items-baseline gap-2 rounded-md px-2 py-1"
+               style={{ background: '#FFC400', color: '#0B0E11' }}>
+            <span style={{ fontSize: Math.round(size * 0.22), fontWeight: 700 }}>ต้องออก</span>
+            <span className="font-mono font-extrabold" style={{ fontSize: Math.round(size * 0.56) }}>
+              {hm(due)}
+            </span>
+            <span style={{ fontSize: Math.round(size * 0.24), fontWeight: 700 }}>{dmy(due)}</span>
           </div>
         </div>
       </div>

@@ -15,6 +15,8 @@ export interface TruckBoardRow {
   branch_id: number | null
   branch_name: string
   branch_code: string | null
+  /** โซน · มาจากคอลัมน์เลขสายพานในชีตขององค์กร เช่น D04 D05 · หน้าเว็บเรียกว่าโซน */
+  zone: string | null
   branch_full: string | null
   province: string | null
   district: string | null
@@ -31,6 +33,7 @@ export interface TruckBoardRow {
 export interface TruckBranch {
   id: number
   code: string | null
+  zone: string | null
   name: string
   full_name: string | null
   branch_ref: string | null
@@ -150,6 +153,7 @@ export interface TruckDoneRow {
   id: number
   branch_name: string
   branch_code: string | null
+  zone: string | null
   arrived_at: string
   allow_min: number
   due_at: string
@@ -172,7 +176,7 @@ export interface TruckDoneRow {
 export async function listTruckDone(fromISO: string, toISO: string): Promise<TruckDoneRow[]> {
   const { data, error } = await supabase
     .from('truck_done_rows')
-    .select('id,branch_name,branch_code,arrived_at,allow_min,due_at,left_at,late_min,on_time,dwell_min,by_name,closed_by_name')
+    .select('id,branch_name,branch_code,zone,arrived_at,allow_min,due_at,left_at,late_min,on_time,dwell_min,by_name,closed_by_name')
     .gte('arrived_at', fromISO)
     .lte('arrived_at', toISO)
     .order('arrived_at', { ascending: true })
@@ -290,6 +294,7 @@ export async function saveTruckBranch(b: {
   district?: string | null
   subdistrict?: string | null
   branch_ref?: string | null
+  zone?: string | null
   is_open?: boolean
   is_active?: boolean
 }) {
@@ -304,6 +309,7 @@ export async function saveTruckBranch(b: {
     p_ref: b.branch_ref ?? null,
     p_open: b.is_open ?? true,
     p_active: b.is_active ?? true,
+    p_zone: b.zone ?? null,
   })
   if (error) throw new Error(readableError(error))
 }

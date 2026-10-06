@@ -184,26 +184,83 @@ export function StatCard({
  * ขนาดช่องย่อลงเองตามจำนวนคัน เพราะเจ้าของระบบบอกว่าบางช่วงมีสามสี่ร้อยคัน
  * จอทีวีเลื่อนไม่ได้ ของที่ล้นออกนอกจอเท่ากับของที่ไม่ได้แสดง
  */
+export interface MiniRow {
+  id: number
+  name: string
+  code: string | null
+  due: string
+  sec: number
+  seq?: number
+  zone?: string | null
+}
+
+/**
+ * ทุกคันในคลัง · แน่นที่สุดเท่าที่ยังอ่านออก
+ *
+ * ตัดวินาทีออกจากช่องเล็กโดยตั้งใจ
+ * วินาทีมีประโยชน์ตอนเหลือสิบนาทีสุดท้าย ซึ่งคันนั้นขึ้นไปอยู่การ์ดใหญ่แล้ว
+ * ส่วนคันที่เหลืออีกสองชั่วโมง วินาทีเป็นแค่ตัวเลขที่กระพริบแล้วกินที่
+ *
+ * แยกหัวข้อตามโซน เพราะหน้างานยืนประจำโซน
+ * รายการที่คละทุกโซนปนกัน แปลว่าทุกคนต้องกวาดตาทั้งจอเพื่อหาของตัวเอง
+ */
 export function MiniGrid({
   rows,
   now,
   title,
   onPick,
+  byZone = false,
 }: {
-  rows: { id: number; name: string; code: string | null; due: string; sec: number; seq?: number }[]
+  rows: MiniRow[]
   now: number
   title?: string
   /** จิ้มช่องแล้วทำอะไรต่อ · ไม่ส่งมาก็เป็นช่องอ่านอย่างเดียวเหมือนเดิม */
   onPick?: (id: number) => void
+  /** แยกเป็นกลุ่มตามโซน */
+  byZone?: boolean
 }) {
   void now
   const n = rows.length
-  const w = n <= 16 ? 210 : n <= 40 ? 158 : n <= 90 ? 120 : 96
-  const nameSize = n <= 16 ? 16 : n <= 40 ? 14 : n <= 90 ? 12.5 : 11
-  const clockSize = n <= 16 ? 24 : n <= 40 ? 20 : n <= 90 ? 17 : 15
-  const withSec = w >= 158
-
   if (n === 0) return null
+
+  if (byZone) {
+    const groups = new Map<string, MiniRow[]>()
+    for (const r of rows) {
+      const k = r.zone || 'ไม่ระบุโซน'
+      const g = groups.get(k)
+      if (g) g.push(r)
+      else groups.set(k, [r])
+    }
+    const keys = [...groups.keys()].sort()
+    return (
+      <div>
+        {title && (
+          <p className="mb-2 text-lg font-bold" style={{ color: '#AFC0D4' }}>
+            {title} <span style={{ color: '#5A646F' }}>{n} คัน · {keys.length} โซน</span>
+          </p>
+        )}
+        <div className="space-y-2">
+          {keys.map((k) => (
+            <div key={k} className="flex items-start gap-2">
+              <span
+                className="mt-[2px] shrink-0 rounded-md px-2 py-1 font-mono text-sm font-extrabold"
+                style={{ background: '#1B2430', color: '#7FD1FF', minWidth: 58, textAlign: 'center' }}
+              >
+                {k}
+                <span className="ml-1 text-xs" style={{ color: '#5A646F' }}>
+                  {groups.get(k)!.length}
+                </span>
+              </span>
+              <div className="min-w-0 flex-1">
+                <Tiles rows={groups.get(k)!} total={n} onPick={onPick} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       {title && (
@@ -211,8 +268,22 @@ export function MiniGrid({
           {title} <span style={{ color: '#5A646F' }}>{n} คัน</span>
         </p>
       )}
+      <Tiles rows={rows} total={n} onPick={onPick} />
+    </div>
+  )
+}
+
+function Tiles({ rows, total, onPick }: { rows: MiniRow[]; total: number; onPick?: (id: number) => void }) {
+  const n = total
+  const w = n <= 16 ? 176 : n <= 40 ? 138 : n <= 90 ? 110 : 92
+  const nameSize = n <= 16 ? 14 : n <= 40 ? 12.5 : n <= 90 ? 11.5 : 10.5
+  const clockSize = n <= 16 ? 21 : n <= 40 ? 18 : n <= 90 ? 16 : 14
+  const withSec = false
+
+  return (
+    <>
       <div
-        className="grid gap-2"
+        className="grid gap-[5px]"
         style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${w}px, 1fr))` }}
       >
         {rows.map((r) => {
@@ -277,6 +348,81 @@ export function MiniGrid({
           )
         })}
       </div>
+    </>
+  )
+}
+
+/**
+ * การ์ดสรุปรายโซน · แทนที่กราฟความหนาแน่นบนจอทีวี
+ *
+ * กราฟความหนาแน่นตอบว่า "อีกกี่นาทีจะมีรถครบกำหนดพร้อมกันกี่คัน"
+ * ซึ่งเป็นคำถามของคนวางแผน ไม่ใช่คำถามของคนที่ยืนอยู่ในโซน
+ * คนในโซนถามว่า "โซนฉันมีกี่คัน ตกไปแล้วกี่คัน" ซึ่งกราฟนั้นตอบไม่ได้เลย
+ */
+export function ZoneCards({
+  rows,
+  onPick,
+}: {
+  rows: { zone?: string | null; sec: number }[]
+  onPick?: (zone: string) => void
+}) {
+  const g = new Map<string, { n: number; late: number; soon: number; next: number }>()
+  for (const r of rows) {
+    const k = r.zone || 'ไม่ระบุ'
+    const v = g.get(k) ?? { n: 0, late: 0, soon: 0, next: Infinity }
+    v.n += 1
+    if (r.sec < 0) v.late += 1
+    else if (r.sec <= 20 * 60) v.soon += 1
+    if (r.sec >= 0 && r.sec < v.next) v.next = r.sec
+    g.set(k, v)
+  }
+  const keys = [...g.keys()].sort()
+  if (keys.length === 0) return null
+
+  return (
+    <div
+      className="grid gap-3"
+      style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${keys.length > 6 ? 150 : 190}px, 1fr))` }}
+    >
+      {keys.map((k) => {
+        const v = g.get(k)!
+        const c = v.late > 0 ? '#FF5C5C' : v.soon > 0 ? '#FFC400' : '#35D98A'
+        const next = v.next === Infinity ? null : v.next
+        return (
+          <div
+            key={k}
+            className={`rounded-xl px-3 py-3 ${onPick ? 'cursor-pointer active:opacity-70' : ''}`}
+            role={onPick ? 'button' : undefined}
+            onClick={onPick ? () => onPick(k) : undefined}
+            style={{ background: '#121820', borderTop: `3px solid ${c}` }}
+          >
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-2xl font-extrabold" style={{ color: '#7FD1FF' }}>
+                {k}
+              </span>
+              <span className="text-2xl font-extrabold">{v.n}</span>
+              <span className="text-sm" style={{ color: '#AFC0D4' }}>
+                คัน
+              </span>
+            </div>
+            <div className="mt-1 flex flex-wrap gap-x-3 text-sm">
+              <span style={{ color: v.late ? '#FF5C5C' : '#5A646F' }}>เลย {v.late}</span>
+              <span style={{ color: v.soon ? '#FFC400' : '#5A646F' }}>ใกล้ {v.soon}</span>
+            </div>
+            {next !== null && (
+              <div className="mt-1 font-mono text-sm" style={{ color: '#AFC0D4' }}>
+                คันถัดไป {p2(Math.floor(next / 3600))}:{p2(Math.floor(next / 60) % 60)}
+              </div>
+            )}
+            {/* แถบสัดส่วน · เห็นทันทีว่าโซนนี้แดงไปแค่ไหน */}
+            <div className="mt-2 flex h-[6px] overflow-hidden rounded-full" style={{ background: '#0B0E11' }}>
+              <span style={{ width: `${(v.late / v.n) * 100}%`, background: '#FF5C5C' }} />
+              <span style={{ width: `${(v.soon / v.n) * 100}%`, background: '#FFC400' }} />
+              <span style={{ width: `${((v.n - v.late - v.soon) / v.n) * 100}%`, background: '#35D98A' }} />
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

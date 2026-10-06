@@ -149,6 +149,7 @@ export default function TruckBoard() {
     name: x.r.branch_name,
     due: x.r.due_at,
     sec: x.sec,
+    zone: x.r.zone,
   }))
   /**
    * พิมพ์ค้นแล้วค้นทั้งคลังเสมอ ไม่สนใจชิปที่เลือกไว้
@@ -161,7 +162,7 @@ export default function TruckBoard() {
     const base = q2 || filter === 'all' ? live : live.filter((x) => x.sec <= 20 * 60)
     if (!q2) return base
     return base.filter((x) =>
-      `${x.r.branch_name} ${x.r.branch_code ?? ''}`.toLowerCase().includes(q2),
+      `${x.r.branch_name} ${x.r.branch_code ?? ''} ${x.r.zone ?? ''}`.toLowerCase().includes(q2),
     )
   }, [live, filter, q2])
 
@@ -564,7 +565,7 @@ export default function TruckBoard() {
             style={{ background: '#141920', border: '1px solid #2A313B', color: '#F0F4F9' }}
             type="search"
             value={find}
-            placeholder="ค้นรถในคลัง · ชื่อหรือรหัสสาขา"
+            placeholder="ค้นรถในคลัง · ชื่อ รหัส หรือโซน"
             onChange={(e) => setFind(e.target.value)}
           />
           {find && (
@@ -731,6 +732,14 @@ function Row({
       {/* ตัวย่อตัวเท่าชื่อไทยและมาก่อน · หน้างานอ่านตัวย่อเป็นหลัก */}
       <div className="min-w-[150px] flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {row.zone && (
+            <span
+              className="rounded-md px-1.5 font-mono text-sm font-extrabold"
+              style={{ background: '#1B2430', color: '#7FD1FF' }}
+            >
+              {row.zone}
+            </span>
+          )}
           {row.branch_code && (
             <span className="font-mono text-base font-extrabold" style={{ color: '#FFC400' }}>
               {row.branch_code}
