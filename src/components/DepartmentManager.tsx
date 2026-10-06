@@ -25,11 +25,20 @@ export function DepartmentManager({
   onClose,
   departments,
   onChanged,
+  canEdit,
 }: {
   open: boolean
   onClose: () => void
   departments: Department[]
   onChanged: () => void
+  /**
+   * แก้ได้ไหม · เฉพาะเจ้าของระบบ
+   *
+   * ฐานข้อมูลกันไว้อยู่แล้วตั้งแต่ migration 019 เพราะแผนกคุมว่าใครเห็นของอะไร
+   * แต่ของเดิมยังโชว์ปุ่มให้แอดมินกด แล้วได้ error ดิบ ๆ ของ Postgres ใส่หน้า
+   * ปุ่มที่กดแล้วพังเสมอ แย่กว่าไม่มีปุ่ม เพราะคนจะคิดว่าระบบเสีย
+   */
+  canEdit: boolean
 }) {
   const [newName, setNewName] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
@@ -67,7 +76,13 @@ export function DepartmentManager({
       await reloadSubs()
       onChanged()
     } catch (e) {
-      setError(readableError(e))
+      const raw = readableError(e)
+      // Postgres ตอบเป็นภาษาอังกฤษดิบ ๆ ตอนโดน RLS ปฏิเสธ · แปลให้คนอ่านรู้เรื่อง
+      setError(
+        /row-level security|violates row-level/i.test(raw)
+          ? 'บัญชีนี้แก้แผนกไม่ได้ · เฉพาะเจ้าของระบบเท่านั้นที่เพิ่ม แก้ชื่อ หรือลบแผนกและแผนกย่อยได้'
+          : raw,
+      )
     } finally {
       setBusy(false)
     }
@@ -92,6 +107,14 @@ export function DepartmentManager({
         <br />
         ชื่อย่อยตั้งเป็นอะไรก็ได้ · ชื่อที่เพิ่มไว้ตรงนี้แล้วเท่านั้นจึงจะมีผลกับสิทธิ์
       </p>
+
+      {!canEdit && (
+        <p className="mb-3 rounded-card border border-warn/30 bg-warn-bg px-3 py-2 text-sm text-warn-txt">
+          <b>ดูได้อย่างเดียว</b> · เฉพาะเจ้าของระบบเท่านั้นที่เพิ่ม แก้ชื่อ หรือลบแผนกและแผนกย่อยได้
+          <br />
+          เพราะแผนกเป็นตัวกำหนดว่าใครเห็นเครื่องไหน แก้ผิดทีเดียวกระทบทั้งคนและของพร้อมกัน
+        </p>
+      )}
 
       <ul className="space-y-2">
         {departments.map((d) => (
@@ -125,6 +148,14 @@ export function DepartmentManager({
                 <span className="min-w-0 flex-1 truncate font-display text-base">{d.name}</span>
                 {d.code === 'ALL' ? (
                   <span className="badge-mute">ค่าตั้งต้นของระบบ · แก้ไม่ได้</span>
+                ) : !canEdit ? (
+                  <button
+                    type="button"
+                    className="btn-soft h-tap px-3 text-sm"
+                    onClick={() => setOpenSub(openSub === d.code ? null : d.code)}
+                  >
+                    ดูแผนกย่อย {subsOf(d.code).length > 0 ? subsOf(d.code).length : ''}
+                  </button>
                 ) : (
                   <>
                     <button
@@ -178,7 +209,7 @@ export function DepartmentManager({
                         <button
                           type="button"
                           aria-label={`ลบแผนกย่อย ${s.code}`}
-                          className="text-danger"
+                          className={canEdit ? 'text-danger' : 'hidden'}
                           disabled={busy}
                           onClick={() => {
                             if (confirm(`ลบแผนกย่อย "${s.code}" ของ ${d.name} ?`))
@@ -192,7 +223,7 @@ export function DepartmentManager({
                   </ul>
                 )}
 
-                <div className="flex flex-wrap gap-2">
+                <div className={`flex flex-wrap gap-2 ${canEdit ? '' : 'hidden'}`}>
                   <input
                     className="input min-w-0 flex-1"
                     placeholder="ชื่อแผนกย่อย เช่น DO1 หรือ ABC"
@@ -236,7 +267,7 @@ export function DepartmentManager({
         ))}
       </ul>
 
-      <div className="mt-4 rounded-card border border-dashed border-line-2 p-3">
+      <div className={`mt-4 rounded-card border border-dashed border-line-2 p-3 ${canEdit ? '' : 'hidden'}`}>
         <label className="label">เพิ่มแผนกใหม่</label>
         <div className="flex flex-wrap gap-2">
           <input

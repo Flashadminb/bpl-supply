@@ -534,6 +534,7 @@ export default function Stock() {
 
       <DepartmentManager
         open={deptsOpen && can(...MANAGER_ROLES)}
+        canEdit={can('admin')}
         onClose={() => setDeptsOpen(false)}
         departments={depts.data ?? []}
         onChanged={() => {
