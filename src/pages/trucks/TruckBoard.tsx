@@ -14,6 +14,8 @@ import {
   type TruckBranch,
 } from '../../lib/trucks'
 import { Countdown, DAY_TH, Density, dmy, hm, p2, tone } from './parts'
+import { useAlarmPref, useTruckAlarm } from './alarm'
+import { AlarmChip, AlarmGate, EdgeGlow, StageSummary, UrgentRail, worstStage } from './alert-ui'
 
 /**
  * ตารางปล่อยรถ — หน้าเต็มจอ พื้นดำ ไม่ใช้กรอบของแอพเบิกของ
@@ -134,7 +136,20 @@ export default function TruckBoard() {
   // คันที่เท่าไหร่ของสาขานั้น · คันแรกไม่ติดป้าย
   const seq = useMemo(() => seqByBranch(rows), [rows])
   const over = live.filter((x) => x.sec < 0).length
-  const soon = live.filter((x) => x.sec >= 0 && x.sec <= 30 * 60).length
+  // ยี่สิบนาที ไม่ใช่สามสิบ · ให้ตรงกับจังหวะที่เสียงแรกดัง
+  const soon = live.filter((x) => x.sec >= 0 && x.sec <= 20 * 60).length
+
+  /* เสียงเตือน · ดังเฉพาะตอนมีคันข้ามเส้น ไม่ใช่ตอนเปิดหน้ามาเจอ */
+  const pref = useAlarmPref()
+  const alarmItems = live.map((x) => ({ id: x.r.id, sec: x.sec }))
+  useTruckAlarm(alarmItems, pref.on)
+  const urgent = live.map((x) => ({
+    id: x.r.id,
+    code: x.r.branch_code,
+    name: x.r.branch_name,
+    due: x.r.due_at,
+    sec: x.sec,
+  }))
   /**
    * พิมพ์ค้นแล้วค้นทั้งคลังเสมอ ไม่สนใจชิปที่เลือกไว้
    *
@@ -143,7 +158,7 @@ export default function TruckBoard() {
    */
   const q2 = find.trim().toLowerCase()
   const shown = useMemo(() => {
-    const base = q2 || filter === 'all' ? live : live.filter((x) => x.sec <= 30 * 60)
+    const base = q2 || filter === 'all' ? live : live.filter((x) => x.sec <= 20 * 60)
     if (!q2) return base
     return base.filter((x) =>
       `${x.r.branch_name} ${x.r.branch_code ?? ''}`.toLowerCase().includes(q2),
@@ -226,6 +241,8 @@ export default function TruckBoard() {
 
   return (
     <div className="min-h-dvh" style={{ background: '#0B0E11', color: '#F0F4F9' }}>
+      <EdgeGlow stage={worstStage(live)} />
+      <AlarmGate open={!pref.on && !pref.asked} onEnable={() => void pref.turnOn()} onSkip={pref.decline} />
       {/* ───────── หัว ───────── */}
       <header
         className="safe-t sticky top-0 z-20 flex flex-wrap items-center gap-3 px-4 py-3"
@@ -339,6 +356,14 @@ export default function TruckBoard() {
           >
             เลิกทำ
           </button>
+        </div>
+      )}
+
+      {/* ───────── เร่งด่วน ───────── */}
+      {urgent.some((x) => x.sec <= 20 * 60) && (
+        <div className="space-y-2 px-4 pt-4">
+          <StageSummary items={live} />
+          <UrgentRail items={urgent} />
         </div>
       )}
 
@@ -506,6 +531,7 @@ export default function TruckBoard() {
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
+          <AlarmChip on={pref.on} onClick={() => void pref.turnOn()} />
           <a
             href="/trucks/stats"
             className="h-tap rounded-lg px-4 text-sm font-bold leading-[44px]"

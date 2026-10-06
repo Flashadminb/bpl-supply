@@ -98,3 +98,34 @@
 @media (prefers-reduced-motion: reduce) {
   @keyframes bplPulse { 0%, 100% { box-shadow: none; } }
 }
+
+/*
+ * กระดิ่งสั่น · ใช้กับไอคอนของคันที่กำลังเตือนเท่านั้น
+ * ถ้าทุกใบสั่น ก็เท่ากับไม่มีใบไหนสั่น
+ */
+@keyframes bplBell {
+  0%, 60%, 100% { transform: rotate(0deg); }
+  65%  { transform: rotate(14deg); }
+  72%  { transform: rotate(-12deg); }
+  79%  { transform: rotate(9deg); }
+  86%  { transform: rotate(-6deg); }
+  93%  { transform: rotate(3deg); }
+}
+
+/* กรอบการ์ดเร่งด่วนกระพริบ · สลับทันที ไม่ไล่จาง จอทีวีราคาถูกตามการไล่จางไม่ทัน */
+@keyframes bplUrgent {
+  0%, 52%   { box-shadow: 0 0 0 0 transparent; }
+  53%, 100% { box-shadow: 0 0 0 6px rgba(255, 92, 92, .30); }
+}
+
+/* ขอบจอเรือง · อันนี้ไล่จางได้ เพราะมันคือของที่ต้องเห็นจากหางตา ไม่ใช่ของที่ต้องอ่าน */
+@keyframes bplEdge {
+  0%, 100% { opacity: .25; }
+  50%      { opacity: .95; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes bplBell { 0%, 100% { transform: none; } }
+  @keyframes bplUrgent { 0%, 100% { box-shadow: none; } }
+  @keyframes bplEdge { 0%, 100% { opacity: .6; } }
+}

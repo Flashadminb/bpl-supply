@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import { listTruckBoard, secondsLeft, seqByBranch, truckCounts, type TruckBoardRow } from '../../lib/trucks'
 import { Countdown, DAY_TH, Density, dmy, hm, MiniGrid, p2, StatCard, tone } from './parts'
+import { useAlarmPref, useTruckAlarm } from './alarm'
+import { AlarmChip, AlarmGate, EdgeGlow, UrgentRail, worstStage } from './alert-ui'
 
 /**
  * โหมดจอทีวี — เปิดค้างบนจอในคลัง
@@ -92,7 +94,19 @@ export default function TruckTv() {
 
   const c = counts.data
   const over = live.filter((x) => x.sec < 0).length
-  const soon = live.filter((x) => x.sec >= 0 && x.sec <= 30 * 60).length
+  const soon = live.filter((x) => x.sec >= 0 && x.sec <= 20 * 60).length
+
+  /* เสียงเตือน · จอนี้แขวนอยู่ในคลัง เสียงจึงสำคัญกว่าบนมือถือด้วยซ้ำ */
+  const pref = useAlarmPref()
+  const alarmItems = live.map((x) => ({ id: x.r.id, sec: x.sec }))
+  useTruckAlarm(alarmItems, pref.on)
+  const urgent = live.map((x) => ({
+    id: x.r.id,
+    code: x.r.branch_code,
+    name: x.r.branch_name,
+    due: x.r.due_at,
+    sec: x.sec,
+  }))
   const clock = new Date(now)
 
   /**
@@ -145,6 +159,9 @@ export default function TruckTv() {
 
   return (
     <div className="min-h-dvh px-7 py-6" style={{ background: '#0B0E11', color: '#F0F4F9' }}>
+      <EdgeGlow stage={worstStage(live)} />
+      <AlarmGate open={!pref.on && !pref.asked} onEnable={() => void pref.turnOn()} onSkip={pref.decline} />
+
       <header className="mb-5 flex items-center gap-4">
         <span
           className="rounded-lg px-3 py-1.5 text-xl font-extrabold"
@@ -182,6 +199,13 @@ export default function TruckTv() {
         </>
       ) : (
         <>
+          {/* กิมิกของหน้านี้ · บอกตรง ๆ ว่าต้องเร่งคันไหน ไม่ต้องให้แปลจากตัวเลขเอง */}
+          {urgent.some((x) => x.sec <= 20 * 60) && (
+            <div className="mb-4">
+              <UrgentRail items={urgent} big max={3} />
+            </div>
+          )}
+
           {/* การ์ดตัวเลขรวม · ตัวที่ต้องลงไปทำอะไรจะกระพริบ */}
           <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
             <StatCard label="อยู่ในคลัง" n={c?.in_hub ?? live.length} color="#FBFBFB" />
@@ -261,6 +285,7 @@ export default function TruckTv() {
         >
           สลับหน้า
         </button>
+        <AlarmChip on={pref.on} onClick={() => void pref.turnOn()} />
         <label
           className="h-tap flex cursor-pointer items-center gap-3 rounded-lg px-4 text-base"
           style={{ background: '#1B2430', color: '#AFC0D4' }}
@@ -294,7 +319,7 @@ export default function TruckTv() {
  */
 function Card({ row, sec, seq }: { row: TruckBoardRow; sec: number; seq?: number }) {
   const late = sec < 0
-  const near = !late && sec <= 30 * 60
+  const near = !late && sec <= 20 * 60
   const col = late
     ? 'col-span-12 xl:col-span-6'
     : near
