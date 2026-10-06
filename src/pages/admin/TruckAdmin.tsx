@@ -509,6 +509,7 @@ function AlertTab() {
   const [err, setErr] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [q, setQ] = useState('')
+  const [askReset, setAskReset] = useState(false)
 
   const s = draft ?? cfg.data ?? null
   const counts = useAsync(() => truckCounts(), [tick])
@@ -622,25 +623,25 @@ function AlertTab() {
       <section className="panel mb-4 p-4">
         <p className="font-display text-sm">ตัวนับ “ปล่อยไปแล้ว” ของจอทีวี</p>
         <p className="mb-2 text-xs text-ink-500">
-          จอทีวีโชว์ว่าปล่อยรถไปแล้วกี่คัน นับจากครั้งล่าสุดที่กดปุ่มนี้
+          จอทีวีโชว์ว่าปล่อยรถไปแล้วกี่คัน ออกตรงเวลากี่คัน ออกเกินเวลากี่คัน
+          นับจากครั้งล่าสุดที่กดปุ่มนี้
           <br />
           ไม่ได้ตัดที่เที่ยงคืน เพราะงานรันยี่สิบสี่ชั่วโมงและกะคาบเกี่ยวข้ามวัน ·
           กดตอนเริ่มรอบที่อยากนับ
+        </p>
+        <p className="mb-3 rounded-btn bg-success-bg px-3 py-2 text-xs text-success-txt">
+          รีเซตแค่ตัวเลขที่โชว์บนจอทีวีเท่านั้น · ไม่ได้ลบรถสักคัน
+          <br />
+          ประวัติรถ หน้าสถิติ และการส่งลงชีต ยังครบเหมือนเดิมทุกคัน ย้อนดูได้ทุกช่วงวันที่
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             className="btn-ghost px-5 py-2.5"
             disabled={busy}
-            onClick={() => {
-              setBusy(true); setErr(null); setMsg(null)
-              void resetTruckCounter()
-                .then(() => { setMsg('เริ่มนับใหม่จากศูนย์แล้ว'); setTick((n) => n + 1) })
-                .catch((e) => setErr((e as Error).message))
-                .finally(() => setBusy(false))
-            }}
+            onClick={() => setAskReset(true)}
           >
-            {busy ? <Spinner /> : null} เริ่มนับใหม่จากศูนย์
+            เริ่มนับใหม่จากศูนย์
           </button>
           {counts.data && (
             <span className="text-sm text-ink-500">
@@ -652,6 +653,49 @@ function AlertTab() {
           )}
         </div>
       </section>
+
+      {/*
+        ถามก่อน เพราะกดแล้วเลขบนจอในคลังเปลี่ยนทันทีต่อหน้าทุกคน
+        และคนกดมักกดจากหลังบ้านโดยที่มองไม่เห็นจอนั้น
+      */}
+      <Modal open={askReset} onClose={() => setAskReset(false)} title="เริ่มนับตัวเลขบนจอทีวีใหม่">
+        <p className="rounded-btn bg-success-bg px-3 py-3 text-sm text-success-txt">
+          รีเซตแค่ตัวเลขที่โชว์บนจอทีวี · ไม่มีรถคันไหนถูกลบ
+          <br />
+          ประวัติรถ หน้าสถิติ และการส่งลงชีต ยังครบเหมือนเดิมทุกคัน
+        </p>
+        {counts.data && (
+          <p className="mt-3 text-sm text-ink-500">
+            ตอนนี้จอทีวีนับได้ {counts.data.done} คัน · ตรงเวลา {counts.data.on_time} คัน ·
+            เกินเวลา {counts.data.done - counts.data.on_time} คัน
+            <br />
+            กดยืนยันแล้วทั้งสามตัวนี้จะกลับไปเริ่มที่ศูนย์ และเริ่มนับใหม่ตั้งแต่ตอนนี้
+          </p>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" className="btn-ghost" onClick={() => setAskReset(false)}>
+            ยกเลิก
+          </button>
+          <button
+            type="button"
+            className="btn-primary px-5"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true); setErr(null); setMsg(null)
+              void resetTruckCounter()
+                .then(() => {
+                  setMsg('จอทีวีเริ่มนับใหม่จากศูนย์แล้ว · ประวัติยังอยู่ครบ')
+                  setAskReset(false)
+                  setTick((n) => n + 1)
+                })
+                .catch((e) => setErr((e as Error).message))
+                .finally(() => setBusy(false))
+            }}
+          >
+            {busy ? <Spinner /> : null} ยืนยัน เริ่มนับใหม่
+          </button>
+        </div>
+      </Modal>
 
       <section className="panel p-4">
         <p className="font-display text-sm">ส่งให้รายคน</p>
