@@ -188,10 +188,13 @@ export function MiniGrid({
   rows,
   now,
   title,
+  onPick,
 }: {
   rows: { id: number; name: string; code: string | null; due: string; sec: number; seq?: number }[]
   now: number
   title?: string
+  /** จิ้มช่องแล้วทำอะไรต่อ · ไม่ส่งมาก็เป็นช่องอ่านอย่างเดียวเหมือนเดิม */
+  onPick?: (id: number) => void
 }) {
   void now
   const n = rows.length
@@ -225,7 +228,10 @@ export function MiniGrid({
           return (
             <div
               key={r.id}
-              className="overflow-hidden rounded-lg px-2 py-1.5"
+              className={`overflow-hidden rounded-lg px-2 py-1.5 ${onPick ? 'cursor-pointer active:opacity-70' : ''}`}
+              role={onPick ? 'button' : undefined}
+              tabIndex={onPick ? 0 : undefined}
+              onClick={onPick ? () => onPick(r.id) : undefined}
               style={{
                 background: late ? 'rgba(255,92,92,.1)' : '#121820',
                 borderLeft: `4px solid ${c}`,

@@ -138,10 +138,12 @@ export function UrgentRail({
   items,
   max = 3,
   big = false,
+  onPick,
 }: {
   items: { id: number; code: string | null; name: string; due: string; sec: number }[]
   max?: number
   big?: boolean
+  onPick?: (id: number) => void
 }) {
   const list = items.filter((x) => stageOf(x.sec) !== null).sort((a, b) => a.sec - b.sec).slice(0, max)
   if (list.length === 0) return null
@@ -158,7 +160,10 @@ export function UrgentRail({
         return (
           <div
             key={x.id}
-            className="rounded-2xl px-4 py-3"
+            className={`rounded-2xl px-4 py-3 ${onPick ? 'cursor-pointer active:opacity-80' : ''}`}
+            role={onPick ? 'button' : undefined}
+            tabIndex={onPick ? 0 : undefined}
+            onClick={onPick ? () => onPick(x.id) : undefined}
             style={{
               background: late ? 'rgba(255,64,64,.14)' : '#141B24',
               border: `2px solid ${c}`,

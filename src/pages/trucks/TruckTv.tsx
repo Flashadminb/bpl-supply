@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
-import { listTruckBoard, secondsLeft, seqByBranch, truckCounts, type TruckBoardRow } from '../../lib/trucks'
+import {
+  listTruckBoard,
+  releaseTruck,
+  secondsLeft,
+  seqByBranch,
+  truckCounts,
+  type TruckBoardRow,
+} from '../../lib/trucks'
 import { Countdown, DAY_TH, Density, dmy, hm, MiniGrid, p2, StatCard, tone } from './parts'
 import { useAlarmPref, useTruckAlarm } from './alarm'
 import { AlarmChip, AlarmGate, EdgeGlow, UrgentRail, worstStage } from './alert-ui'
@@ -19,6 +26,14 @@ import { AlarmChip, AlarmGate, EdgeGlow, UrgentRail, worstStage } from './alert-
  */
 
 const ROTATE_MS = 20_000
+
+/**
+ * กล่องถามปล่อยรถปิดเองใน 20 วินาที
+ *
+ * จอนี้ไม่มีคนเฝ้า ถ้ามีใครเดินชนแล้วกล่องค้าง จอจะหยุดทำงานไปทั้งกะ
+ * ของที่เปิดเองไม่ได้ ต้องปิดเองได้เสมอ
+ */
+const ASK_SEC = 20
 const AUTO_KEY = 'truck.tv.auto'
 
 /**
@@ -44,6 +59,23 @@ export default function TruckTv() {
     return () => clearInterval(t)
   }, [])
 
+  /* จิ้มกรอบไหนก็ถามว่าจะปล่อยคันนั้นไหม · ไม่มีปุ่มเพิ่ม กรอบทั้งใบคือปุ่ม */
+  const [ask, setAsk] = useState<number | null>(null)
+  const [askLeft, setAskLeft] = useState(ASK_SEC)
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (ask === null) return
+    setAskLeft(ASK_SEC)
+    const t = setInterval(() => setAskLeft((n) => n - 1), 1000)
+    return () => clearInterval(t)
+  }, [ask])
+  useEffect(() => {
+    if (ask !== null && askLeft <= 0) setAsk(null)
+  }, [ask, askLeft])
+
   /**
    * สลับหน้าเอง หรือค้างไว้จนกว่าจะกดสลับ
    *
@@ -62,10 +94,11 @@ export default function TruckTv() {
   const [auto, setAuto] = useState(() => localStorage.getItem(AUTO_KEY) !== 'off')
   const [page, setPage] = useState(0)
   useEffect(() => {
-    if (!auto) return
+    // กล่องเปิดอยู่ห้ามสลับหน้า คนกำลังตัดสินใจอยู่
+    if (!auto || ask !== null) return
     const t = setInterval(() => setPage((p) => (p + 1) % 2), ROTATE_MS)
     return () => clearInterval(t)
-  }, [auto])
+  }, [auto, ask])
 
   const live = useMemo(
     () =>
@@ -107,6 +140,7 @@ export default function TruckTv() {
     due: x.r.due_at,
     sec: x.sec,
   }))
+  const askRow = ask === null ? null : (live.find((x) => x.r.id === ask) ?? null)
   const clock = new Date(now)
 
   /**
@@ -188,12 +222,12 @@ export default function TruckTv() {
         <>
           <div className="grid grid-cols-12 gap-4">
             {big.map(({ r, sec }) => (
-              <Card key={r.id} row={r} sec={sec} seq={seq.get(r.id)} />
+              <Card key={r.id} row={r} sec={sec} seq={seq.get(r.id)} onPick={setAsk} />
             ))}
           </div>
           {mini.length > BIG_CARDS && (
             <div className="mt-4">
-              <MiniGrid rows={mini.slice(BIG_CARDS)} now={now} title="คันอื่นที่อยู่ในคลัง" />
+              <MiniGrid rows={mini.slice(BIG_CARDS)} now={now} title="คันอื่นที่อยู่ในคลัง" onPick={setAsk} />
             </div>
           )}
         </>
@@ -202,7 +236,7 @@ export default function TruckTv() {
           {/* กิมิกของหน้านี้ · บอกตรง ๆ ว่าต้องเร่งคันไหน ไม่ต้องให้แปลจากตัวเลขเอง */}
           {urgent.some((x) => x.sec <= 20 * 60) && (
             <div className="mb-4">
-              <UrgentRail items={urgent} big max={3} />
+              <UrgentRail items={urgent} big max={3} onPick={setAsk} />
             </div>
           )}
 
@@ -263,8 +297,92 @@ export default function TruckTv() {
           </div>
 
           {/* ทุกคันที่อยู่ในคลัง · ช่องย่อลงเองตามจำนวนเพื่อให้จบในหน้าเดียว */}
-          <MiniGrid rows={mini} now={now} title="ทุกคันที่อยู่ในคลังตอนนี้" />
+          <MiniGrid rows={mini} now={now} title="ทุกคันที่อยู่ในคลังตอนนี้" onPick={setAsk} />
         </>
+      )}
+
+      {/* ───────── ถามก่อนปล่อย ───────── */}
+      {askRow && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-6"
+          style={{ background: 'rgba(0,0,0,.8)' }}
+          onClick={() => setAsk(null)}
+        >
+          <div
+            className="w-full max-w-[640px] rounded-2xl p-7 text-center"
+            style={{ background: '#141B24', border: `3px solid ${tone(askRow.sec)}` }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-2xl font-bold" style={{ color: '#AFC0D4' }}>
+              ปล่อยรถคันนี้ใช่ไหม
+            </p>
+            <p className="mt-2 flex flex-wrap items-baseline justify-center gap-x-3 text-4xl">
+              {askRow.r.branch_code && (
+                <span className="font-mono font-extrabold" style={{ color: '#FFC400' }}>
+                  {askRow.r.branch_code}
+                </span>
+              )}
+              <span className="font-extrabold">{askRow.r.branch_name}</span>
+            </p>
+            <p className="mt-2 text-lg" style={{ color: '#AFC0D4' }}>
+              ถึงคลัง {hm(new Date(askRow.r.arrived_at))} {dmy(new Date(askRow.r.arrived_at))} · ควรออก{' '}
+              <b style={{ color: '#F0F4F9' }}>{hm(new Date(askRow.r.due_at))}</b>
+            </p>
+            <div className="mt-4 flex justify-center">
+              <Countdown sec={askRow.sec} size={58} showSec />
+            </div>
+
+            {err && (
+              <p className="mt-3 rounded-lg px-3 py-2 text-base" style={{ background: 'rgba(255,92,92,.14)', color: '#FF9A9A' }}>
+                {err}
+              </p>
+            )}
+
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                className="h-tap flex-1 rounded-lg text-lg font-bold"
+                style={{ background: '#1B2430', color: '#F0F4F9' }}
+                onClick={() => setAsk(null)}
+              >
+                ยังไม่ปล่อย
+              </button>
+              <button
+                type="button"
+                className="h-tap flex-1 rounded-lg text-lg font-extrabold"
+                style={{ background: '#FFC400', color: '#0B0E11', opacity: busy ? 0.6 : 1 }}
+                disabled={busy}
+                onClick={() => {
+                  setBusy(true)
+                  setErr(null)
+                  void releaseTruck(askRow.r.id)
+                    .then(() => {
+                      setDone(`${askRow.r.branch_code ?? ''} ${askRow.r.branch_name}`.trim())
+                      setAsk(null)
+                      setTick((n) => n + 1)
+                      window.setTimeout(() => setDone(null), 6000)
+                    })
+                    .catch((e) => setErr((e as Error).message))
+                    .finally(() => setBusy(false))
+                }}
+              >
+                {busy ? 'กำลังปล่อย…' : 'ปล่อยรถ'}
+              </button>
+            </div>
+            <p className="mt-3 text-sm" style={{ color: '#5A646F' }}>
+              ไม่กดอะไร กล่องนี้จะปิดเองใน {Math.max(0, askLeft)} วินาที
+            </p>
+          </div>
+        </div>
+      )}
+
+      {done && (
+        <div
+          className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-xl px-6 py-3 text-xl font-extrabold"
+          style={{ background: '#17311F', border: '2px solid #35D98A', color: '#8FE8BC' }}
+        >
+          ✓ ปล่อย {done} แล้ว
+        </div>
       )}
 
       {/* ───────── แถบควบคุม ───────── */}
@@ -317,7 +435,17 @@ export default function TruckTv() {
  * เวลาถึงคลังกับเวลาที่ควรออกเป็นค่าที่บันทึกไว้แล้ว ต้องนิ่งสนิท
  * ควรออกตัวใหญ่กว่าถึงคลัง เพราะมันคือตัวเลขที่ใช้ตัดสินใจ อีกตัวแค่บอกที่มา
  */
-function Card({ row, sec, seq }: { row: TruckBoardRow; sec: number; seq?: number }) {
+function Card({
+  row,
+  sec,
+  seq,
+  onPick,
+}: {
+  row: TruckBoardRow
+  sec: number
+  seq?: number
+  onPick?: (id: number) => void
+}) {
   const late = sec < 0
   const near = !late && sec <= 20 * 60
   const col = late
@@ -332,7 +460,10 @@ function Card({ row, sec, seq }: { row: TruckBoardRow; sec: number; seq?: number
 
   return (
     <div
-      className={`${col} rounded-2xl px-5 py-5`}
+      className={`${col} rounded-2xl px-5 py-5 ${onPick ? 'cursor-pointer active:opacity-80' : ''}`}
+      role={onPick ? 'button' : undefined}
+      tabIndex={onPick ? 0 : undefined}
+      onClick={onPick ? () => onPick(row.id) : undefined}
       style={{
         background: '#121820',
         borderLeft: `${late ? 10 : near ? 7 : 5}px solid ${c}`,
