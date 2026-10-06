@@ -97,6 +97,7 @@ export default function TruckBoard() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [undo, setUndo] = useState<{ id: number; name: string } | null>(null)
+  const [dup, setDup] = useState<{ name: string; hits: TruckBoardRow[] } | null>(null)
 
   const rows = board.data ?? []
   const live = useMemo(
@@ -132,11 +133,36 @@ export default function TruckBoard() {
     }
   }
 
-  async function save() {
-    if (!name.trim()) return
+  /**
+   * สาขาเดียวกันที่ยังไม่ได้ปล่อย
+   *
+   * รถสองคันจากสาขาเดียวกันจอดพร้อมกันเป็นเรื่องปกติ ระบบจึงต้องรับได้
+   * แต่การกดบันทึกซ้ำเพราะคิดว่าครั้งแรกไม่ติด ก็หน้าตาเหมือนกันเป๊ะ
+   * ถามหนึ่งครั้งจึงแยกสองกรณีนี้ออกจากกันได้ โดยไม่ขวางกรณีที่ถูกต้อง
+   */
+  function openDuplicates(q: string): TruckBoardRow[] {
+    const k = q.trim().toLowerCase()
+    return rows.filter(
+      (r) =>
+        r.branch_name.trim().toLowerCase() === k ||
+        (r.branch_code ?? '').trim().toLowerCase() === k,
+    )
+  }
+
+  async function save(force = false) {
+    const q = name.trim()
+    if (!q) return
+    if (!force) {
+      const hits = openDuplicates(q)
+      if (hits.length > 0) {
+        setDup({ name: q, hits })
+        return
+      }
+    }
     localStorage.setItem('truck.min', String(minutes))
+    setDup(null)
     await run(async () => {
-      await addTruck({ name: name.trim(), minutes })
+      await addTruck({ name: q, minutes })
       setName('')
     })
   }
@@ -399,6 +425,60 @@ export default function TruckBoard() {
           ))}
         </div>
       </div>
+
+      {/* ───────── ถามก่อนใส่ซ้ำ ───────── */}
+      {dup && (
+        <div
+          className="fixed inset-0 z-40 flex items-end justify-center p-4 sm:items-center"
+          style={{ background: 'rgba(0,0,0,.65)' }}
+          onClick={() => setDup(null)}
+        >
+          <div
+            className="w-full max-w-[460px] rounded-2xl p-5"
+            style={{ background: '#141920', border: '1px solid #2A313B' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-lg font-bold" style={{ color: '#FFB038' }}>
+              {dup.name} มีรถอยู่ในคลังแล้ว {dup.hits.length} คัน
+            </p>
+            <p className="mt-1 text-sm" style={{ color: '#AFC0D4' }}>
+              ถ้าเป็นรถคันใหม่จริง กดยืนยันได้เลย · ถ้าเพิ่งกดบันทึกไปแล้วไม่แน่ใจว่าติดไหม ให้กดยกเลิก
+            </p>
+            <ul className="mt-3 space-y-1">
+              {dup.hits.map((h) => (
+                <li
+                  key={h.id}
+                  className="rounded-lg px-3 py-2 text-sm"
+                  style={{ background: '#0B0E11', color: '#F0F4F9' }}
+                >
+                  ถึงคลัง{' '}
+                  <b className="font-mono">{hm(new Date(h.arrived_at))}</b> {dmy(new Date(h.arrived_at))}{' '}
+                  · ควรออก <b className="font-mono">{hm(new Date(h.due_at))}</b>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                className="h-tap flex-1 rounded-lg text-base font-bold"
+                style={{ background: '#1B2430', color: '#F0F4F9' }}
+                onClick={() => setDup(null)}
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                className="h-tap flex-1 rounded-lg text-base font-extrabold"
+                style={{ background: '#FFC400', color: '#0B0E11' }}
+                disabled={busy}
+                onClick={() => void save(true)}
+              >
+                ยืนยัน เพิ่มอีกคัน
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -167,6 +167,90 @@ export function StatCard({
 }
 
 /**
+ * ช่องเล็กหนึ่งคัน · ใช้ตอนต้องแสดงให้ครบทุกคันในหน้าเดียว
+ *
+ * การ์ดใหญ่ตอบว่า "คันไหนต้องรีบ" ส่วนช่องเล็กตอบว่า "ทั้งคลังมีอะไรอยู่บ้าง"
+ * สองคำถามนี้ต้องการพื้นที่ต่อคันไม่เท่ากัน ถ้าใช้ขนาดเดียวจะเสียอย่างใดอย่างหนึ่ง
+ *
+ * ขนาดช่องย่อลงเองตามจำนวนคัน เพราะเจ้าของระบบบอกว่าบางช่วงมีสามสี่ร้อยคัน
+ * จอทีวีเลื่อนไม่ได้ ของที่ล้นออกนอกจอเท่ากับของที่ไม่ได้แสดง
+ */
+export function MiniGrid({
+  rows,
+  now,
+  title,
+}: {
+  rows: { id: number; name: string; code: string | null; due: string; sec: number }[]
+  now: number
+  title?: string
+}) {
+  void now
+  const n = rows.length
+  const w = n <= 16 ? 210 : n <= 40 ? 158 : n <= 90 ? 120 : 96
+  const nameSize = n <= 16 ? 16 : n <= 40 ? 14 : n <= 90 ? 12.5 : 11
+  const clockSize = n <= 16 ? 24 : n <= 40 ? 20 : n <= 90 ? 17 : 15
+  const withSec = w >= 158
+
+  if (n === 0) return null
+  return (
+    <div>
+      {title && (
+        <p className="mb-2 text-lg font-bold" style={{ color: '#AFC0D4' }}>
+          {title} <span style={{ color: '#5A646F' }}>{n} คัน</span>
+        </p>
+      )}
+      <div
+        className="grid gap-2"
+        style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${w}px, 1fr))` }}
+      >
+        {rows.map((r) => {
+          const c = tone(r.sec)
+          const late = r.sec < 0
+          const a = Math.abs(r.sec)
+          const t =
+            (late ? '−' : '') +
+            p2(Math.floor(a / 3600)) +
+            ':' +
+            p2(Math.floor(a / 60) % 60) +
+            (withSec ? ':' + p2(a % 60) : '')
+          return (
+            <div
+              key={r.id}
+              className="overflow-hidden rounded-lg px-2 py-1.5"
+              style={{
+                background: late ? 'rgba(255,92,92,.1)' : '#121820',
+                borderLeft: `4px solid ${c}`,
+              }}
+            >
+              <div
+                className="truncate font-bold"
+                style={{ fontSize: nameSize, color: '#F0F4F9', lineHeight: 1.25 }}
+              >
+                {r.name}
+              </div>
+              <div className="flex items-baseline justify-between gap-1">
+                <span
+                  className="font-mono font-extrabold"
+                  style={{ fontSize: clockSize, color: c, letterSpacing: -0.5 }}
+                >
+                  {t}
+                </span>
+                <span
+                  className="font-mono"
+                  style={{ fontSize: Math.round(clockSize * 0.62), color: '#7D8B9B' }}
+                >
+                  {hm(new Date(r.due))}
+                </span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/**
  * กราฟความหนาแน่น · แท่งละ 15 นาที
  *
  * ตอนรถน้อยเราใช้แถบต่อคัน แต่พอรถอยู่ในคลังพร้อมกันหลายสิบคัน

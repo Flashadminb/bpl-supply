@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import { listTruckBoard, secondsLeft, truckCounts, type TruckBoardRow } from '../../lib/trucks'
-import { Countdown, DAY_TH, Density, dmy, hm, p2, StatCard, tone } from './parts'
+import { Countdown, DAY_TH, Density, dmy, hm, MiniGrid, p2, StatCard, tone } from './parts'
 
 /**
  * โหมดจอทีวี — เปิดค้างบนจอในคลัง
@@ -19,8 +19,11 @@ import { Countdown, DAY_TH, Density, dmy, hm, p2, StatCard, tone } from './parts
 const ROTATE_MS = 20_000
 const AUTO_KEY = 'truck.tv.auto'
 
-/** คันที่แสดงบนหน้าการ์ด · มากกว่านี้คือเล็กจนอ่านไม่ออกจากระยะที่ควรอ่านได้ */
-const MAX_CARDS = 8
+/**
+ * คันที่ได้การ์ดใหญ่ · ที่เหลือไม่ได้หายไปไหน ลงไปอยู่ช่องเล็กด้านล่างครบทุกคัน
+ * เกินหกใบแล้วการ์ดจะเล็กลงจนเสียเหตุผลที่ทำให้มันใหญ่ตั้งแต่แรก
+ */
+const BIG_CARDS = 6
 
 export default function TruckTv() {
   const nav = useNavigate()
@@ -61,6 +64,19 @@ export default function TruckTv() {
         .sort((a, b) => a.sec - b.sec),
     [board.data, now],
   )
+  const big = live.slice(0, BIG_CARDS)
+  const mini = useMemo(
+    () =>
+      live.map(({ r, sec }) => ({
+        id: r.id,
+        name: r.branch_name,
+        code: r.branch_code,
+        due: r.due_at,
+        sec,
+      })),
+    [live],
+  )
+
   const c = counts.data
   const over = live.filter((x) => x.sec < 0).length
   const soon = live.filter((x) => x.sec >= 0 && x.sec <= 30 * 60).length
@@ -91,16 +107,18 @@ export default function TruckTv() {
           ตอนนี้ไม่มีรถในคลัง
         </p>
       ) : page === 0 ? (
-        <div className="grid grid-cols-12 gap-4">
-          {live.slice(0, MAX_CARDS).map(({ r, sec }) => (
-            <Card key={r.id} row={r} sec={sec} />
-          ))}
-          {live.length > MAX_CARDS && (
-            <div className="col-span-12 text-center text-lg" style={{ color: '#5A646F' }}>
-              และอีก {live.length - MAX_CARDS} คันที่ยังมีเวลาเหลือมากกว่านี้
+        <>
+          <div className="grid grid-cols-12 gap-4">
+            {big.map(({ r, sec }) => (
+              <Card key={r.id} row={r} sec={sec} />
+            ))}
+          </div>
+          {mini.length > BIG_CARDS && (
+            <div className="mt-4">
+              <MiniGrid rows={mini.slice(BIG_CARDS)} now={now} title="คันอื่นที่อยู่ในคลัง" />
             </div>
           )}
-        </div>
+        </>
       ) : (
         <>
           {/* การ์ดตัวเลขรวม · ตัวที่ต้องลงไปทำอะไรจะกระพริบ */}
@@ -132,10 +150,13 @@ export default function TruckTv() {
             />
           </div>
 
-          <div className="rounded-2xl p-5" style={{ background: '#121820' }}>
+          <div className="mb-4 rounded-2xl p-5" style={{ background: '#121820' }}>
             <p className="mb-3 text-xl font-bold">รถครบกำหนดช่วงไหนบ้าง</p>
             <Density secs={live.map((x) => x.sec)} now={now} big />
           </div>
+
+          {/* ทุกคันที่อยู่ในคลัง · ช่องย่อลงเองตามจำนวนเพื่อให้จบในหน้าเดียว */}
+          <MiniGrid rows={mini} now={now} title="ทุกคันที่อยู่ในคลังตอนนี้" />
         </>
       )}
 
