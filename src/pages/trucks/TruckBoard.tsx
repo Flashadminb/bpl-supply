@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import {
   addTruck,
@@ -27,8 +27,13 @@ import { Countdown, DAY_TH, Density, dmy, hm, p2, tone } from './parts'
 
 const ALLOW = [120, 180, 240]
 
+/** มาจากจอทีวีแล้วไม่ได้แตะอะไรนานเท่านี้ ให้กลับไปจอทีวีเอง */
+const IDLE_SEC = 20
+
 export default function TruckBoard() {
   const nav = useNavigate()
+  const [qs] = useSearchParams()
+  const kiosk = qs.get('kiosk') === '1'
   const [tick, setTick] = useState(0)
   const board = useAsync(() => listTruckBoard(), [tick])
   const branches = useAsync(() => listTruckBranches(), [tick])
@@ -62,6 +67,29 @@ export default function TruckBoard() {
       document.removeEventListener('visibilitychange', wake)
     }
   }, [])
+
+  /**
+   * กลับจอทีวีเองเมื่อไม่มีใครแตะ
+   *
+   * เครื่องที่ต่อจอในคลังเป็นเครื่องเดียวกับที่ใช้กรอกรถเข้า
+   * ถ้าไม่เด้งกลับเอง จอจะค้างอยู่หน้ากรอกข้อมูลทั้งกะ แล้วไม่มีใครเห็นเวลาอีกเลย
+   * นับเฉพาะตอนเข้ามาจากจอทีวี · เปิดหน้านี้ตรง ๆ จากมือถือไม่โดนเด้ง
+   */
+  const [idle, setIdle] = useState(IDLE_SEC)
+  useEffect(() => {
+    if (!kiosk) return
+    const wake = () => setIdle(IDLE_SEC)
+    const evs: (keyof DocumentEventMap)[] = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'input']
+    evs.forEach((e) => document.addEventListener(e, wake, { passive: true }))
+    const t = setInterval(() => setIdle((n) => n - 1), 1000)
+    return () => {
+      evs.forEach((e) => document.removeEventListener(e, wake))
+      clearInterval(t)
+    }
+  }, [kiosk])
+  useEffect(() => {
+    if (kiosk && idle <= 0) nav('/trucks/tv', { replace: true })
+  }, [kiosk, idle, nav])
 
   const [filter, setFilter] = useState<'urgent' | 'all'>('urgent')
   const [name, setName] = useState('')
@@ -147,6 +175,26 @@ export default function TruckBoard() {
           {hm(clock)}:{p2(clock.getSeconds())}
         </span>
       </header>
+
+      {kiosk && (
+        <div
+          className="flex items-center gap-3 px-4 py-2 text-sm"
+          style={{ background: '#1B2430', color: '#AFC0D4' }}
+        >
+          <span className="flex-1">
+            กลับจอทีวีเองใน <b style={{ color: '#FFC400' }}>{Math.max(0, idle)}</b> วินาที ·
+            แตะอะไรก็ได้เพื่อเริ่มนับใหม่
+          </span>
+          <button
+            type="button"
+            className="rounded-md px-3 py-1.5 font-bold"
+            style={{ background: '#0B0E11', color: '#F0F4F9' }}
+            onClick={() => nav('/trucks/tv', { replace: true })}
+          >
+            กลับเลย
+          </button>
+        </div>
+      )}
 
       {/* ───────── ตัวเลขรวม ───────── */}
       <div className="grid grid-cols-2 gap-px sm:grid-cols-4" style={{ background: '#243040' }}>

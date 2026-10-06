@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
 import { exportToSheet, listProfiles } from '../../lib/api'
 import { DateRangePicker } from '../../components/DateRangePicker'
@@ -12,9 +12,13 @@ import {
   listTruckAlertSubs,
   listTruckBranches,
   purgeExportedTrucks,
+  resetTruckCounter,
   saveTruckAlertSettings,
+  saveTruckBranch,
   setTruckAlertSub,
+  truckCounts,
   type TruckAlertSettings,
+  type TruckBranch,
 } from '../../lib/trucks'
 
 /**
@@ -201,6 +205,7 @@ function BranchTab() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
+  const [edit, setEdit] = useState<Partial<TruckBranch> | null>(null)
 
   const rows = useMemo(() => {
     const s = q.trim().toLowerCase()
@@ -254,13 +259,21 @@ function BranchTab() {
         </div>
       </section>
 
-      <input
-        className="input mb-3 max-w-[320px]"
-        type="search"
-        placeholder="ค้นหาชื่อ รหัส หรือจังหวัด"
-        value={q}
-        onChange={(e) => { setQ(e.target.value); setPicked(new Set()) }}
-      />
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          className="input max-w-[320px]"
+          type="search"
+          placeholder="ค้นหาชื่อ รหัส หรือจังหวัด"
+          value={q}
+          onChange={(e) => { setQ(e.target.value); setPicked(new Set()) }}
+        />
+        <button type="button" className="btn-ghost px-4 py-2 text-sm" onClick={() => setEdit({})}>
+          + เพิ่มทีละอัน
+        </button>
+        <span className="text-xs text-ink-500">
+          กดแก้ไขที่ท้ายแถวเพื่อปรับชื่อ รหัส ชื่อเต็ม พื้นที่ และสถานะเปิดปิด
+        </span>
+      </div>
 
       <BulkDeleteBar
         n={picked.size}
@@ -288,6 +301,12 @@ function BranchTab() {
         <EmptyState title="ยังไม่มีสาขา" hint="วางรายชื่อในช่องด้านบนแล้วกดเพิ่ม" />
       )}
 
+      <BranchEdit
+        value={edit}
+        onClose={() => setEdit(null)}
+        onSaved={() => { setEdit(null); setMsg('บันทึกสาขาแล้ว'); setTick((n) => n + 1) }}
+      />
+
       {rows.length > 0 && (
         <section className="panel overflow-x-auto p-2">
           <table className="w-full min-w-[720px] text-left text-sm">
@@ -305,6 +324,7 @@ function BranchTab() {
                 <th className="px-3 py-2 font-medium">ชื่อเต็ม</th>
                 <th className="px-3 py-2 font-medium">พื้นที่</th>
                 <th className="w-[110px] px-3 py-2 font-medium">สถานะ</th>
+                <th className="w-[80px] px-3 py-2" />
               </tr>
             </thead>
             <tbody>
@@ -337,6 +357,11 @@ function BranchTab() {
                       <span className="badge-warn">ปิดบริการ</span>
                     )}
                   </td>
+                  <td className="px-3 py-2 text-right">
+                    <button type="button" className="btn-ghost px-3 py-1.5 text-xs" onClick={() => setEdit(b)}>
+                      แก้ไข
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -344,6 +369,131 @@ function BranchTab() {
         </section>
       )}
     </>
+  )
+}
+
+/**
+ * แก้สาขาทีละอัน
+ *
+ * รายชื่อชุดแรกมาจากชีตขององค์กร ซึ่งสะกดไม่ตรงกับที่หน้างานเรียกกันเสมอ
+ * ถ้าบังคับให้ลบแล้วพิมพ์ใหม่ ประวัติรถของสาขานั้นจะหลุดไปด้วย
+ * แก้ที่แถวเดิมจึงเป็นทางเดียวที่ไม่ทำให้ของเก่าหาย
+ */
+function BranchEdit({
+  value,
+  onClose,
+  onSaved,
+}: {
+  value: Partial<TruckBranch> | null
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [d, setD] = useState<Partial<TruckBranch>>({})
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const key = value ? String(value.id ?? 'new') : null
+
+  useEffect(() => {
+    if (value) setD({ is_open: true, is_active: true, ...value })
+    setErr(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+
+  const f =
+    (k: keyof TruckBranch) =>
+    (e: { target: { value: string } }) =>
+      setD((x) => ({ ...x, [k]: e.target.value }))
+
+  return (
+    <Modal open={!!value} onClose={onClose} title={value?.id ? 'แก้ไขสาขา' : 'เพิ่มสาขา'}>
+      {err && <div className="mb-3"><ErrorBox message={err} /></div>}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="label">ชื่อที่หน้างานเรียก</span>
+          <input className="input w-full" value={d.name ?? ''} onChange={f('name')} />
+        </label>
+        <label className="block">
+          <span className="label">รหัสสาขา</span>
+          <input className="input w-full font-mono" value={d.code ?? ''} onChange={f('code')} />
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="label">ชื่อเต็มตามชีต</span>
+          <input className="input w-full" value={d.full_name ?? ''} onChange={f('full_name')} />
+        </label>
+        <label className="block">
+          <span className="label">จังหวัด</span>
+          <input className="input w-full" value={d.province ?? ''} onChange={f('province')} />
+        </label>
+        <label className="block">
+          <span className="label">อำเภอ</span>
+          <input className="input w-full" value={d.district ?? ''} onChange={f('district')} />
+        </label>
+        <label className="block">
+          <span className="label">ตำบล</span>
+          <input className="input w-full" value={d.subdistrict ?? ''} onChange={f('subdistrict')} />
+        </label>
+        <label className="block">
+          <span className="label">รหัสอ้างอิงในชีต</span>
+          <input className="input w-full font-mono" value={d.branch_ref ?? ''} onChange={f('branch_ref')} />
+        </label>
+      </div>
+
+      <div className="mt-3 space-y-2">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="h-5 w-5"
+            checked={d.is_open ?? true}
+            onChange={(e) => setD((x) => ({ ...x, is_open: e.target.checked }))}
+          />
+          เปิดบริการ
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-5 w-5"
+            checked={d.is_active ?? true}
+            onChange={(e) => setD((x) => ({ ...x, is_active: e.target.checked }))}
+          />
+          <span>
+            ยังใช้งานอยู่
+            <span className="block text-xs text-ink-500">
+              ติ๊กออกแล้วจะไม่ขึ้นให้เลือกตอนกรอกรถ แต่ประวัติรถเดิมของสาขานี้ยังอยู่ครบ
+            </span>
+          </span>
+        </label>
+      </div>
+
+      <div className="mt-4 flex justify-end gap-2">
+        <button type="button" className="btn-ghost" onClick={onClose}>ยกเลิก</button>
+        <button
+          type="button"
+          className="btn-primary px-5"
+          disabled={busy || !(d.name ?? '').trim()}
+          onClick={() => {
+            setBusy(true)
+            setErr(null)
+            void saveTruckBranch({
+              id: d.id ?? null,
+              name: (d.name ?? '').trim(),
+              code: (d.code ?? '').trim() || null,
+              full_name: (d.full_name ?? '').trim() || null,
+              province: (d.province ?? '').trim() || null,
+              district: (d.district ?? '').trim() || null,
+              subdistrict: (d.subdistrict ?? '').trim() || null,
+              branch_ref: (d.branch_ref ?? '').trim() || null,
+              is_open: d.is_open ?? true,
+              is_active: d.is_active ?? true,
+            })
+              .then(onSaved)
+              .catch((e) => setErr((e as Error).message))
+              .finally(() => setBusy(false))
+          }}
+        >
+          {busy ? <Spinner /> : null} บันทึก
+        </button>
+      </div>
+    </Modal>
   )
 }
 
@@ -361,6 +511,7 @@ function AlertTab() {
   const [q, setQ] = useState('')
 
   const s = draft ?? cfg.data ?? null
+  const counts = useAsync(() => truckCounts(), [tick])
   const chosen = new Set(subs.data ?? [])
 
   const people = useMemo(() => {
@@ -416,21 +567,14 @@ function AlertTab() {
             value={s.after_min}
             onChange={(v) => set({ after_min: v })}
           />
-          <Num
-            label="ย้ำซ้ำทุก"
-            unit="นาที"
-            hint="หลังจากเริ่มเตือนแล้ว"
-            value={s.repeat_min}
-            onChange={(v) => set({ repeat_min: v })}
-          />
-          <Num
-            label="ย้ำได้นานสุด"
-            unit="นาที"
-            hint="ครบแล้วหยุดเตือน · กันมือถือสั่นทั้งคืนถ้าลืมปิด"
-            value={s.stop_min}
-            onChange={(v) => set({ stop_min: v })}
-          />
         </div>
+
+        <p className="mt-3 rounded-btn bg-ink-50 px-3 py-2 text-xs text-ink-500">
+          เตือนครั้งเดียวต่อคัน ทั้งรอบใกล้ครบกำหนดและรอบเลยกำหนด · ไม่มีการย้ำซ้ำ
+          <br />
+          คนที่ได้รับคือคนที่เดินไปจัดการได้อยู่แล้ว การย้ำทุกสิบห้านาทีไม่ได้ทำให้รถออกเร็วขึ้น
+          ได้แค่ทำให้เขาปิดแจ้งเตือนทิ้ง แล้ววันที่สำคัญจริงก็ไม่มีใครเห็น
+        </p>
 
         <p className="label mt-4">ส่งให้ตำแหน่ง</p>
         <div className="flex flex-wrap gap-2">
@@ -471,6 +615,40 @@ function AlertTab() {
             <button type="button" className="btn-ghost px-5 py-2.5" onClick={() => setDraft(null)}>
               ยกเลิกที่แก้
             </button>
+          )}
+        </div>
+      </section>
+
+      <section className="panel mb-4 p-4">
+        <p className="font-display text-sm">ตัวนับ “ปล่อยไปแล้ว” ของจอทีวี</p>
+        <p className="mb-2 text-xs text-ink-500">
+          จอทีวีโชว์ว่าปล่อยรถไปแล้วกี่คัน นับจากครั้งล่าสุดที่กดปุ่มนี้
+          <br />
+          ไม่ได้ตัดที่เที่ยงคืน เพราะงานรันยี่สิบสี่ชั่วโมงและกะคาบเกี่ยวข้ามวัน ·
+          กดตอนเริ่มรอบที่อยากนับ
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            className="btn-ghost px-5 py-2.5"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true); setErr(null); setMsg(null)
+              void resetTruckCounter()
+                .then(() => { setMsg('เริ่มนับใหม่จากศูนย์แล้ว'); setTick((n) => n + 1) })
+                .catch((e) => setErr((e as Error).message))
+                .finally(() => setBusy(false))
+            }}
+          >
+            {busy ? <Spinner /> : null} เริ่มนับใหม่จากศูนย์
+          </button>
+          {counts.data && (
+            <span className="text-sm text-ink-500">
+              ตอนนี้นับได้ {counts.data.done} คัน · ตรงเวลา {counts.data.on_time} คัน · เริ่มนับ{' '}
+              {new Date(counts.data.since).toLocaleString('th-TH', {
+                day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+              })}
+            </span>
           )}
         </div>
       </section>

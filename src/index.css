@@ -80,3 +80,21 @@
 
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { animation: spin .8s linear infinite; }
+
+/*
+ * ตัวเลขกระพริบบนจอทีวี
+ *
+ * ใช้ steps(1,end) ไม่ใช่ค่อย ๆ จาง เพราะจอทีวีในคลังมักเป็นจอถูกที่ภาพตามไม่ทัน
+ * การไล่ความจางจะกลายเป็นภาพค้าง ส่วนการสลับทันทีมองเห็นชัดจากอีกฝั่งของคลัง
+ *
+ * สีของวงที่กระพริบส่งมาทางตัวแปร --ring เพราะแต่ละการ์ดคนละสี
+ * เคารพเครื่องที่ตั้งไว้ว่าไม่เอาภาพเคลื่อนไหว · เหลือแค่กรอบสีนิ่ง ๆ
+ */
+@keyframes bplPulse {
+  0%, 52%   { box-shadow: 0 0 0 0 transparent; }
+  53%, 100% { box-shadow: 0 0 0 7px var(--ring, rgba(255,255,255,.18)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes bplPulse { 0%, 100% { box-shadow: none; } }
+}

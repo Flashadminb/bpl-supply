@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react'
+
 /**
  * ชิ้นส่วนที่ใช้ร่วมกันของหน้าตารางปล่อยรถ
  *
@@ -25,7 +27,20 @@ export function tone(sec: number) {
  * พื้นขาวตัวดำบนจอดำอ่านได้จากไกลที่สุดเท่าที่ทำได้ด้วยตัวอักษรอย่างเดียว
  * เลยกำหนดแล้วสลับเป็นพื้นแดงตัวขาว เพราะตอนนั้นต้องสะดุดตา ไม่ใช่แค่อ่านออก
  */
-export function Flip({ v, label, size, late }: { v: string; label?: string; size: number; late: boolean }) {
+export function Flip({
+  v,
+  label,
+  size,
+  late,
+  tint,
+}: {
+  v: string
+  label?: string
+  size: number
+  late: boolean
+  /** พื้นสีอื่นแทนขาว · ใช้กับการ์ดตัวเลขที่ต้องแยกความหมายด้วยสี */
+  tint?: string
+}) {
   return (
     <span className="inline-flex flex-col items-center" style={{ gap: Math.round(size * 0.1) }}>
       <span
@@ -33,7 +48,7 @@ export function Flip({ v, label, size, late }: { v: string; label?: string; size
         style={{
           width: size,
           height: Math.round(size * 0.82),
-          background: late ? '#FF4040' : '#FBFBFB',
+          background: late ? '#FF4040' : (tint ?? '#FBFBFB'),
           borderRadius: Math.round(size * 0.11),
           boxShadow: '0 2px 0 rgba(0,0,0,.45)',
         }}
@@ -88,6 +103,64 @@ export function Countdown({ sec, size, showSec = false }: { sec: number; size: n
         </>
       )}
     </span>
+  )
+}
+
+/**
+ * การ์ดตัวเลขแบบป้ายพับ · ใช้บนจอทีวี
+ *
+ * เลขเดียวกันนี้มีอยู่บนหน้ากระดานในรูปตัวหนังสือธรรมดาแล้ว
+ * บนจอทีวีมันต้องอ่านออกจากอีกฝั่งของคลัง จึงใช้ป้ายพับแบบเดียวกับนาฬิกา
+ * ตัวเลขที่ควรทำให้ใจหายจะกระพริบ · ที่เหลือนิ่ง เพราะถ้าทุกอย่างกระพริบก็เท่ากับไม่มีอะไรกระพริบ
+ */
+export function StatCard({
+  label,
+  n,
+  color,
+  blink = false,
+  size = 60,
+  foot,
+  ring,
+}: {
+  label: string
+  n: number
+  color: string
+  blink?: boolean
+  size?: number
+  foot?: string
+  /** สีวงกระพริบ · สีเดียวกับ color แต่จาง เพื่อให้วงไม่กลืนกับเลข */
+  ring?: string
+}) {
+  const digits = String(Math.max(0, Math.round(n)))
+  return (
+    <div
+      className="flex flex-col items-center justify-center rounded-2xl px-4 py-4"
+      style={
+        {
+          background: '#121820',
+          border: `2px solid ${blink ? color : '#1E2733'}`,
+          animation: blink ? 'bplPulse 1.1s steps(1, end) infinite' : undefined,
+          '--ring': ring ?? 'rgba(255,255,255,.18)',
+        } as CSSProperties
+      }
+    >
+      <div className="mb-2 text-lg font-bold" style={{ color: '#AFC0D4' }}>
+        {label}
+      </div>
+      <div className="flex items-end gap-[5px]">
+        {digits.split('').map((d, i) => (
+          <Flip key={i} v={d} size={size} late={false} tint={color} />
+        ))}
+        <span className="ml-1 text-xl font-bold" style={{ color: '#AFC0D4' }}>
+          คัน
+        </span>
+      </div>
+      {foot && (
+        <div className="mt-2 text-sm" style={{ color: '#7D8B9B' }}>
+          {foot}
+        </div>
+      )}
+    </div>
   )
 }
 

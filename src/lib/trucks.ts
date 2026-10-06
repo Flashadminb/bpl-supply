@@ -170,13 +170,52 @@ export async function purgeExportedTrucks(days = 180): Promise<{ deleted: number
 }
 
 
+/* --------------------------------------------------- ตัวนับของจอทีวี */
+
+export interface TruckCounts {
+  in_hub: number
+  late: number
+  soon: number
+  /** ปล่อยไปแล้วกี่คันนับจากจุดเริ่มนับ */
+  done: number
+  /** ในจำนวนที่ปล่อยไปแล้ว ออกตรงเวลากี่คัน */
+  on_time: number
+  /** จุดเริ่มนับ · กดรีเซ็ตที่หลังบ้าน */
+  since: string
+}
+
+/**
+ * ตัวเลขทั้งสี่ของจอทีวีในคำขอเดียว
+ *
+ * จอนี้เปิดค้างทั้งวัน ถ้าแยกถามสี่ครั้งต่อรอบก็คือคูณสี่ทั้งวัน
+ * ฐานข้อมูลนับให้ในคำสั่งเดียวแล้วส่งกลับมาเป็นก้อนเล็ก ๆ ก้อนเดียว
+ */
+export async function truckCounts(): Promise<TruckCounts | null> {
+  const { data, error } = await supabase.rpc('truck_counts')
+  if (error) throw new Error(readableError(error))
+  return (data ?? null) as TruckCounts | null
+}
+
+/** เริ่มนับ "ปล่อยไปแล้ว" ใหม่จากศูนย์ · เฉพาะผู้ดูแลระบบ */
+export async function resetTruckCounter(): Promise<{ since: string }> {
+  const { data, error } = await supabase.rpc('truck_count_reset')
+  if (error) throw new Error(readableError(error))
+  return data as { since: string }
+}
+
+
 /* ------------------------------------------------------- แจ้งเตือน */
 
+/**
+ * ตั้งค่าแจ้งเตือนรถ
+ *
+ * ไม่มีการย้ำซ้ำ · เตือนครั้งเดียวต่อคันทั้งรอบใกล้ครบและรอบเลยกำหนด
+ * คนที่ได้รับเตือนคือคนที่เดินไปจัดการได้ การย้ำทุกสิบห้านาทีจึงไม่ได้ทำให้รถออกเร็วขึ้น
+ * ได้แค่ทำให้เขาปิดแจ้งเตือนทิ้ง แล้ววันที่สำคัญจริงก็ไม่มีใครเห็น
+ */
 export interface TruckAlertSettings {
   before_min: number
   after_min: number
-  repeat_min: number
-  stop_min: number
   is_on: boolean
   roles: string[]
 }
@@ -191,8 +230,6 @@ export async function saveTruckAlertSettings(s: TruckAlertSettings) {
   const { error } = await supabase.rpc('truck_alert_save', {
     p_before: s.before_min,
     p_after: s.after_min,
-    p_repeat: s.repeat_min,
-    p_stop: s.stop_min,
     p_on: s.is_on,
     p_roles: s.roles,
   })

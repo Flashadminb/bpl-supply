@@ -1,27 +1,32 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
-import { listTruckBoard, listTruckDone, secondsLeft } from '../../lib/trucks'
-import { Countdown, DAY_TH, Density, dmy, hm, p2, tone } from './parts'
+import { listTruckBoard, secondsLeft, truckCounts, type TruckBoardRow } from '../../lib/trucks'
+import { Countdown, DAY_TH, Density, dmy, hm, p2, StatCard, tone } from './parts'
 
 /**
  * โหมดจอทีวี — เปิดค้างบนจอในคลัง
  *
  * คนอ่านจอนี้จากระยะสามถึงห้าเมตร ไม่ใช่ระยะมือถือ
- * ทุกอย่างจึงใหญ่กว่าหน้ากระดานราวสองเท่า และไม่มีปุ่มอะไรให้กดเลย
- * จอที่มีปุ่มคือจอที่วันหนึ่งจะมีคนเดินมากดโดยไม่ตั้งใจ
+ * ทุกอย่างจึงใหญ่กว่าหน้ากระดานราวสองเท่า
  *
- * โชว์แค่สี่คันที่ด่วนที่สุด ไม่ใช่ทั้งหมด
- * เพราะจอที่แสดงหกสิบคันเท่ากับจอที่ไม่ได้บอกอะไรเลย
+ * ขนาดการ์ดไม่เท่ากันโดยตั้งใจ
+ * คันที่เลยกำหนดได้กรอบใหญ่สุดและอยู่บนสุด รองลงมาคือคันที่ใกล้หมดเวลา
+ * คันที่ยังเขียวได้ขนาดเดิม เพราะมันไม่ใช่สิ่งที่ต้องทำอะไรตอนนี้
+ * จอที่ทุกอย่างใหญ่เท่ากันคือจอที่ไม่ได้บอกว่าให้ไปทำอะไรก่อน
  */
 
 const ROTATE_MS = 20_000
+const AUTO_KEY = 'truck.tv.auto'
+
+/** คันที่แสดงบนหน้าการ์ด · มากกว่านี้คือเล็กจนอ่านไม่ออกจากระยะที่ควรอ่านได้ */
+const MAX_CARDS = 8
 
 export default function TruckTv() {
+  const nav = useNavigate()
   const [tick, setTick] = useState(0)
   const board = useAsync(() => listTruckBoard(), [tick])
-
-  const since = useMemo(() => new Date(Date.now() - 24 * 3600_000).toISOString(), [tick])
-  const done = useAsync(() => listTruckDone(since, new Date().toISOString()), [since])
+  const counts = useAsync(() => truckCounts(), [tick])
 
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -34,24 +39,31 @@ export default function TruckTv() {
     return () => clearInterval(t)
   }, [])
 
-  // สลับหน้าเองทุก 20 วินาที · ไม่มีใครเดินมากดเปลี่ยนหน้าให้
+  /**
+   * สลับหน้าเอง หรือค้างไว้จนกว่าจะกดสลับ
+   *
+   * ค่าเก็บในเครื่อง ไม่ใช่ในฐานข้อมูล
+   * เพราะจอทีวีที่แขวนในคลังกับมือถือที่เปิดดูเฉย ๆ ควรตั้งคนละแบบได้
+   */
+  const [auto, setAuto] = useState(() => localStorage.getItem(AUTO_KEY) !== 'off')
   const [page, setPage] = useState(0)
   useEffect(() => {
+    if (!auto) return
     const t = setInterval(() => setPage((p) => (p + 1) % 2), ROTATE_MS)
     return () => clearInterval(t)
-  }, [])
+  }, [auto])
 
   const live = useMemo(
     () =>
       (board.data ?? [])
         .map((r) => ({ r, sec: secondsLeft(r.due_at, now) }))
+        // เลยกำหนดมากสุดขึ้นก่อน · ยิ่งติดลบมากยิ่งอยู่บน
         .sort((a, b) => a.sec - b.sec),
     [board.data, now],
   )
-  const d = done.data ?? []
-  const onTime = d.filter((x) => x.on_time).length
-  const pct = d.length ? Math.round((onTime / d.length) * 100) : null
+  const c = counts.data
   const over = live.filter((x) => x.sec < 0).length
+  const soon = live.filter((x) => x.sec >= 0 && x.sec <= 30 * 60).length
   const clock = new Date(now)
 
   return (
@@ -79,66 +91,161 @@ export default function TruckTv() {
           ตอนนี้ไม่มีรถในคลัง
         </p>
       ) : page === 0 ? (
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-          {live.slice(0, 4).map(({ r, sec }) => (
-            <div
-              key={r.id}
-              className="rounded-2xl px-5 py-5"
-              style={{ background: '#121820', borderLeft: `6px solid ${tone(sec)}` }}
-            >
-              <div className="truncate text-2xl font-extrabold">{r.branch_name}</div>
-              <div className="mb-3 text-sm" style={{ color: '#AFC0D4' }}>
-                ควรออก {hm(new Date(r.due_at))} · {dmy(new Date(r.due_at))}
-              </div>
-              <Countdown sec={sec} size={78} showSec />
-            </div>
+        <div className="grid grid-cols-12 gap-4">
+          {live.slice(0, MAX_CARDS).map(({ r, sec }) => (
+            <Card key={r.id} row={r} sec={sec} />
           ))}
+          {live.length > MAX_CARDS && (
+            <div className="col-span-12 text-center text-lg" style={{ color: '#5A646F' }}>
+              และอีก {live.length - MAX_CARDS} คันที่ยังมีเวลาเหลือมากกว่านี้
+            </div>
+          )}
         </div>
       ) : (
-        <div className="rounded-2xl p-5" style={{ background: '#121820' }}>
-          <p className="mb-3 text-xl font-bold">รถครบกำหนดช่วงไหนบ้าง</p>
-          <Density secs={live.map((x) => x.sec)} now={now} big />
-        </div>
+        <>
+          {/* การ์ดตัวเลขรวม · ตัวที่ต้องลงไปทำอะไรจะกระพริบ */}
+          <div className="mb-4 grid grid-cols-2 gap-4 xl:grid-cols-4">
+            <StatCard label="อยู่ในคลัง" n={c?.in_hub ?? live.length} color="#FBFBFB" />
+            <StatCard
+              label="เลยกำหนด"
+              n={c?.late ?? over}
+              color="#FF5C5C"
+              ring="rgba(255,92,92,.45)"
+              blink={(c?.late ?? over) > 0}
+            />
+            <StatCard
+              label="ใกล้หมดเวลา"
+              n={c?.soon ?? soon}
+              color="#FFB038"
+              ring="rgba(255,176,56,.4)"
+              blink={(c?.soon ?? soon) > 0}
+            />
+            <StatCard
+              label="ปล่อยไปแล้ว"
+              n={c?.done ?? 0}
+              color="#35D98A"
+              foot={
+                c && c.done > 0
+                  ? `ตรงเวลา ${c.on_time} คัน · ${Math.round((c.on_time / c.done) * 100)}%`
+                  : 'เริ่มนับใหม่ได้ที่หลังบ้าน'
+              }
+            />
+          </div>
+
+          <div className="rounded-2xl p-5" style={{ background: '#121820' }}>
+            <p className="mb-3 text-xl font-bold">รถครบกำหนดช่วงไหนบ้าง</p>
+            <Density secs={live.map((x) => x.sec)} now={now} big />
+          </div>
+        </>
       )}
 
-      <div className="mt-6 flex flex-wrap items-baseline gap-10">
-        <span>
-          <span className="text-base" style={{ color: '#AFC0D4' }}>
-            อยู่ในคลัง{' '}
-          </span>
-          <span className="text-4xl font-extrabold">{live.length}</span>
-          <span className="text-base" style={{ color: '#AFC0D4' }}>
-            {' '}
-            คัน
-          </span>
-        </span>
-        <span>
-          <span className="text-base" style={{ color: '#AFC0D4' }}>
-            เลยกำหนด{' '}
-          </span>
-          <span className="text-4xl font-extrabold" style={{ color: over ? '#FF5C5C' : '#35D98A' }}>
-            {over}
-          </span>
-          <span className="text-base" style={{ color: '#AFC0D4' }}>
-            {' '}
-            คัน
-          </span>
-        </span>
-        <span>
-          <span className="text-base" style={{ color: '#AFC0D4' }}>
-            ออกตรงเวลา 24 ชม.{' '}
-          </span>
-          <span
-            className="text-4xl font-extrabold"
-            style={{ color: pct === null ? '#AFC0D4' : pct >= 90 ? '#35D98A' : pct >= 80 ? '#FFB038' : '#FF5C5C' }}
-          >
-            {pct === null ? '—' : `${pct}%`}
-          </span>
-        </span>
+      {/* ───────── แถบควบคุม ───────── */}
+      <div className="mt-6 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          className="h-tap rounded-lg px-6 text-lg font-extrabold"
+          style={{ background: '#FFC400', color: '#0B0E11' }}
+          onClick={() => nav('/trucks?kiosk=1')}
+        >
+          กรอกข้อมูล
+        </button>
+        <button
+          type="button"
+          className="h-tap rounded-lg px-5 text-base font-bold"
+          style={{ background: '#1B2430', color: '#F0F4F9' }}
+          onClick={() => setPage((p) => (p + 1) % 2)}
+        >
+          สลับหน้า
+        </button>
+        <label
+          className="h-tap flex cursor-pointer items-center gap-3 rounded-lg px-4 text-base"
+          style={{ background: '#1B2430', color: '#AFC0D4' }}
+        >
+          <input
+            type="checkbox"
+            className="h-5 w-5"
+            checked={auto}
+            onChange={(e) => {
+              setAuto(e.target.checked)
+              localStorage.setItem(AUTO_KEY, e.target.checked ? 'on' : 'off')
+            }}
+          />
+          สลับเองทุก 20 วินาที
+        </label>
         <span className="flex-1" />
-        <span className="text-sm" style={{ color: '#5A646F' }}>
-          สลับหน้าเองทุก 20 วินาที
+        <span className="text-base" style={{ color: '#5A646F' }}>
+          {auto ? 'กำลังสลับหน้าเอง' : 'ค้างหน้านี้ไว้จนกว่าจะกดสลับ'}
         </span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * การ์ดหนึ่งคัน
+ *
+ * ขนาดมาจากความเร่งด่วน ไม่ใช่ลำดับในรายการ
+ * เวลาถึงคลังกับเวลาที่ควรออกเป็นค่าที่บันทึกไว้แล้ว ต้องนิ่งสนิท
+ * ควรออกตัวใหญ่กว่าถึงคลัง เพราะมันคือตัวเลขที่ใช้ตัดสินใจ อีกตัวแค่บอกที่มา
+ */
+function Card({ row, sec }: { row: TruckBoardRow; sec: number }) {
+  const late = sec < 0
+  const near = !late && sec <= 30 * 60
+  const col = late
+    ? 'col-span-12 xl:col-span-6'
+    : near
+      ? 'col-span-6 xl:col-span-4'
+      : 'col-span-6 xl:col-span-3'
+  const size = late ? 92 : near ? 64 : 46
+  const c = tone(sec)
+  const arr = new Date(row.arrived_at)
+  const due = new Date(row.due_at)
+
+  return (
+    <div
+      className={`${col} rounded-2xl px-5 py-5`}
+      style={{
+        background: '#121820',
+        borderLeft: `${late ? 10 : near ? 7 : 5}px solid ${c}`,
+        outline: late ? `2px solid ${c}55` : undefined,
+      }}
+    >
+      <div className="flex items-baseline gap-3">
+        <span className={`truncate font-extrabold ${late ? 'text-4xl' : near ? 'text-2xl' : 'text-xl'}`}>
+          {row.branch_name}
+        </span>
+        {row.branch_code && (
+          <span className="font-mono text-base" style={{ color: '#7D8B9B' }}>
+            {row.branch_code}
+          </span>
+        )}
+        {late && (
+          <span className="ml-auto whitespace-nowrap text-xl font-extrabold" style={{ color: '#FF5C5C' }}>
+            เลยกำหนด
+          </span>
+        )}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-3">
+        <Countdown sec={sec} size={size} showSec />
+
+        <div className="leading-tight">
+          <div style={{ color: '#7D8B9B', fontSize: Math.round(size * 0.2) }}>ถึงคลัง</div>
+          <div className="font-mono font-bold" style={{ color: '#AFC0D4', fontSize: Math.round(size * 0.3) }}>
+            {hm(arr)} <span style={{ fontSize: Math.round(size * 0.21) }}>{dmy(arr)}</span>
+          </div>
+
+          <div className="mt-1" style={{ color: '#7D8B9B', fontSize: Math.round(size * 0.2) }}>
+            ควรออก
+          </div>
+          <div
+            className="font-mono font-extrabold"
+            style={{ color: '#FFC400', fontSize: Math.round(size * 0.52) }}
+          >
+            {hm(due)}{' '}
+            <span style={{ fontSize: Math.round(size * 0.26), color: '#AFC0D4' }}>{dmy(due)}</span>
+          </div>
+        </div>
       </div>
     </div>
   )
