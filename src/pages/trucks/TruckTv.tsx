@@ -283,7 +283,11 @@ export default function TruckTv() {
               label="ปล่อยไปแล้ว"
               n={c?.done ?? 0}
               color="#35D98A"
-              foot={c ? undefined : 'เริ่มนับใหม่ได้ที่หลังบ้าน'}
+              foot={
+                c
+                  ? `รอบ ${hm(new Date(c.cycle_start))} ถึง ${hm(new Date(c.cycle_end))}`
+                  : 'ตัดรอบเองทุกวันตอนตีสาม'
+              }
             />
 
             {/*

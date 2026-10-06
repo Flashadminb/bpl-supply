@@ -65,18 +65,23 @@ function fmtHM(raw: string): string {
 
 const HM_OK = /^([01]\d|2[0-3]):[0-5]\d$/
 
+type DayPick = 'today' | 'yesterday'
+
 /**
- * แปลงเวลาที่กรอก (HH:MM) เป็นเวลาจริง
+ * แปลงเวลาที่กรอก (HH:MM) กับวันที่เลือก เป็นเวลาจริง
  *
- * งานรันยี่สิบสี่ชั่วโมง ตีหนึ่งแล้วกรอกย้อนว่า 23:50 คือเมื่อวาน ไม่ใช่คืนนี้
- * ถ้าไม่ดักไว้ เวลาที่ได้จะเป็นอนาคตเกือบยี่สิบสี่ชั่วโมง และรถคันนั้นจะไม่มีวันครบกำหนด
- * เผื่อล่วงหน้าไว้หนึ่งชั่วโมง เพราะนาฬิกาเครื่องหน้างานกับเซิร์ฟเวอร์ไม่ตรงกันเป๊ะ
+ * ของเดิมเดาวันให้เอง ถ้าเวลาที่กรอกล้ำหน้าเกินหนึ่งชั่วโมงก็ถือว่าเมื่อวาน
+ * ซึ่งพังจริงมาแล้ว · ตีสามแล้วกรอก 05:00 โดนดึงไปเป็นเมื่อวานตอนตีห้า
+ * กลายเป็นย้อนหลังยี่สิบสองชั่วโมงและเลยกำหนดทันทีทั้งที่รถยังไม่ถึงด้วยซ้ำ
+ *
+ * เลิกเดา · ให้กดเลือกวันเอง และโชว์ผลที่จะบันทึกไว้ให้เห็นก่อนกด
+ * งานรันยี่สิบสี่ชั่วโมง การเดาวันแทนคนทำงานกะดึกจึงผิดได้ทุกคืน
  */
-function hmToDate(hm: string): Date {
+function hmToDate(hm: string, day: DayPick): Date {
   const [h, m] = hm.split(':').map(Number)
   const d = new Date()
   d.setHours(h, m, 0, 0)
-  if (d.getTime() > Date.now() + 3600_000) d.setDate(d.getDate() - 1)
+  if (day === 'yesterday') d.setDate(d.getDate() - 1)
   return d
 }
 
@@ -166,6 +171,7 @@ export default function TruckBoard() {
   /** เวลาถึงคลัง · ตั้งต้นเป็นเวลาตอนนี้ และเดินตามนาฬิกาจนกว่าจะมีคนแก้เอง */
   const [atHM, setAtHM] = useState(nowHM)
   const [atTouched, setAtTouched] = useState(false)
+  const [atDay, setAtDay] = useState<DayPick>('today')
   useEffect(() => {
     if (atTouched) return
     const t = setInterval(() => setAtHM(nowHM()), 20_000)
@@ -292,11 +298,12 @@ export default function TruckBoard() {
         x.name.trim().toLowerCase() === q.toLowerCase() ||
         (x.code ?? '').trim().toLowerCase() === q.toLowerCase(),
     )
-    const at = hmToDate(atHM)
+    const at = hmToDate(atHM, atDay)
     await run(async () => {
       const res = await addTruck({ name: q, minutes, kind, arrivedAt: at.toISOString() })
       setName('')
       setAtTouched(false)
+      setAtDay('today')
       setAtHM(nowHM())
       setSaved({
         name: res.branch,
@@ -544,6 +551,8 @@ export default function TruckBoard() {
             <TimeField
               value={atHM}
               touched={atTouched}
+              day={atDay}
+              onDay={setAtDay}
               onChange={(v) => {
                 setAtHM(v)
                 setAtTouched(true)
@@ -551,6 +560,7 @@ export default function TruckBoard() {
               onNow={() => {
                 setAtHM(nowHM())
                 setAtTouched(false)
+                setAtDay('today')
               }}
             />
           </div>
@@ -613,6 +623,10 @@ export default function TruckBoard() {
 
           </div>
 
+          {!saved && HM_OK.test(atHM) && (
+            <SavePreview at={hmToDate(atHM, atDay)} minutes={minutes} />
+          )}
+
           {saved ? (
             <div
               className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-3 py-2.5 text-sm"
@@ -646,7 +660,7 @@ export default function TruckBoard() {
           ) : (
             <p className="mt-2 text-xs" style={{ color: '#AFC0D4' }}>
               ช่องเวลาเป็นแบบ 24 ชั่วโมง · พิมพ์ตัวเลขได้เลย เช่น 0930 หรือกดรูปนาฬิกาแล้วเลื่อนเลือกนาทีต่อนาที ·
-              ตั้งต้นเป็นเวลาตอนนี้และเดินตามนาฬิกาเอง
+              กะดึกข้ามวันให้กดเลือก เมื่อวาน · บรรทัดเขียวด้านล่างบอกไว้ตลอดว่าจะบันทึกเป็นวันไหนเวลาไหน
               <br />
               กรอกเวลาที่มากกว่าตอนนี้ ระบบถือว่าเป็นเมื่อวาน เพราะงานรันยี่สิบสี่ชั่วโมง ·
               รถหลักตั้งไว้ให้ 2 ชั่วโมง รถเสริม 1 ชั่วโมง เปลี่ยนเองได้ทุกเมื่อ
@@ -920,6 +934,44 @@ function Row({
  * นาทีให้เลือกทีละห้านาที เพราะหกสิบปุ่มคือตารางที่หาของไม่เจอ
  * ส่วนนาทีที่ไม่ลงตัวพิมพ์เอาได้อยู่แล้ว
  */
+/**
+ * บอกให้เห็นก่อนกดว่าจะบันทึกเป็นวันไหนเวลาไหน และควรออกกี่โมง
+ *
+ * เวลาที่พิมพ์ลงไปสี่ตัวเลขไม่ได้บอกวัน และวันคือสิ่งที่ผิดแล้วเสียหายที่สุด
+ * บรรทัดเดียวนี้ทำให้ความผิดพลาดเรื่องวันถูกจับได้ก่อนกด ไม่ใช่หลังจากรถขึ้นแดงไปแล้ว
+ */
+function SavePreview({ at, minutes }: { at: Date; minutes: number }) {
+  const due = new Date(at.getTime() + minutes * 60_000)
+  const past = Date.now() - at.getTime()
+  const late = Date.now() > due.getTime()
+  const tooFuture = past < -12 * 3600_000
+  const tooOld = past > 7 * 86400_000
+  const bad = tooFuture || tooOld
+
+  return (
+    <p
+      className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-3 py-2 text-sm"
+      style={{
+        background: bad ? 'rgba(255,92,92,.12)' : late ? 'rgba(255,176,56,.12)' : 'rgba(53,217,138,.10)',
+        border: `1px solid ${bad ? '#FF5C5C55' : late ? '#FFB03855' : '#35D98A40'}`,
+        color: bad ? '#FF9A9A' : late ? '#FFD08A' : '#8FE8BC',
+      }}
+    >
+      <span>จะบันทึกเป็น</span>
+      <b className="font-mono text-base" style={{ color: '#F0F4F9' }}>
+        {dmy(at)} {hm(at)}
+      </b>
+      <span>ควรออก</span>
+      <b className="font-mono text-base" style={{ color: '#FFC400' }}>
+        {dmy(due)} {hm(due)}
+      </b>
+      {tooFuture && <span>· ล่วงหน้าเกิน 12 ชั่วโมง บันทึกไม่ได้ ตรวจวันที่อีกครั้ง</span>}
+      {tooOld && <span>· ย้อนหลังเกิน 7 วัน บันทึกไม่ได้</span>}
+      {!bad && late && <span>· คันนี้เลยกำหนดไปแล้วตั้งแต่ก่อนบันทึก</span>}
+    </p>
+  )
+}
+
 const HOURS = Array.from({ length: 24 }, (_, i) => p2(i))
 const MINUTES = Array.from({ length: 60 }, (_, i) => p2(i))
 
@@ -977,11 +1029,15 @@ function Wheel({
 function TimeField({
   value,
   touched,
+  day,
+  onDay,
   onChange,
   onNow,
 }: {
   value: string
   touched: boolean
+  day: DayPick
+  onDay: (d: DayPick) => void
   onChange: (v: string) => void
   onNow: () => void
 }) {
@@ -1031,7 +1087,16 @@ function TimeField({
         </button>
       </div>
 
-      {touched && (
+      {day === 'yesterday' && (
+        <span
+          className="rounded-md px-2 py-1 text-xs font-extrabold"
+          style={{ background: '#3A2A14', color: '#FFC400' }}
+        >
+          เมื่อวาน
+        </span>
+      )}
+
+      {(touched || day !== 'today') && (
         <button
           type="button"
           className="h-tap rounded-lg px-3 text-sm font-bold"
@@ -1061,6 +1126,28 @@ function TimeField({
             <div className="flex gap-2">
               <Wheel label="ชั่วโมง" items={HOURS} value={h} onPick={pickH} open={open} />
               <Wheel label="นาที" items={MINUTES} value={m} onPick={pickM} open={open} />
+            </div>
+
+            <p className="mb-1 mt-3 text-xs" style={{ color: '#AFC0D4' }}>
+              วันที่รถถึงคลัง
+            </p>
+            <div className="flex gap-2">
+              {(['today', 'yesterday'] as DayPick[]).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  className="h-tap flex-1 rounded-lg text-sm font-bold"
+                  style={
+                    day === d
+                      ? { background: '#FFC400', color: '#0B0E11' }
+                      : { background: '#1B2430', color: '#AFC0D4' }
+                  }
+                  onClick={() => onDay(d)}
+                >
+                  {d === 'today' ? 'วันนี้' : 'เมื่อวาน'}{' '}
+                  {dmy(new Date(Date.now() - (d === 'today' ? 0 : 86400_000)))}
+                </button>
+              ))}
             </div>
 
             <div className="mt-3 flex gap-2">

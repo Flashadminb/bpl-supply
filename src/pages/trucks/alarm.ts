@@ -156,7 +156,11 @@ export function useTruckAlarm(items: { id: number; sec: number }[], enabled: boo
       const st = stageOf(it.sec)
       next.set(it.id, st)
       const prev = seen.current.get(it.id)
-      if (seeded.current && st && st !== prev && (!fire || RANK[st] > RANK[fire])) fire = st
+      // prev เป็น undefined แปลว่าเพิ่งเห็นคันนี้ครั้งแรก ไม่ใช่คันที่เพิ่งข้ามเส้นต่อหน้า
+      // กรอกรถย้อนหลังที่เลยกำหนดไปแล้ว จึงไม่ปลุกนาฬิกาใส่หน้าคนกรอก
+      // เขารู้อยู่แล้วว่ามันเลย เพราะเขาเป็นคนพิมพ์เวลานั้นเอง
+      if (seeded.current && st && prev !== undefined && st !== prev && (!fire || RANK[st] > RANK[fire]))
+        fire = st
     }
     seen.current = next
     if (!seeded.current) {

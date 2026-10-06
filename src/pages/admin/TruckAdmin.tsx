@@ -640,11 +640,11 @@ function AlertTab() {
       <section className="panel mb-4 p-4">
         <p className="font-display text-sm">ตัวนับ “ปล่อยไปแล้ว” ของจอทีวี</p>
         <p className="mb-2 text-xs text-ink-500">
-          จอทีวีโชว์ว่าปล่อยรถไปแล้วกี่คัน ออกตรงเวลากี่คัน ออกเกินเวลากี่คัน
-          นับจากครั้งล่าสุดที่กดปุ่มนี้
+          ตัวนับตัดรอบเองทุกวันตอน <b>ตีสาม</b> · รอบคือ 03:00 ของวันนี้ ถึง 03:00 ของวันพรุ่งนี้
           <br />
-          ไม่ได้ตัดที่เที่ยงคืน เพราะงานรันยี่สิบสี่ชั่วโมงและกะคาบเกี่ยวข้ามวัน ·
-          กดตอนเริ่มรอบที่อยากนับ
+          ไม่ได้ตัดที่เที่ยงคืน เพราะงานรันยี่สิบสี่ชั่วโมงและกะคาบเกี่ยวข้ามวัน
+          <br />
+          ปุ่มนี้ไว้ตัดรอบกลางวันเอง ถ้าอยากเริ่มนับใหม่ก่อนถึงตีสาม
         </p>
         <p className="mb-3 rounded-btn bg-success-bg px-3 py-2 text-xs text-success-txt">
           รีเซตแค่ตัวเลขที่โชว์บนจอทีวีเท่านั้น · ไม่ได้ลบรถสักคัน
@@ -662,9 +662,17 @@ function AlertTab() {
           </button>
           {counts.data && (
             <span className="text-sm text-ink-500">
-              ตอนนี้นับได้ {counts.data.done} คัน · ตรงเวลา {counts.data.on_time} คัน · เริ่มนับ{' '}
+              รอบนี้{' '}
+              {new Date(counts.data.cycle_start).toLocaleString('th-TH', {
+                day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+              })}
+              {' – '}
+              {new Date(counts.data.cycle_end).toLocaleString('th-TH', {
+                day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+              })}
+              {' · '}นับได้ {counts.data.done} คัน · ตรงเวลา {counts.data.on_time} คัน · เริ่มนับจริง{' '}
               {new Date(counts.data.since).toLocaleString('th-TH', {
-                day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
               })}
             </span>
           )}
