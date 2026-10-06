@@ -26,6 +26,7 @@ export function DepartmentManager({
   departments,
   onChanged,
   canEdit,
+  canDelete,
 }: {
   open: boolean
   onClose: () => void
@@ -39,6 +40,8 @@ export function DepartmentManager({
    * ปุ่มที่กดแล้วพังเสมอ แย่กว่าไม่มีปุ่ม เพราะคนจะคิดว่าระบบเสีย
    */
   canEdit: boolean
+  /** ลบได้ไหม · เฉพาะเจ้าของระบบ · ของที่เพิ่มผิดแก้คืนได้ ของที่ลบผิดไม่มีอะไรให้แก้คืน */
+  canDelete: boolean
 }) {
   const [newName, setNewName] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
@@ -80,7 +83,7 @@ export function DepartmentManager({
       // Postgres ตอบเป็นภาษาอังกฤษดิบ ๆ ตอนโดน RLS ปฏิเสธ · แปลให้คนอ่านรู้เรื่อง
       setError(
         /row-level security|violates row-level/i.test(raw)
-          ? 'บัญชีนี้แก้แผนกไม่ได้ · เฉพาะเจ้าของระบบเท่านั้นที่เพิ่ม แก้ชื่อ หรือลบแผนกและแผนกย่อยได้'
+          ? 'บัญชีนี้ทำรายการนี้ไม่ได้ · การลบแผนกและแผนกย่อยเป็นของเจ้าของระบบเท่านั้น'
           : raw,
       )
     } finally {
@@ -110,7 +113,7 @@ export function DepartmentManager({
 
       {!canEdit && (
         <p className="mb-3 rounded-card border border-warn/30 bg-warn-bg px-3 py-2 text-sm text-warn-txt">
-          <b>ดูได้อย่างเดียว</b> · เฉพาะเจ้าของระบบเท่านั้นที่เพิ่ม แก้ชื่อ หรือลบแผนกและแผนกย่อยได้
+          <b>ดูได้อย่างเดียว</b> · บัญชีนี้ยังแก้แผนกไม่ได้
           <br />
           เพราะแผนกเป็นตัวกำหนดว่าใครเห็นเครื่องไหน แก้ผิดทีเดียวกระทบทั้งคนและของพร้อมกัน
         </p>
@@ -177,16 +180,18 @@ export function DepartmentManager({
                     >
                       แผนกย่อย {subsOf(d.code).length > 0 ? subsOf(d.code).length : ''}
                     </button>
-                    <button
-                      type="button"
-                      className="btn-danger h-tap px-3 text-sm"
-                      disabled={busy}
-                      onClick={() => {
-                        if (confirm(`ลบแผนก "${d.name}" ?`)) void run(() => deleteDepartment(d.code))
-                      }}
-                    >
-                      ลบ
-                    </button>
+                    {canDelete && (
+                      <button
+                        type="button"
+                        className="btn-danger h-tap px-3 text-sm"
+                        disabled={busy}
+                        onClick={() => {
+                          if (confirm(`ลบแผนก "${d.name}" ?`)) void run(() => deleteDepartment(d.code))
+                        }}
+                      >
+                        ลบ
+                      </button>
+                    )}
                   </>
                 )}
               </>
@@ -209,7 +214,7 @@ export function DepartmentManager({
                         <button
                           type="button"
                           aria-label={`ลบแผนกย่อย ${s.code}`}
-                          className={canEdit ? 'text-danger' : 'hidden'}
+                          className={canDelete ? 'text-danger' : 'hidden'}
                           disabled={busy}
                           onClick={() => {
                             if (confirm(`ลบแผนกย่อย "${s.code}" ของ ${d.name} ?`))

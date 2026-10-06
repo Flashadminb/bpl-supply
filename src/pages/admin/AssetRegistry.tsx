@@ -661,7 +661,8 @@ export default function AssetRegistry() {
 
       <DepartmentManager
         open={deptsOpen}
-        canEdit={can('admin')}
+        canEdit={can(...MANAGER_ROLES)}
+        canDelete={can('admin')}
         onClose={() => setDeptsOpen(false)}
         departments={depts.data ?? []}
         onChanged={() => {
