@@ -110,6 +110,21 @@ export default function TruckBoard() {
   const [err, setErr] = useState<string | null>(null)
   const [undo, setUndo] = useState<{ id: number; name: string } | null>(null)
   const [dup, setDup] = useState<{ name: string; hits: TruckBoardRow[] } | null>(null)
+  /**
+   * ป้ายยืนยันหลังกดบันทึก
+   *
+   * เน็ตในฮับไม่นิ่ง และปุ่มบันทึกเดิมแค่ล้างช่องแล้วเงียบ
+   * คนกรอกจึงไม่มีทางแยกระหว่าง "บันทึกติดแล้ว" กับ "กดไม่ติด ช่องมันล้างเองเพราะอะไรสักอย่าง"
+   * ผลคือกดซ้ำเผื่อไว้ แล้วได้รถผีเพิ่มมาอีกคัน
+   *
+   * ข้อมูลทุกตัวบนป้ายนี้มาจากสิ่งที่เรารู้อยู่แล้วตอนกด ไม่ได้ถามเซิร์ฟเวอร์เพิ่มสักคำขอ
+   */
+  const [saved, setSaved] = useState<{
+    name: string
+    code: string | null
+    due: number
+    isNew: boolean
+  } | null>(null)
 
   const rows = board.data ?? []
   const live = useMemo(
@@ -188,9 +203,21 @@ export default function TruckBoard() {
     }
     localStorage.setItem('truck.min', String(minutes))
     setDup(null)
+    const known = (branches.data ?? []).find(
+      (x) =>
+        x.name.trim().toLowerCase() === q.toLowerCase() ||
+        (x.code ?? '').trim().toLowerCase() === q.toLowerCase(),
+    )
     await run(async () => {
-      await addTruck({ name: q, minutes })
+      const res = await addTruck({ name: q, minutes })
       setName('')
+      setSaved({
+        name: res.branch,
+        code: known?.code ?? null,
+        due: Date.now() + minutes * 60_000,
+        isNew: !known,
+      })
+      window.setTimeout(() => setSaved(null), 8_000)
     })
   }
 
@@ -433,17 +460,49 @@ export default function TruckBoard() {
           <button
             type="button"
             className="h-tap rounded-lg px-6 text-base font-extrabold"
-            style={{ background: '#FFC400', color: '#0B0E11' }}
+            style={{ background: '#FFC400', color: '#0B0E11', opacity: busy ? 0.6 : 1 }}
             disabled={busy || !name.trim()}
             onClick={() => void save()}
           >
-            บันทึก
+            {busy ? 'กำลังบันทึก…' : 'บันทึก'}
           </button>
 
           </div>
-          <p className="mt-2 text-xs" style={{ color: '#AFC0D4' }}>
-            เวลาถึงคลังใช้เวลาที่กดบันทึก · ระบบจำชั่วโมงที่เลือกล่าสุดไว้ให้
-          </p>
+
+          {saved ? (
+            <div
+              className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-3 py-2.5 text-sm"
+              style={{ background: 'rgba(53,217,138,.14)', border: '1px solid #35D98A55', color: '#8FE8BC' }}
+            >
+              <span className="text-base font-extrabold" style={{ color: '#35D98A' }}>
+                ✓ บันทึกแล้ว
+              </span>
+              {saved.code && (
+                <span className="font-mono text-base font-extrabold" style={{ color: '#FFC400' }}>
+                  {saved.code}
+                </span>
+              )}
+              <span className="text-base font-bold" style={{ color: '#F0F4F9' }}>
+                {saved.name}
+              </span>
+              <span style={{ color: '#AFC0D4' }}>
+                ควรออก{' '}
+                <b className="font-mono text-base" style={{ color: '#F0F4F9' }}>
+                  {hm(new Date(saved.due))}
+                </b>{' '}
+                {dmy(new Date(saved.due))}
+              </span>
+              {saved.isNew && (
+                <span className="rounded-md px-2 py-0.5 text-xs font-bold" style={{ background: '#FFB03822', color: '#FFB038' }}>
+                  สาขานี้ยังไม่เคยมีในระบบ · สร้างให้ใหม่แล้ว
+                </span>
+              )}
+            </div>
+          ) : (
+            <p className="mt-2 text-xs" style={{ color: '#AFC0D4' }}>
+              เวลาถึงคลังใช้เวลาที่กดบันทึก · ระบบจำชั่วโมงที่เลือกล่าสุดไว้ให้
+            </p>
+          )}
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
