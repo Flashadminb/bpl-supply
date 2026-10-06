@@ -8,6 +8,7 @@ import {
   releaseTruck,
   secondsLeft,
   seqByBranch,
+  truckCounts,
   unreleaseTruck,
   type TruckBoardRow,
   type TruckBranch,
@@ -38,6 +39,8 @@ export default function TruckBoard() {
   const [tick, setTick] = useState(0)
   const board = useAsync(() => listTruckBoard(), [tick])
   const branches = useAsync(() => listTruckBranches(), [tick])
+  // ตัวเลขชุดเดียวกับจอทีวี · ฐานข้อมูลนับให้ในคำขอเดียว
+  const counts = useAsync(() => truckCounts(), [tick])
 
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -225,21 +228,45 @@ export default function TruckBoard() {
         </div>
       )}
 
-      {/* ───────── ตัวเลขรวม ───────── */}
-      <div className="grid grid-cols-2 gap-px sm:grid-cols-4" style={{ background: '#243040' }}>
+      {/* ───────── ตัวเลขรวม ─────────
+          ชุดเดียวกับจอทีวีเป๊ะ ๆ ไม่ให้สองจอบอกคนละเลข
+          เพิ่มปล่อยไปแล้วกับรอนานสุด เพราะคนที่ยืนกรอกอยู่ตรงนี้คือคนที่ต้องตอบว่า
+          กะนี้ทำได้เท่าไหร่แล้ว ซึ่งเดิมต้องเดินไปดูที่จอทีวีหรือเปิดหน้าสถิติ */}
+      <div
+        className="grid grid-cols-2 gap-px sm:grid-cols-3 lg:grid-cols-5"
+        style={{ background: '#243040' }}
+      >
         {[
-          ['อยู่ในคลังตอนนี้', `${live.length} คัน`, '#F0F4F9'],
-          ['เลยกำหนด', `${over} คัน`, '#FF5C5C'],
-          ['ใกล้หมดเวลา', `${soon} คัน`, '#FFB038'],
-          ['รอนานสุด', live.length ? fmtWait(live[0].sec) : '—', '#AFC0D4'],
-        ].map(([a, b, c]) => (
-          <div key={a} className="px-4 py-3" style={{ background: '#0B0E11' }}>
+          ['อยู่ในคลังตอนนี้', `${counts.data?.in_hub ?? live.length} คัน`, '#F0F4F9', null],
+          ['เลยกำหนด', `${counts.data?.late ?? over} คัน`, '#FF5C5C', null],
+          ['ใกล้หมดเวลา', `${counts.data?.soon ?? soon} คัน`, '#FFB038', null],
+          [
+            'ปล่อยไปแล้ว',
+            `${counts.data?.done ?? 0} คัน`,
+            '#35D98A',
+            counts.data && counts.data.done > 0
+              ? `ตรงเวลา ${counts.data.on_time} คัน · ${Math.round((counts.data.on_time / counts.data.done) * 100)}%`
+              : 'เริ่มนับใหม่ได้ที่หลังบ้าน',
+          ],
+          [
+            'รอนานสุด',
+            live.length ? fmtWait(live[0].sec) : '—',
+            '#AFC0D4',
+            live.length ? live[0].r.branch_name : null,
+          ],
+        ].map(([a, b, c, d]) => (
+          <div key={a as string} className="px-4 py-3" style={{ background: '#0B0E11' }}>
             <div className="text-xs" style={{ color: '#AFC0D4' }}>
               {a}
             </div>
-            <div className="text-2xl font-extrabold" style={{ color: c }}>
+            <div className="text-2xl font-extrabold" style={{ color: c as string }}>
               {b}
             </div>
+            {d && (
+              <div className="truncate text-xs" style={{ color: '#5A646F' }}>
+                {d}
+              </div>
+            )}
           </div>
         ))}
       </div>
