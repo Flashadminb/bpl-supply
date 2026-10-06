@@ -132,6 +132,8 @@ export function StatCard({
   ring?: string
 }) {
   const digits = String(Math.max(0, Math.round(n)))
+  // ศูนย์บนป้ายสีแดงอ่านจากไกล ๆ แล้วเหมือนมีเรื่อง · ไม่มีอะไรต้องทำก็ใช้สีกลาง
+  const tile = n === 0 ? '#9AA7B5' : color
   return (
     <div
       className="flex flex-col items-center justify-center rounded-2xl px-4 py-4"
@@ -149,7 +151,7 @@ export function StatCard({
       </div>
       <div className="flex items-end gap-[5px]">
         {digits.split('').map((d, i) => (
-          <Flip key={i} v={d} size={size} late={false} tint={color} />
+          <Flip key={i} v={d} size={size} late={false} tint={tile} />
         ))}
         <span className="ml-1 text-xl font-bold" style={{ color: '#AFC0D4' }}>
           คัน
