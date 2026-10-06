@@ -170,8 +170,8 @@ export default function Home() {
             <span className="flex items-center gap-2">
               {/* เช็คอินประชุมเห็นทุกคน ไม่ใช่ของแอดมิน */}
               <MeetingCheckIn />
-              {/* ตารางปล่อยรถ · ยังเปิดให้เจ้าของระบบคนเดียว ตามที่สั่งไว้ว่าขอดูก่อน */}
-              {can('admin') && (
+              {/* ตารางปล่อยรถ · เจ้าของระบบกับผู้ตรวจสอบ */}
+              {(can('admin') || profile?.can_dispatch) && (
                 <Link
                   to="/trucks"
                   aria-label="ตารางปล่อยรถ"
