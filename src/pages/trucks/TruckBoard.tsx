@@ -33,6 +33,15 @@ import { AlarmChip, AlarmGate, EdgeGlow, StageSummary, UrgentRail, worstStage } 
 /** ชั่วโมงที่ให้ · หนึ่งชั่วโมงมีจริงสำหรับรถที่แวะสั้น ๆ */
 const ALLOW = [60, 120, 180, 240]
 
+/**
+ * เวลาเริ่มต้นตามประเภทรถ
+ *
+ * รถหลักสองชั่วโมง รถเสริมหนึ่งชั่วโมง
+ * ตั้งให้ถูกตั้งแต่แรกแปลว่าคนส่วนใหญ่ไม่ต้องแตะดรอปดาวน์นี้เลย
+ * แต่ยังเปลี่ยนได้อิสระ เพราะของจริงมีข้อยกเว้นเสมอ
+ */
+const DEFAULT_MIN: Record<TruckKind, number> = { main: 120, extra: 60 }
+
 /** เวลาตอนนี้ในรูป HH:MM สำหรับช่องกรอกเวลา */
 function nowHM(): string {
   const d = new Date()
@@ -147,8 +156,13 @@ export default function TruckBoard() {
   /** ช่องค้นในคลัง · คนละช่องกับช่องกรอกสาขาเข้าใหม่ */
   const [find, setFind] = useState('')
   const [name, setName] = useState('')
-  const [minutes, setMinutes] = useState(() => Number(localStorage.getItem('truck.min')) || 120)
   const [kind, setKind] = useState<TruckKind>('main')
+  const [minutes, setMinutes] = useState<number>(DEFAULT_MIN.main)
+  /** เปลี่ยนประเภทรถแล้วเวลาเด้งไปค่าเริ่มต้นของประเภทนั้น · เปลี่ยนต่อเองได้ */
+  function pickKind(k: TruckKind) {
+    setKind(k)
+    setMinutes(DEFAULT_MIN[k])
+  }
   /** เวลาถึงคลัง · ตั้งต้นเป็นเวลาตอนนี้ และเดินตามนาฬิกาจนกว่าจะมีคนแก้เอง */
   const [atHM, setAtHM] = useState(nowHM)
   const [atTouched, setAtTouched] = useState(false)
@@ -272,7 +286,6 @@ export default function TruckBoard() {
         return
       }
     }
-    localStorage.setItem('truck.min', String(minutes))
     setDup(null)
     const known = (branches.data ?? []).find(
       (x) =>
@@ -578,7 +591,7 @@ export default function TruckBoard() {
                         ? { background: c, color: '#0B0E11' }
                         : { background: '#141920', border: '1px solid #2A313B', color: c }
                     }
-                    onClick={() => setKind(k)}
+                    onClick={() => pickKind(k)}
                   >
                     {on ? '✓ ' : ''}
                     {k === 'main' ? 'รถหลัก' : 'รถเสริม'}
@@ -636,7 +649,7 @@ export default function TruckBoard() {
               ตั้งต้นเป็นเวลาตอนนี้และเดินตามนาฬิกาเอง
               <br />
               กรอกเวลาที่มากกว่าตอนนี้ ระบบถือว่าเป็นเมื่อวาน เพราะงานรันยี่สิบสี่ชั่วโมง ·
-              ระบบจำชั่วโมงที่เลือกล่าสุดไว้ให้
+              รถหลักตั้งไว้ให้ 2 ชั่วโมง รถเสริม 1 ชั่วโมง เปลี่ยนเองได้ทุกเมื่อ
             </p>
           )}
         </div>
