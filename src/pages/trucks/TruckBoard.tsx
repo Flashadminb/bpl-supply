@@ -104,10 +104,29 @@ export default function TruckBoard() {
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [])
-  // กระดานต้องสดพอจะเชื่อได้ · คนอื่นกดปล่อยแล้วต้องหายไปเองภายในไม่กี่วินาที
+  /**
+   * ดึงข้อมูลใหม่ทุกนาที และหยุดดึงเมื่อไม่มีใครมองอยู่
+   *
+   * หน้านี้ถูกเปิดค้างไว้ทั้งกะ และอาจเปิดพร้อมกันหลายจอรวมจอทีวี
+   * ถ้าดึงทุก 20 วินาทีตลอด 24 ชั่วโมง จอเดียวกินโควตา egress ราว 2.5 GB ต่อเดือน
+   * จากโควตาฟรี 5 GB ซึ่งแปลว่าเปิดสองจอก็เต็มแล้ว
+   *
+   * นาฬิกานับถอยหลังเดินในเครื่องอยู่แล้ว ตัวเลขจึงไม่ค้างแม้จะยังไม่ได้ดึงใหม่
+   * สิ่งเดียวที่ช้าลงคือการเห็นว่าคนอื่นเพิ่งกดปล่อยรถ ซึ่งรอหนึ่งนาทีได้
+   */
   useEffect(() => {
-    const t = setInterval(() => setTick((n) => n + 1), 20_000)
-    return () => clearInterval(t)
+    const t = setInterval(() => {
+      if (document.visibilityState === 'visible') setTick((n) => n + 1)
+    }, 60_000)
+    // กลับมาดูอีกทีต้องเห็นของสดทันที ไม่ใช่รออีกหนึ่งนาที
+    const wake = () => {
+      if (document.visibilityState === 'visible') setTick((n) => n + 1)
+    }
+    document.addEventListener('visibilitychange', wake)
+    return () => {
+      clearInterval(t)
+      document.removeEventListener('visibilitychange', wake)
+    }
   }, [])
 
   const [filter, setFilter] = useState<'urgent' | 'all'>('urgent')
