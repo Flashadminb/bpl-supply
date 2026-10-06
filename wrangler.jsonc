@@ -8,6 +8,15 @@
  * not_found_handling = single-page-application
  *   จำเป็น เพราะเส้นทางอย่าง /admin/stock ไม่มีไฟล์จริงอยู่บนเซิร์ฟเวอร์
  *   ถ้าไม่ตั้ง พอผู้ใช้กดรีเฟรชหน้าลึก ๆ จะเจอ 404
+ *
+ * html_handling = none
+ *   ค่าปริยายของ Cloudflare จะเด้ง /index.html ไป / ด้วย 307
+ *   ซึ่งทำให้ service worker ลง precache ไม่สำเร็จ เพราะ Cache API
+ *   เก็บคำตอบที่ถูก redirect ไม่ได้ พอ precache ว่าง เส้นทางลึกทุกเส้น
+ *   อย่าง /trucks/tv หรือ /admin/notices จะเปิดไม่ได้เลย
+ *   ขึ้นว่าเข้าเว็บไม่ได้ ทั้งที่เซิร์ฟเวอร์ตอบ 200 ปกติ
+ *   ตั้งเป็น none แล้ว /index.html ถูกเสิร์ฟตรง ๆ และ / ยังเข้าได้เหมือนเดิม
+ *   เพราะตกไปเข้าทาง single-page-application อยู่ดี
  */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -15,6 +24,7 @@
   "compatibility_date": "2026-09-23",
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    "html_handling": "none"
   }
 }
