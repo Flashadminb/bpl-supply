@@ -107,6 +107,37 @@ export async function addTruckBranches(lines: string[]): Promise<{ added: number
   return data as { added: number; skipped: number }
 }
 
+/**
+ * คันที่เท่าไหร่ของสาขานั้นที่ยังจอดอยู่
+ *
+ * เรียงตามเวลาถึงคลัง คันแรกได้เลข 1 คันถัดมาได้ 2 3 4 ไปเรื่อย ๆ
+ * หน้าจอจะแสดงป้ายเฉพาะตั้งแต่คันที่สองขึ้นไป เพราะคันแรกไม่มีอะไรต้องแยก
+ *
+ * คิดสดจากรายการที่ยังอยู่ในคลัง ไม่ได้เก็บลงฐานข้อมูล
+ * ถ้าเก็บไว้ พอปล่อยคันแรกออกไป เลขของคันที่เหลือจะกลายเป็นเลขที่ไม่ตรงกับความจริง
+ * แล้วต้องไล่แก้ทั้งชุดทุกครั้งที่มีรถออก
+ */
+export function seqByBranch(
+  rows: { id: number; branch_name: string; arrived_at: string }[],
+): Map<number, number> {
+  const byBranch = new Map<string, { id: number; arrived_at: string }[]>()
+  for (const r of rows) {
+    const k = r.branch_name.trim().toLowerCase()
+    const list = byBranch.get(k)
+    if (list) list.push(r)
+    else byBranch.set(k, [r])
+  }
+  const out = new Map<number, number>()
+  for (const list of byBranch.values()) {
+    if (list.length < 2) continue
+    list
+      .slice()
+      .sort((a, b) => a.arrived_at.localeCompare(b.arrived_at))
+      .forEach((r, i) => out.set(r.id, i + 1))
+  }
+  return out
+}
+
 /** เหลือกี่วินาที · ติดลบคือเลยกำหนด */
 export function secondsLeft(dueAt: string, now = Date.now()): number {
   return Math.round((new Date(dueAt).getTime() - now) / 1000)

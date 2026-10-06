@@ -180,7 +180,7 @@ export function MiniGrid({
   now,
   title,
 }: {
-  rows: { id: number; name: string; code: string | null; due: string; sec: number }[]
+  rows: { id: number; name: string; code: string | null; due: string; sec: number; seq?: number }[]
   now: number
   title?: string
 }) {
@@ -227,6 +227,11 @@ export function MiniGrid({
                 style={{ fontSize: nameSize, color: '#F0F4F9', lineHeight: 1.25 }}
               >
                 {r.name}
+                {r.seq && r.seq > 1 && (
+                  <span className="ml-1 font-extrabold" style={{ color: '#FFC400' }}>
+                    #{r.seq}
+                  </span>
+                )}
               </div>
               <div className="flex items-baseline justify-between gap-1">
                 <span

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
-import { listTruckBoard, secondsLeft, truckCounts, type TruckBoardRow } from '../../lib/trucks'
+import { listTruckBoard, secondsLeft, seqByBranch, truckCounts, type TruckBoardRow } from '../../lib/trucks'
 import { Countdown, DAY_TH, Density, dmy, hm, MiniGrid, p2, StatCard, tone } from './parts'
 
 /**
@@ -64,6 +64,9 @@ export default function TruckTv() {
         .sort((a, b) => a.sec - b.sec),
     [board.data, now],
   )
+  // สาขาเดียวกันที่มีหลายคันจอดพร้อมกัน ต้องแยกออกจากกันได้ด้วยตา
+  const seq = useMemo(() => seqByBranch(board.data ?? []), [board.data])
+
   const big = live.slice(0, BIG_CARDS)
   const mini = useMemo(
     () =>
@@ -73,8 +76,9 @@ export default function TruckTv() {
         code: r.branch_code,
         due: r.due_at,
         sec,
+        seq: seq.get(r.id),
       })),
-    [live],
+    [live, seq],
   )
 
   const c = counts.data
@@ -110,7 +114,7 @@ export default function TruckTv() {
         <>
           <div className="grid grid-cols-12 gap-4">
             {big.map(({ r, sec }) => (
-              <Card key={r.id} row={r} sec={sec} />
+              <Card key={r.id} row={r} sec={sec} seq={seq.get(r.id)} />
             ))}
           </div>
           {mini.length > BIG_CARDS && (
@@ -209,7 +213,7 @@ export default function TruckTv() {
  * เวลาถึงคลังกับเวลาที่ควรออกเป็นค่าที่บันทึกไว้แล้ว ต้องนิ่งสนิท
  * ควรออกตัวใหญ่กว่าถึงคลัง เพราะมันคือตัวเลขที่ใช้ตัดสินใจ อีกตัวแค่บอกที่มา
  */
-function Card({ row, sec }: { row: TruckBoardRow; sec: number }) {
+function Card({ row, sec, seq }: { row: TruckBoardRow; sec: number; seq?: number }) {
   const late = sec < 0
   const near = !late && sec <= 30 * 60
   const col = late
@@ -235,6 +239,14 @@ function Card({ row, sec }: { row: TruckBoardRow; sec: number }) {
         <span className={`truncate font-extrabold ${late ? 'text-4xl' : near ? 'text-2xl' : 'text-xl'}`}>
           {row.branch_name}
         </span>
+        {seq && seq > 1 && (
+          <span
+            className={`rounded-md px-2 font-extrabold ${late ? 'text-2xl' : 'text-lg'}`}
+            style={{ background: '#FFC400', color: '#0B0E11' }}
+          >
+            คันที่ {seq}
+          </span>
+        )}
         {row.branch_code && (
           <span className="font-mono text-base" style={{ color: '#7D8B9B' }}>
             {row.branch_code}

@@ -7,6 +7,7 @@ import {
   listTruckBranches,
   releaseTruck,
   secondsLeft,
+  seqByBranch,
   unreleaseTruck,
   type TruckBoardRow,
   type TruckBranch,
@@ -104,6 +105,8 @@ export default function TruckBoard() {
     () => rows.map((r) => ({ r, sec: secondsLeft(r.due_at, now) })).sort((a, b) => a.sec - b.sec),
     [rows, now],
   )
+  // คันที่เท่าไหร่ของสาขานั้น · คันแรกไม่ติดป้าย
+  const seq = useMemo(() => seqByBranch(rows), [rows])
   const over = live.filter((x) => x.sec < 0).length
   const soon = live.filter((x) => x.sec >= 0 && x.sec <= 30 * 60).length
   const shown = filter === 'all' ? live : live.filter((x) => x.sec <= 30 * 60)
@@ -415,7 +418,7 @@ export default function TruckBoard() {
 
         <div className="space-y-2">
           {shown.map(({ r, sec }) => (
-            <Row key={r.id} row={r} sec={sec} busy={busy} onRelease={() =>
+            <Row key={r.id} row={r} sec={sec} seq={seq.get(r.id)} busy={busy} onRelease={() =>
               void run(async () => {
                 await releaseTruck(r.id)
                 setUndo({ id: r.id, name: r.branch_name })
@@ -442,7 +445,11 @@ export default function TruckBoard() {
               {dup.name} มีรถอยู่ในคลังแล้ว {dup.hits.length} คัน
             </p>
             <p className="mt-1 text-sm" style={{ color: '#AFC0D4' }}>
-              ถ้าเป็นรถคันใหม่จริง กดยืนยันได้เลย · ถ้าเพิ่งกดบันทึกไปแล้วไม่แน่ใจว่าติดไหม ให้กดยกเลิก
+              กดยืนยันแล้วคันนี้จะขึ้นเป็น{' '}
+              <b style={{ color: '#FFC400' }}>คันที่ {dup.hits.length + 1}</b> ของสาขานี้
+              ทั้งบนกระดานและบนจอทีวี
+              <br />
+              ถ้าเพิ่งกดบันทึกไปแล้วไม่แน่ใจว่าติดไหม ให้กดยกเลิก
             </p>
             <ul className="mt-3 space-y-1">
               {dup.hits.map((h) => (
@@ -509,11 +516,14 @@ function Chip({
 function Row({
   row,
   sec,
+  seq,
   busy,
   onRelease,
 }: {
   row: TruckBoardRow
   sec: number
+  /** คันที่เท่าไหร่ของสาขานี้ · ไม่ส่งมาหรือเป็น 1 แปลว่าไม่ต้องติดป้าย */
+  seq?: number
   busy: boolean
   onRelease: () => void
 }) {
@@ -526,7 +536,17 @@ function Row({
       style={{ background: '#121820', borderLeft: `5px solid ${c}` }}
     >
       <div className="min-w-[150px] flex-1">
-        <div className="text-base font-bold">{row.branch_name}</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-base font-bold">{row.branch_name}</span>
+          {seq && seq > 1 && (
+            <span
+              className="rounded-md px-2 py-0.5 text-sm font-extrabold"
+              style={{ background: '#FFC400', color: '#0B0E11' }}
+            >
+              คันที่ {seq}
+            </span>
+          )}
+        </div>
         <div className="font-mono text-xs" style={{ color: '#AFC0D4' }}>
           {row.branch_code ?? '—'}
         </div>
