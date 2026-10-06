@@ -108,6 +108,64 @@ export async function releaseTruck(id: number): Promise<{ late_min: number }> {
   return data as { late_min: number }
 }
 
+/**
+ * ยกเลิกรถพร้อมเหตุผล
+ *
+ * ไม่ได้ลบแถวทิ้ง แค่ติดธงว่ายกเลิก · ประวัติยังอยู่ให้ย้อนดูได้เสมอ
+ * ฐานข้อมูลบังคับให้มีเหตุผลทุกครั้ง ปุ่มที่กดแล้วของหายโดยไม่ต้องอธิบาย
+ * คือปุ่มที่วันหนึ่งจะถูกใช้ลบสิ่งที่ไม่อยากให้ใครเห็น
+ */
+export async function cancelTruck(id: number, reason: string): Promise<{ branch: string }> {
+  const { data, error } = await supabase.rpc('truck_cancel', { p_id: id, p_reason: reason })
+  if (error) throw new Error(readableError(error))
+  return data as { branch: string }
+}
+
+/** เหตุผลที่เลือกได้เร็ว ๆ · พิมพ์เองก็ได้ */
+export const CANCEL_REASONS = ['ยกเลิกรถ', 'กดผิด']
+
+export type TruckEvent = 'add' | 'release' | 'cancel'
+
+export const EVENT_TH: Record<TruckEvent, string> = {
+  add: 'เพิ่มรถ',
+  release: 'ปล่อยรถ',
+  cancel: 'ยกเลิก',
+}
+
+export interface TruckLogRow {
+  run_id: number
+  event: TruckEvent
+  at: string
+  branch_name: string
+  branch_code: string | null
+  zone: string | null
+  kind: TruckKind
+  arrived_at: string
+  due_at: string
+  allow_min: number
+  reason: string | null
+  who: string | null
+}
+
+/** ประวัติการแก้ไขทั้งหมด · เพิ่มรถ ปล่อยรถ ยกเลิก อยู่ในรายการเดียวกัน */
+export async function listTruckLog(args: {
+  from: string
+  to: string
+  event?: TruckEvent
+}): Promise<TruckLogRow[]> {
+  let q = supabase
+    .from('truck_log_rows')
+    .select('*')
+    .gte('at', args.from)
+    .lte('at', args.to)
+    .order('at', { ascending: false })
+    .limit(500)
+  if (args.event) q = q.eq('event', args.event)
+  const { data, error } = await q
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as TruckLogRow[]
+}
+
 /** กดผิดคัน · เลิกทำได้ภายใน 10 นาที */
 export async function unreleaseTruck(id: number) {
   const { error } = await supabase.rpc('truck_unrelease', { p_id: id })
@@ -230,6 +288,8 @@ export interface TruckCounts {
   done: number
   /** ในจำนวนที่ปล่อยไปแล้ว ออกตรงเวลากี่คัน */
   on_time: number
+  /** ยกเลิกไปกี่คันในรอบนี้ */
+  cancelled: number
   /** จุดเริ่มนับจริง · ค่าที่มาทีหลังระหว่างตีสามรอบนี้กับครั้งที่กดรีเซต */
   since: string
   /** ตีสามของรอบนี้ */

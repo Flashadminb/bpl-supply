@@ -67,6 +67,7 @@ const BreakMine = lazy(() => import('./pages/staff/BreakMine'))
 const TruckBoard = lazy(() => import('./pages/trucks/TruckBoard'))
 const TruckTv = lazy(() => import('./pages/trucks/TruckTv'))
 const TruckStats = lazy(() => import('./pages/trucks/TruckStats'))
+const TruckLog = lazy(() => import('./pages/trucks/TruckLog'))
 const TruckAdmin = lazy(() => import('./pages/admin/TruckAdmin'))
 
 function Guard({
@@ -254,6 +255,7 @@ export default function App() {
       <Route path="/trucks" element={<Guard><TruckBoard /></Guard>} />
       <Route path="/trucks/tv" element={<Guard><TruckTv /></Guard>} />
       <Route path="/trucks/stats" element={<Guard><TruckStats /></Guard>} />
+      <Route path="/trucks/history" element={<Guard><TruckLog /></Guard>} />
       <Route path="/assets" element={<Guard><AssetBasket /></Guard>} />
       <Route path="/assets/done/:refNo" element={<Guard><AssetDone /></Guard>} />
       <Route path="/assets/:typeCode" element={<Guard><AssetPick /></Guard>} />

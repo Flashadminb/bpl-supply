@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import {
   addTruck,
+  cancelTruck,
+  CANCEL_REASONS,
   listTruckBoard,
   listTruckBranches,
   kindLabels,
@@ -181,6 +183,9 @@ export default function TruckBoard() {
   const [err, setErr] = useState<string | null>(null)
   const [undo, setUndo] = useState<{ id: number; name: string } | null>(null)
   const [dup, setDup] = useState<{ name: string; hits: TruckBoardRow[] } | null>(null)
+  /** กล่องยกเลิก · เด้งเล็ก ๆ อยู่บนหน้าเดิม ไม่พาไปไหน */
+  const [cancelRow, setCancelRow] = useState<TruckBoardRow | null>(null)
+  const [cancelWhy, setCancelWhy] = useState('')
   /**
    * ป้ายยืนยันหลังกดบันทึก
    *
@@ -378,7 +383,7 @@ export default function TruckBoard() {
           เพิ่มปล่อยไปแล้วกับรอนานสุด เพราะคนที่ยืนกรอกอยู่ตรงนี้คือคนที่ต้องตอบว่า
           กะนี้ทำได้เท่าไหร่แล้ว ซึ่งเดิมต้องเดินไปดูที่จอทีวีหรือเปิดหน้าสถิติ */}
       <div
-        className="grid grid-cols-2 gap-px sm:grid-cols-3 lg:grid-cols-5"
+        className="grid grid-cols-2 gap-px sm:grid-cols-3 lg:grid-cols-6"
         style={{ background: '#243040' }}
       >
         {[
@@ -414,6 +419,27 @@ export default function TruckBoard() {
             )}
           </div>
         ))}
+
+        {/*
+          การ์ดยกเลิก · เล็กกว่าใบอื่นโดยตั้งใจ
+          มันไม่ใช่ตัวเลขที่ต้องมองตลอด แต่เป็นทางเข้าไปดูว่าใครยกเลิกอะไรไปบ้าง
+        */}
+        <button
+          type="button"
+          className="px-4 py-3 text-left"
+          style={{ background: '#0B0E11' }}
+          onClick={() => nav('/trucks/history?e=cancel')}
+        >
+          <div className="text-xs" style={{ color: '#AFC0D4' }}>
+            ยกเลิกรอบนี้
+          </div>
+          <div className="text-lg font-extrabold" style={{ color: counts.data?.cancelled ? '#FF8A8A' : '#5A646F' }}>
+            {counts.data?.cancelled ?? 0} คัน
+          </div>
+          <div className="text-xs underline" style={{ color: '#7FD1FF' }}>
+            ดูประวัติยกเลิก
+          </div>
+        </button>
       </div>
 
       {err && (
@@ -671,6 +697,13 @@ export default function TruckBoard() {
         <div className="mt-3 flex flex-wrap gap-2">
           <AlarmChip on={pref.on} onClick={() => void pref.turnOn()} />
           <a
+            href="/trucks/history"
+            className="h-tap rounded-lg px-4 text-sm font-bold leading-[44px]"
+            style={{ background: '#1B2430', color: '#AFC0D4' }}
+          >
+            ประวัติการแก้ไข
+          </a>
+          <a
             href="/trucks/stats"
             className="h-tap rounded-lg px-4 text-sm font-bold leading-[44px]"
             style={{ background: '#1B2430', color: '#AFC0D4' }}
@@ -749,7 +782,7 @@ export default function TruckBoard() {
 
         <div className="space-y-2">
           {shown.map(({ r, sec }) => (
-            <Row key={r.id} row={r} sec={sec} tag={tags.get(r.id)} busy={busy} onRelease={() =>
+            <Row key={r.id} row={r} sec={sec} tag={tags.get(r.id)} busy={busy} onCancel={() => { setCancelRow(r); setCancelWhy('') }} onRelease={() =>
               void run(async () => {
                 await releaseTruck(r.id)
                 setUndo({ id: r.id, name: r.branch_name })
@@ -759,6 +792,104 @@ export default function TruckBoard() {
           ))}
         </div>
       </div>
+
+      {/* ───────── ยกเลิกรถ ───────── */}
+      {cancelRow && (
+        <div
+          className="fixed inset-0 z-40 flex items-end justify-center p-4 sm:items-center"
+          style={{ background: 'rgba(0,0,0,.65)' }}
+          onClick={() => setCancelRow(null)}
+        >
+          <div
+            className="w-full max-w-[440px] rounded-2xl p-5"
+            style={{ background: '#141920', border: '1px solid #3A2A2A' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-lg font-bold" style={{ color: '#FF9A9A' }}>
+              ยกเลิกรถคันนี้
+            </p>
+            <p className="mt-1 flex flex-wrap items-baseline gap-x-2 text-xl">
+              {cancelRow.zone && (
+                <span
+                  className="rounded px-1.5 font-mono text-sm font-extrabold"
+                  style={{ background: '#1B2430', color: '#7FD1FF' }}
+                >
+                  {cancelRow.zone}
+                </span>
+              )}
+              {cancelRow.branch_code && (
+                <span className="font-mono font-extrabold" style={{ color: '#FFC400' }}>
+                  {cancelRow.branch_code}
+                </span>
+              )}
+              <span className="font-extrabold">{cancelRow.branch_name}</span>
+            </p>
+            <p className="mt-1 text-sm" style={{ color: '#AFC0D4' }}>
+              ถึงคลัง {hm(new Date(cancelRow.arrived_at))} {dmy(new Date(cancelRow.arrived_at))} · ควรออก{' '}
+              {hm(new Date(cancelRow.due_at))}
+            </p>
+
+            <p className="mb-2 mt-4 text-sm font-bold">เหตุผล</p>
+            <div className="mb-2 flex flex-wrap gap-2">
+              {CANCEL_REASONS.map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  className="h-tap rounded-lg px-4 text-sm font-bold"
+                  style={
+                    cancelWhy === r
+                      ? { background: '#FFC400', color: '#0B0E11' }
+                      : { background: '#1B2430', color: '#AFC0D4' }
+                  }
+                  onClick={() => setCancelWhy(r)}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+            <textarea
+              className="min-h-[72px] w-full rounded-lg px-3 py-2 text-base outline-none"
+              style={{ background: '#0F141B', border: '1px solid #2A313B', color: '#F0F4F9' }}
+              placeholder="เลือกด้านบน หรือพิมพ์เหตุผลเอง"
+              value={cancelWhy}
+              onChange={(e) => setCancelWhy(e.target.value)}
+            />
+
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                className="h-tap flex-1 rounded-lg text-base font-bold"
+                style={{ background: '#1B2430', color: '#F0F4F9' }}
+                onClick={() => setCancelRow(null)}
+              >
+                ไม่ยกเลิกแล้ว
+              </button>
+              <button
+                type="button"
+                className="h-tap flex-1 rounded-lg text-base font-extrabold"
+                style={{
+                  background: cancelWhy.trim() ? '#FF5C5C' : '#3A2A2A',
+                  color: cancelWhy.trim() ? '#0B0E11' : '#7D8B9B',
+                }}
+                disabled={busy || !cancelWhy.trim()}
+                onClick={() => {
+                  const r = cancelRow
+                  void run(async () => {
+                    await cancelTruck(r.id, cancelWhy.trim())
+                    setCancelRow(null)
+                    setCancelWhy('')
+                  })
+                }}
+              >
+                {busy ? 'กำลังยกเลิก…' : 'ยืนยันยกเลิก'}
+              </button>
+            </div>
+            <p className="mt-3 text-xs" style={{ color: '#5A646F' }}>
+              ไม่ได้ลบทิ้ง · รถคันนี้จะย้ายไปอยู่ในประวัติยกเลิกพร้อมเหตุผลและชื่อคนกด
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ───────── ถามก่อนใส่ซ้ำ ───────── */}
       {dup && (
@@ -855,6 +986,7 @@ function Row({
   tag,
   busy,
   onRelease,
+  onCancel,
 }: {
   row: TruckBoardRow
   sec: number
@@ -862,6 +994,7 @@ function Row({
   tag?: string
   busy: boolean
   onRelease: () => void
+  onCancel: () => void
 }) {
   const c = tone(sec)
   const arr = new Date(row.arrived_at)
@@ -916,6 +1049,16 @@ function Row({
         onClick={onRelease}
       >
         ปล่อยรถ
+      </button>
+
+      <button
+        type="button"
+        className="h-tap rounded-lg px-4 text-sm font-bold"
+        style={{ background: '#1B2430', color: '#FF9A9A', border: '1px solid #3A2A2A' }}
+        disabled={busy}
+        onClick={onCancel}
+      >
+        ยกเลิก
       </button>
     </div>
   )
