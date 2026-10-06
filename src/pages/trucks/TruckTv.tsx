@@ -48,6 +48,15 @@ export default function TruckTv() {
    * ค่าเก็บในเครื่อง ไม่ใช่ในฐานข้อมูล
    * เพราะจอทีวีที่แขวนในคลังกับมือถือที่เปิดดูเฉย ๆ ควรตั้งคนละแบบได้
    */
+  // จอแคบ = มือถือ · เช็กตอนหมุนเครื่องด้วย ไม่ใช่เช็กครั้งเดียวตอนเปิด
+  const [narrow, setNarrow] = useState(() => window.innerWidth < 768)
+  const [force, setForce] = useState(false)
+  useEffect(() => {
+    const f = () => setNarrow(window.innerWidth < 768)
+    window.addEventListener('resize', f)
+    return () => window.removeEventListener('resize', f)
+  }, [])
+
   const [auto, setAuto] = useState(() => localStorage.getItem(AUTO_KEY) !== 'off')
   const [page, setPage] = useState(0)
   useEffect(() => {
@@ -85,6 +94,54 @@ export default function TruckTv() {
   const over = live.filter((x) => x.sec < 0).length
   const soon = live.filter((x) => x.sec >= 0 && x.sec <= 30 * 60).length
   const clock = new Date(now)
+
+  /**
+   * มือถือไม่ใช่กลุ่มเป้าหมายของหน้านี้
+   *
+   * ทุกอย่างบนจอนี้ถูกขยายไว้ให้อ่านจากระยะสามถึงห้าเมตร
+   * พอมาอยู่บนจอกว้างสี่ร้อยพิกเซล มันกลายเป็นหน้าที่ต้องเลื่อนตลอดและอ่านยากกว่าหน้ากระดาน
+   * ซึ่งมีตัวเลขชุดเดียวกันครบอยู่แล้ว
+   *
+   * ไม่ปิดตายเพราะมีกรณีที่เสียบมือถือเข้าทีวีแล้วอยากได้หน้านี้จริง ๆ
+   * แค่ถามก่อนหนึ่งครั้ง แล้วพาไปหน้าที่เหมาะกว่าให้เป็นทางหลัก
+   */
+  if (narrow && !force) {
+    return (
+      <div
+        className="flex min-h-dvh flex-col items-center justify-center gap-5 px-6 text-center"
+        style={{ background: '#0B0E11', color: '#F0F4F9' }}
+      >
+        <span
+          className="rounded-lg px-3 py-1.5 text-lg font-extrabold"
+          style={{ background: '#FFC400', color: '#0B0E11' }}
+        >
+          FLASH
+        </span>
+        <p className="text-xl font-bold">โหมดจอทีวีทำไว้สำหรับจอใหญ่</p>
+        <p className="text-sm leading-relaxed" style={{ color: '#AFC0D4' }}>
+          ตัวเลขบนหน้านี้ถูกขยายไว้ให้อ่านจากกลางคลัง บนมือถือจะต้องเลื่อนตลอดและอ่านยากกว่า
+          <br />
+          หน้ากระดานมีตัวเลขชุดเดียวกันครบ และกดปล่อยรถได้ด้วย
+        </p>
+        <button
+          type="button"
+          className="h-tap w-full max-w-[280px] rounded-lg text-base font-extrabold"
+          style={{ background: '#FFC400', color: '#0B0E11' }}
+          onClick={() => nav('/trucks', { replace: true })}
+        >
+          ไปหน้ากระดาน
+        </button>
+        <button
+          type="button"
+          className="text-sm underline"
+          style={{ color: '#7D8B9B' }}
+          onClick={() => setForce(true)}
+        >
+          เสียบจอทีวีอยู่ · เปิดโหมดจอทีวีต่อ
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-dvh px-7 py-6" style={{ background: '#0B0E11', color: '#F0F4F9' }}>
@@ -235,21 +292,29 @@ function Card({ row, sec, seq }: { row: TruckBoardRow; sec: number; seq?: number
         outline: late ? `2px solid ${c}55` : undefined,
       }}
     >
-      <div className="flex items-baseline gap-3">
-        <span className={`truncate font-extrabold ${late ? 'text-4xl' : near ? 'text-2xl' : 'text-xl'}`}>
-          {row.branch_name}
-        </span>
+      {/*
+        ตัวย่อตัวใหญ่เท่าชื่อไทย และมาก่อน
+
+        หน้างานเรียกสาขาด้วยตัวย่อเป็นหลัก ชื่อไทยไว้ยืนยันซ้ำว่าไม่ได้อ่านผิดสาขา
+        ของที่ใช้ตัดสินใจจึงต้องไม่เล็กกว่าของที่ใช้ยืนยัน
+      */}
+      <div
+        className={`flex flex-wrap items-baseline gap-x-3 ${
+          late ? 'text-4xl' : near ? 'text-2xl' : 'text-xl'
+        }`}
+      >
+        {row.branch_code && (
+          <span className="font-mono font-extrabold" style={{ color: '#FFC400' }}>
+            {row.branch_code}
+          </span>
+        )}
+        <span className="truncate font-extrabold">{row.branch_name}</span>
         {seq && seq > 1 && (
           <span
             className={`rounded-md px-2 font-extrabold ${late ? 'text-2xl' : 'text-lg'}`}
             style={{ background: '#FFC400', color: '#0B0E11' }}
           >
             คันที่ {seq}
-          </span>
-        )}
-        {row.branch_code && (
-          <span className="font-mono text-base" style={{ color: '#7D8B9B' }}>
-            {row.branch_code}
           </span>
         )}
         {late && (

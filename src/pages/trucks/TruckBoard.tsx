@@ -95,7 +95,15 @@ export default function TruckBoard() {
     if (kiosk && idle <= 0) nav('/trucks/tv', { replace: true })
   }, [kiosk, idle, nav])
 
-  const [filter, setFilter] = useState<'urgent' | 'all'>('urgent')
+  /**
+   * ตั้งต้นที่ทั้งหมด ไม่ใช่เฉพาะคันที่ต้องรีบ
+   *
+   * คนเปิดหน้านี้มาเพื่อกดปล่อยรถคันที่จอดอยู่ตรงหน้า ไม่ใช่มาดูว่าคันไหนด่วนที่สุด
+   * ถ้าตั้งต้นที่ต้องรีบ คันที่เขาจะกดมักไม่อยู่ในรายการ แล้วต้องกดชิปก่อนทุกครั้ง
+   */
+  const [filter, setFilter] = useState<'urgent' | 'all'>('all')
+  /** ช่องค้นในคลัง · คนละช่องกับช่องกรอกสาขาเข้าใหม่ */
+  const [find, setFind] = useState('')
   const [name, setName] = useState('')
   const [minutes, setMinutes] = useState(() => Number(localStorage.getItem('truck.min')) || 120)
   const [busy, setBusy] = useState(false)
@@ -112,7 +120,20 @@ export default function TruckBoard() {
   const seq = useMemo(() => seqByBranch(rows), [rows])
   const over = live.filter((x) => x.sec < 0).length
   const soon = live.filter((x) => x.sec >= 0 && x.sec <= 30 * 60).length
-  const shown = filter === 'all' ? live : live.filter((x) => x.sec <= 30 * 60)
+  /**
+   * พิมพ์ค้นแล้วค้นทั้งคลังเสมอ ไม่สนใจชิปที่เลือกไว้
+   *
+   * คนพิมพ์ชื่อสาขาลงไปแปลว่ารู้อยู่แล้วว่าจะหาคันไหน
+   * ถ้ายังติดกรองของชิปอยู่ เขาจะได้ผลลัพธ์ว่างทั้งที่รถคันนั้นอยู่ในคลังจริง ๆ
+   */
+  const q2 = find.trim().toLowerCase()
+  const shown = useMemo(() => {
+    const base = q2 || filter === 'all' ? live : live.filter((x) => x.sec <= 30 * 60)
+    if (!q2) return base
+    return base.filter((x) =>
+      `${x.r.branch_name} ${x.r.branch_code ?? ''}`.toLowerCase().includes(q2),
+    )
+  }, [live, filter, q2])
 
   // ค้นได้ทั้งรหัสและชื่อไทย · กลางดึกคนจำชื่อไทยได้ง่ายกว่ารหัส
   const hits = useMemo(() => {
@@ -339,12 +360,12 @@ export default function TruckBoard() {
                     style={{ borderBottom: '1px solid #222A33' }}
                     onClick={() => setName(b.name)}
                   >
-                    <span className="text-sm">{b.name}</span>
                     {b.code && (
-                      <span className="ml-2 font-mono text-xs" style={{ color: '#AFC0D4' }}>
+                      <span className="mr-2 font-mono text-sm font-extrabold" style={{ color: '#FFC400' }}>
                         {b.code}
                       </span>
                     )}
+                    <span className="text-sm">{b.name}</span>
                     {!b.is_open && (
                       <span className="ml-2 text-xs" style={{ color: '#FFB038' }}>
                         ปิดบริการ
@@ -415,15 +436,43 @@ export default function TruckBoard() {
         </p>
       </div>
 
-      {/* ───────── ชิปกรอง ───────── */}
-      <div className="flex flex-wrap gap-2 px-4 pt-5">
-        <Chip on={filter === 'urgent'} onClick={() => setFilter('urgent')} color="#FF5C5C">
-          ต้องรีบ {over + soon}
-        </Chip>
-        <Chip on={filter === 'all'} onClick={() => setFilter('all')} color="#AFC0D4">
+      {/* ───────── ชิปกรองและช่องค้น ───────── */}
+      <div className="flex flex-wrap items-center gap-2 px-4 pt-5">
+        <Chip on={!q2 && filter === 'all'} onClick={() => { setFilter('all'); setFind('') }} color="#AFC0D4">
           ทั้งหมด {live.length}
         </Chip>
+        <Chip on={!q2 && filter === 'urgent'} onClick={() => { setFilter('urgent'); setFind('') }} color="#FF5C5C">
+          ต้องรีบ {over + soon}
+        </Chip>
+
+        <div className="relative ml-auto min-w-[200px] flex-1 sm:max-w-[320px] sm:flex-none">
+          <input
+            className="h-tap w-full rounded-lg pl-3 pr-10 text-base outline-none"
+            style={{ background: '#141920', border: '1px solid #2A313B', color: '#F0F4F9' }}
+            type="search"
+            value={find}
+            placeholder="ค้นรถในคลัง · ชื่อหรือรหัสสาขา"
+            onChange={(e) => setFind(e.target.value)}
+          />
+          {find && (
+            <button
+              type="button"
+              aria-label="ล้างคำค้น"
+              className="absolute right-1 top-1 h-tap w-tap rounded-lg text-lg"
+              style={{ color: '#AFC0D4' }}
+              onClick={() => setFind('')}
+            >
+              ✕
+            </button>
+          )}
+        </div>
       </div>
+
+      {q2 && (
+        <p className="px-4 pt-2 text-xs" style={{ color: '#AFC0D4' }}>
+          ค้นในรถทุกคันที่อยู่ในคลัง · เจอ {shown.length} คัน
+        </p>
+      )}
 
       {/* ───────── รายการ ───────── */}
       <div className="px-4 pb-10 pt-3">
@@ -439,7 +488,11 @@ export default function TruckBoard() {
         )}
         {!board.loading && shown.length === 0 && (
           <p className="py-10 text-center" style={{ color: '#AFC0D4' }}>
-            {live.length === 0 ? 'ยังไม่มีรถในคลัง' : 'ไม่มีคันที่ต้องรีบตอนนี้'}
+            {live.length === 0
+              ? 'ยังไม่มีรถในคลัง'
+              : q2
+                ? `ไม่เจอสาขาที่ตรงกับ “${find.trim()}” ในคลังตอนนี้`
+                : 'ไม่มีคันที่ต้องรีบตอนนี้'}
           </p>
         )}
 
@@ -562,8 +615,14 @@ function Row({
       className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl px-4 py-3"
       style={{ background: '#121820', borderLeft: `5px solid ${c}` }}
     >
+      {/* ตัวย่อตัวเท่าชื่อไทยและมาก่อน · หน้างานอ่านตัวย่อเป็นหลัก */}
       <div className="min-w-[150px] flex-1">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {row.branch_code && (
+            <span className="font-mono text-base font-extrabold" style={{ color: '#FFC400' }}>
+              {row.branch_code}
+            </span>
+          )}
           <span className="text-base font-bold">{row.branch_name}</span>
           {seq && seq > 1 && (
             <span
@@ -573,9 +632,6 @@ function Row({
               คันที่ {seq}
             </span>
           )}
-        </div>
-        <div className="font-mono text-xs" style={{ color: '#AFC0D4' }}>
-          {row.branch_code ?? '—'}
         </div>
       </div>
 

@@ -222,13 +222,24 @@ export function MiniGrid({
                 borderLeft: `4px solid ${c}`,
               }}
             >
+              {/*
+                ตัวย่อกับชื่อไทยตัวเท่ากัน
+
+                หน้างานอ่านตัวย่อเป็นหลัก ส่วนชื่อไทยไว้ยืนยันว่าอ่านไม่ผิดสาขา
+                การย่อตัวย่อให้เล็กกว่าจึงเท่ากับย่อสิ่งที่เขาใช้จริงให้เล็กกว่าสิ่งที่เขาใช้รอง
+              */}
               <div
-                className="truncate font-bold"
+                className="flex items-baseline gap-1 truncate"
                 style={{ fontSize: nameSize, color: '#F0F4F9', lineHeight: 1.25 }}
               >
-                {r.name}
+                {r.code && (
+                  <span className="font-mono font-extrabold" style={{ color: '#FFC400' }}>
+                    {r.code}
+                  </span>
+                )}
+                <span className="truncate font-bold">{r.name}</span>
                 {r.seq && r.seq > 1 && (
-                  <span className="ml-1 font-extrabold" style={{ color: '#FFC400' }}>
+                  <span className="font-extrabold" style={{ color: '#FFC400' }}>
                     #{r.seq}
                   </span>
                 )}
