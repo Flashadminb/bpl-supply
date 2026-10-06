@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import {
+  kindLabels,
   listTruckBoard,
   releaseTruck,
   secondsLeft,
-  seqByBranch,
   truckCounts,
   type TruckBoardRow,
 } from '../../lib/trucks'
-import { Countdown, DAY_TH, dmy, hm, MiniGrid, p2, StatCard, tone, ZoneCards } from './parts'
+import { Countdown, DAY_TH, dmy, hm, KindTag, MiniGrid, p2, StatCard, tone, ZoneCards } from './parts'
 import { useAlarmPref, useTruckAlarm } from './alarm'
 import { AlarmChip, AlarmGate, EdgeGlow, UrgentRail, worstStage } from './alert-ui'
 
@@ -122,7 +122,7 @@ export default function TruckTv() {
     [board.data, now],
   )
   // สาขาเดียวกันที่มีหลายคันจอดพร้อมกัน ต้องแยกออกจากกันได้ด้วยตา
-  const seq = useMemo(() => seqByBranch(board.data ?? []), [board.data])
+  const tags = useMemo(() => kindLabels(board.data ?? []), [board.data])
 
   const big = live.slice(0, BIG_CARDS)
   const mini = useMemo(
@@ -133,10 +133,10 @@ export default function TruckTv() {
         code: r.branch_code,
         due: r.due_at,
         sec,
-        seq: seq.get(r.id),
+        tag: tags.get(r.id),
         zone: r.zone,
       })),
-    [live, seq],
+    [live, tags],
   )
 
   const c = counts.data
@@ -154,6 +154,7 @@ export default function TruckTv() {
     due: x.r.due_at,
     sec: x.sec,
     zone: x.r.zone,
+    tag: tags.get(x.r.id),
   }))
   const askRow = ask === null ? null : (live.find((x) => x.r.id === ask) ?? null)
   const clock = new Date(now)
@@ -237,7 +238,7 @@ export default function TruckTv() {
         <>
           <div className="grid grid-cols-12 gap-4">
             {big.map(({ r, sec }) => (
-              <Card key={r.id} row={r} sec={sec} seq={seq.get(r.id)} onPick={setAsk} />
+              <Card key={r.id} row={r} sec={sec} tag={tags.get(r.id)} onPick={setAsk} />
             ))}
           </div>
           {mini.length > BIG_CARDS && (
@@ -352,6 +353,7 @@ export default function TruckTv() {
                 </span>
               )}
               <span className="font-extrabold">{askRow.r.branch_name}</span>
+              <KindTag tag={tags.get(askRow.r.id)} size={18} />
             </p>
             <p className="mt-2 text-lg" style={{ color: '#AFC0D4' }}>
               ถึงคลัง {hm(new Date(askRow.r.arrived_at))} {dmy(new Date(askRow.r.arrived_at))} · ควรออก{' '}
@@ -478,12 +480,12 @@ export default function TruckTv() {
 function Card({
   row,
   sec,
-  seq,
+  tag,
   onPick,
 }: {
   row: TruckBoardRow
   sec: number
-  seq?: number
+  tag?: string
   onPick?: (id: number) => void
 }) {
   const late = sec < 0
@@ -535,14 +537,7 @@ function Card({
           </span>
         )}
         <span className="truncate font-extrabold">{row.branch_name}</span>
-        {seq && seq > 1 && (
-          <span
-            className={`rounded-md px-2 font-extrabold ${late ? 'text-2xl' : 'text-lg'}`}
-            style={{ background: '#FFC400', color: '#0B0E11' }}
-          >
-            คันที่ {seq}
-          </span>
-        )}
+        <KindTag tag={tag} size={late ? 20 : 15} />
         {late && (
           <span className="ml-auto whitespace-nowrap text-xl font-extrabold" style={{ color: '#FF5C5C' }}>
             เลยกำหนด

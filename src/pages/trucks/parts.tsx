@@ -190,8 +190,28 @@ export interface MiniRow {
   code: string | null
   due: string
   sec: number
-  seq?: number
+  /** ป้ายประเภทรถ เช่น รถหลัก · รถเสริม 2 */
+  tag?: string
   zone?: string | null
+}
+
+/** ป้ายประเภทรถ · รถหลักเหลือง รถเสริมฟ้า จะได้แยกออกตั้งแต่ยังอ่านตัวหนังสือไม่ทัน */
+export function KindTag({ tag, size = 12 }: { tag?: string; size?: number }) {
+  if (!tag) return null
+  const extra = tag.startsWith('รถเสริม')
+  return (
+    <span
+      className="shrink-0 rounded px-1.5 font-bold"
+      style={{
+        background: extra ? '#1B3A4B' : '#3A3111',
+        color: extra ? '#7FD1FF' : '#FFC400',
+        fontSize: size,
+        lineHeight: 1.5,
+      }}
+    >
+      {tag}
+    </span>
+  )
 }
 
 /**
@@ -324,12 +344,12 @@ function Tiles({ rows, total, onPick }: { rows: MiniRow[]; total: number; onPick
                   </span>
                 )}
                 <span className="truncate font-bold">{r.name}</span>
-                {r.seq && r.seq > 1 && (
-                  <span className="font-extrabold" style={{ color: '#FFC400' }}>
-                    #{r.seq}
-                  </span>
-                )}
               </div>
+              {r.tag && (
+                <div className="-mt-[1px]">
+                  <KindTag tag={r.tag} size={Math.max(9, nameSize - 2)} />
+                </div>
+              )}
               <div className="flex items-baseline justify-between gap-1">
                 <span
                   className="font-mono font-extrabold"

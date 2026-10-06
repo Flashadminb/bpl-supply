@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { STAGE_COLOR, STAGE_PUSH, STAGE_TH, previewAll, stageOf, type Stage } from './alarm'
-import { hm, p2 } from './parts'
+import { hm, KindTag, p2 } from './parts'
 
 /**
  * ของที่ใช้เตือนด้วยตา — คู่กับเสียงใน alarm.ts
@@ -149,7 +149,15 @@ export function UrgentRail({
   onPick,
   rotateMs = 7000,
 }: {
-  items: { id: number; code: string | null; name: string; due: string; sec: number; zone?: string | null }[]
+  items: {
+    id: number
+    code: string | null
+    name: string
+    due: string
+    sec: number
+    zone?: string | null
+    tag?: string
+  }[]
   big?: boolean
   onPick?: (id: number) => void
   rotateMs?: number
@@ -249,6 +257,7 @@ export function UrgentRail({
                 </span>
               )}
               <span className="truncate font-extrabold">{x.name}</span>
+              <KindTag tag={x.tag} size={bigCard ? 16 : 13} />
             </div>
             <div className="mt-1">
               <span

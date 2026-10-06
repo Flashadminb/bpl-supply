@@ -5,15 +5,16 @@ import {
   addTruck,
   listTruckBoard,
   listTruckBranches,
+  kindLabels,
   releaseTruck,
   secondsLeft,
-  seqByBranch,
   truckCounts,
   unreleaseTruck,
   type TruckBoardRow,
   type TruckBranch,
+  type TruckKind,
 } from '../../lib/trucks'
-import { Countdown, DAY_TH, Density, dmy, hm, p2, tone } from './parts'
+import { Countdown, DAY_TH, Density, dmy, hm, KindTag, p2, tone } from './parts'
 import { useAlarmPref, useTruckAlarm } from './alarm'
 import { AlarmChip, AlarmGate, EdgeGlow, StageSummary, UrgentRail, worstStage } from './alert-ui'
 
@@ -29,7 +30,29 @@ import { AlarmChip, AlarmGate, EdgeGlow, StageSummary, UrgentRail, worstStage } 
  * มีแต่ตัวนับถอยหลังที่เดิน · ถ้าสองช่องนั้นขยับแปลว่าโค้ดผิด
  */
 
-const ALLOW = [120, 180, 240]
+/** ชั่วโมงที่ให้ · หนึ่งชั่วโมงมีจริงสำหรับรถที่แวะสั้น ๆ */
+const ALLOW = [60, 120, 180, 240]
+
+/** เวลาตอนนี้ในรูป HH:MM สำหรับช่องกรอกเวลา */
+function nowHM(): string {
+  const d = new Date()
+  return `${p2(d.getHours())}:${p2(d.getMinutes())}`
+}
+
+/**
+ * แปลงเวลาที่กรอก (HH:MM) เป็นเวลาจริง
+ *
+ * งานรันยี่สิบสี่ชั่วโมง ตีหนึ่งแล้วกรอกย้อนว่า 23:50 คือเมื่อวาน ไม่ใช่คืนนี้
+ * ถ้าไม่ดักไว้ เวลาที่ได้จะเป็นอนาคตเกือบยี่สิบสี่ชั่วโมง และรถคันนั้นจะไม่มีวันครบกำหนด
+ * เผื่อล่วงหน้าไว้หนึ่งชั่วโมง เพราะนาฬิกาเครื่องหน้างานกับเซิร์ฟเวอร์ไม่ตรงกันเป๊ะ
+ */
+function hmToDate(hm: string): Date {
+  const [h, m] = hm.split(':').map(Number)
+  const d = new Date()
+  d.setHours(h, m, 0, 0)
+  if (d.getTime() > Date.now() + 3600_000) d.setDate(d.getDate() - 1)
+  return d
+}
 
 /** มาจากจอทีวีแล้วไม่ได้แตะอะไรนานเท่านี้ ให้กลับไปจอทีวีเอง */
 const IDLE_SEC = 20
@@ -108,6 +131,15 @@ export default function TruckBoard() {
   const [find, setFind] = useState('')
   const [name, setName] = useState('')
   const [minutes, setMinutes] = useState(() => Number(localStorage.getItem('truck.min')) || 120)
+  const [kind, setKind] = useState<TruckKind>('main')
+  /** เวลาถึงคลัง · ตั้งต้นเป็นเวลาตอนนี้ และเดินตามนาฬิกาจนกว่าจะมีคนแก้เอง */
+  const [atHM, setAtHM] = useState(nowHM)
+  const [atTouched, setAtTouched] = useState(false)
+  useEffect(() => {
+    if (atTouched) return
+    const t = setInterval(() => setAtHM(nowHM()), 20_000)
+    return () => clearInterval(t)
+  }, [atTouched])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [undo, setUndo] = useState<{ id: number; name: string } | null>(null)
@@ -126,6 +158,7 @@ export default function TruckBoard() {
     code: string | null
     due: number
     isNew: boolean
+    kind: TruckKind
   } | null>(null)
 
   const rows = board.data ?? []
@@ -133,8 +166,8 @@ export default function TruckBoard() {
     () => rows.map((r) => ({ r, sec: secondsLeft(r.due_at, now) })).sort((a, b) => a.sec - b.sec),
     [rows, now],
   )
-  // คันที่เท่าไหร่ของสาขานั้น · คันแรกไม่ติดป้าย
-  const seq = useMemo(() => seqByBranch(rows), [rows])
+  // ป้ายรถหลัก/รถเสริม ของสาขานั้น
+  const tags = useMemo(() => kindLabels(rows), [rows])
   const over = live.filter((x) => x.sec < 0).length
   // ยี่สิบนาที ไม่ใช่สามสิบ · ให้ตรงกับจังหวะที่เสียงแรกดัง
   const soon = live.filter((x) => x.sec >= 0 && x.sec <= 20 * 60).length
@@ -150,6 +183,7 @@ export default function TruckBoard() {
     due: x.r.due_at,
     sec: x.sec,
     zone: x.r.zone,
+    tag: tags.get(x.r.id),
   }))
   /**
    * พิมพ์ค้นแล้วค้นทั้งคลังเสมอ ไม่สนใจชิปที่เลือกไว้
@@ -224,14 +258,18 @@ export default function TruckBoard() {
         x.name.trim().toLowerCase() === q.toLowerCase() ||
         (x.code ?? '').trim().toLowerCase() === q.toLowerCase(),
     )
+    const at = hmToDate(atHM)
     await run(async () => {
-      const res = await addTruck({ name: q, minutes })
+      const res = await addTruck({ name: q, minutes, kind, arrivedAt: at.toISOString() })
       setName('')
+      setAtTouched(false)
+      setAtHM(nowHM())
       setSaved({
         name: res.branch,
         code: known?.code ?? null,
-        due: Date.now() + minutes * 60_000,
+        due: at.getTime() + minutes * 60_000,
         isNew: !known,
+        kind,
       })
       window.setTimeout(() => setSaved(null), 8_000)
     })
@@ -467,6 +505,26 @@ export default function TruckBoard() {
 
           <div>
             <div className="mb-1 text-xs" style={{ color: '#AFC0D4' }}>
+              ถึงคลังเมื่อ
+            </div>
+            <input
+              type="time"
+              className="h-tap rounded-lg px-3 font-mono text-base outline-none"
+              style={{
+                background: '#141920',
+                border: `1px solid ${atTouched ? '#FFC400' : '#2A313B'}`,
+                color: '#F0F4F9',
+              }}
+              value={atHM}
+              onChange={(e) => {
+                setAtHM(e.target.value)
+                setAtTouched(true)
+              }}
+            />
+          </div>
+
+          <div>
+            <div className="mb-1 text-xs" style={{ color: '#AFC0D4' }}>
               ให้เวลา
             </div>
             <select
@@ -481,6 +539,34 @@ export default function TruckBoard() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <div className="mb-1 text-xs" style={{ color: '#AFC0D4' }}>
+              ประเภทรถ
+            </div>
+            <div className="flex gap-2">
+              {(['main', 'extra'] as TruckKind[]).map((k) => {
+                const on = kind === k
+                const c = k === 'extra' ? '#7FD1FF' : '#FFC400'
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    className="h-tap rounded-lg px-4 text-base font-bold"
+                    style={
+                      on
+                        ? { background: c, color: '#0B0E11' }
+                        : { background: '#141920', border: '1px solid #2A313B', color: c }
+                    }
+                    onClick={() => setKind(k)}
+                  >
+                    {on ? '✓ ' : ''}
+                    {k === 'main' ? 'รถหลัก' : 'รถเสริม'}
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
           <button
@@ -511,6 +597,7 @@ export default function TruckBoard() {
               <span className="text-base font-bold" style={{ color: '#F0F4F9' }}>
                 {saved.name}
               </span>
+              <KindTag tag={saved.kind === 'extra' ? 'รถเสริม' : 'รถหลัก'} size={13} />
               <span style={{ color: '#AFC0D4' }}>
                 ควรออก{' '}
                 <b className="font-mono text-base" style={{ color: '#F0F4F9' }}>
@@ -526,7 +613,10 @@ export default function TruckBoard() {
             </div>
           ) : (
             <p className="mt-2 text-xs" style={{ color: '#AFC0D4' }}>
-              เวลาถึงคลังใช้เวลาที่กดบันทึก · ระบบจำชั่วโมงที่เลือกล่าสุดไว้ให้
+              ช่องเวลาตั้งต้นเป็นเวลาตอนนี้และเดินตามนาฬิกาเอง · แก้ได้ถ้าลืมกรอกตอนรถเข้าจริง
+              <br />
+              กรอกเวลาที่มากกว่าตอนนี้ ระบบถือว่าเป็นเมื่อวาน เพราะงานรันยี่สิบสี่ชั่วโมง ·
+              ระบบจำชั่วโมงที่เลือกล่าสุดไว้ให้
             </p>
           )}
         </div>
@@ -612,7 +702,7 @@ export default function TruckBoard() {
 
         <div className="space-y-2">
           {shown.map(({ r, sec }) => (
-            <Row key={r.id} row={r} sec={sec} seq={seq.get(r.id)} busy={busy} onRelease={() =>
+            <Row key={r.id} row={r} sec={sec} tag={tags.get(r.id)} busy={busy} onRelease={() =>
               void run(async () => {
                 await releaseTruck(r.id)
                 setUndo({ id: r.id, name: r.branch_name })
@@ -640,8 +730,13 @@ export default function TruckBoard() {
             </p>
             <p className="mt-1 text-sm" style={{ color: '#AFC0D4' }}>
               กดยืนยันแล้วคันนี้จะขึ้นเป็น{' '}
-              <b style={{ color: '#FFC400' }}>คันที่ {dup.hits.length + 1}</b> ของสาขานี้
-              ทั้งบนกระดานและบนจอทีวี
+              <b style={{ color: kind === 'extra' ? '#7FD1FF' : '#FFC400' }}>
+                {kind === 'extra' ? 'รถเสริม' : 'รถหลัก'}
+                {dup.hits.filter((h) => h.kind === kind).length > 0
+                  ? ' ' + (dup.hits.filter((h) => h.kind === kind).length + 1)
+                  : ''}
+              </b>{' '}
+              ของสาขานี้ ทั้งบนกระดานและบนจอทีวี
               <br />
               ถ้าเพิ่งกดบันทึกไปแล้วไม่แน่ใจว่าติดไหม ให้กดยกเลิก
             </p>
@@ -652,7 +747,7 @@ export default function TruckBoard() {
                   className="rounded-lg px-3 py-2 text-sm"
                   style={{ background: '#0B0E11', color: '#F0F4F9' }}
                 >
-                  ถึงคลัง{' '}
+                  <KindTag tag={tags.get(h.id)} size={12} /> ถึงคลัง{' '}
                   <b className="font-mono">{hm(new Date(h.arrived_at))}</b> {dmy(new Date(h.arrived_at))}{' '}
                   · ควรออก <b className="font-mono">{hm(new Date(h.due_at))}</b>
                 </li>
@@ -710,14 +805,14 @@ function Chip({
 function Row({
   row,
   sec,
-  seq,
+  tag,
   busy,
   onRelease,
 }: {
   row: TruckBoardRow
   sec: number
-  /** คันที่เท่าไหร่ของสาขานี้ · ไม่ส่งมาหรือเป็น 1 แปลว่าไม่ต้องติดป้าย */
-  seq?: number
+  /** ป้ายประเภทรถของสาขานี้ เช่น รถหลัก · รถเสริม 2 */
+  tag?: string
   busy: boolean
   onRelease: () => void
 }) {
@@ -746,14 +841,7 @@ function Row({
             </span>
           )}
           <span className="text-base font-bold">{row.branch_name}</span>
-          {seq && seq > 1 && (
-            <span
-              className="rounded-md px-2 py-0.5 text-sm font-extrabold"
-              style={{ background: '#FFC400', color: '#0B0E11' }}
-            >
-              คันที่ {seq}
-            </span>
-          )}
+          <KindTag tag={tag} size={13} />
         </div>
       </div>
 

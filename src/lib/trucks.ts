@@ -10,6 +10,13 @@ import { supabase, readableError } from './supabase'
  * ตารางและสิทธิ์แยกขาดจากของเดิมทั้งหมด ใช้ร่วมกันแค่ profiles
  */
 
+export type TruckKind = 'main' | 'extra'
+
+export const KIND_TH: Record<TruckKind, string> = {
+  main: 'รถหลัก',
+  extra: 'รถเสริม',
+}
+
 export interface TruckBoardRow {
   id: number
   branch_id: number | null
@@ -17,6 +24,8 @@ export interface TruckBoardRow {
   branch_code: string | null
   /** โซน · มาจากคอลัมน์เลขสายพานในชีตขององค์กร เช่น D04 D05 · หน้าเว็บเรียกว่าโซน */
   zone: string | null
+  /** main = รถหลัก · extra = รถเสริม */
+  kind: TruckKind
   branch_full: string | null
   province: string | null
   district: string | null
@@ -79,15 +88,17 @@ export async function addTruck(args: {
   arrivedAt?: string
   minutes?: number
   note?: string
-}): Promise<{ id: number; branch: string }> {
+  kind?: TruckKind
+}): Promise<{ id: number; branch: string; zone: string | null; kind: TruckKind }> {
   const { data, error } = await supabase.rpc('truck_add', {
     p_name: args.name,
     p_arrived: args.arrivedAt ?? null,
     p_min: args.minutes ?? 120,
     p_note: args.note?.trim() || null,
+    p_kind: args.kind ?? 'main',
   })
   if (error) throw new Error(readableError(error))
-  return data as { id: number; branch: string }
+  return data as { id: number; branch: string; zone: string | null; kind: TruckKind }
 }
 
 /** ปล่อยรถ · กดครั้งเดียวจบ ไม่ถามยืนยัน เพราะวันละสามร้อยคัน */
@@ -111,32 +122,35 @@ export async function addTruckBranches(lines: string[]): Promise<{ added: number
 }
 
 /**
- * คันที่เท่าไหร่ของสาขานั้นที่ยังจอดอยู่
+ * ป้ายบอกว่าคันนี้คือรถอะไรของสาขานั้น
  *
- * เรียงตามเวลาถึงคลัง คันแรกได้เลข 1 คันถัดมาได้ 2 3 4 ไปเรื่อย ๆ
- * หน้าจอจะแสดงป้ายเฉพาะตั้งแต่คันที่สองขึ้นไป เพราะคันแรกไม่มีอะไรต้องแยก
+ * เดิมเป็น "คันที่ 2" ซึ่งบอกลำดับแต่ไม่ได้บอกว่าคันนั้นคืออะไร
+ * หน้างานแยกรถหลักกับรถเสริมอยู่แล้วในหัว ป้ายจึงควรพูดภาษาเดียวกับเขา
+ *
+ * สาขาเดียวกันมีรถหลักซ้ำได้ ก็เป็น รถหลัก 2 · รถเสริมซ้ำก็ รถเสริม 2 3 4 ไล่ไป
+ * ตัวแรกของแต่ละประเภทไม่ต้องมีเลข เพราะไม่มีอะไรต้องแยก
  *
  * คิดสดจากรายการที่ยังอยู่ในคลัง ไม่ได้เก็บลงฐานข้อมูล
- * ถ้าเก็บไว้ พอปล่อยคันแรกออกไป เลขของคันที่เหลือจะกลายเป็นเลขที่ไม่ตรงกับความจริง
+ * ถ้าเก็บไว้ พอปล่อยคันแรกออกไป เลขของคันที่เหลือจะไม่ตรงกับความจริง
  * แล้วต้องไล่แก้ทั้งชุดทุกครั้งที่มีรถออก
  */
-export function seqByBranch(
-  rows: { id: number; branch_name: string; arrived_at: string }[],
-): Map<number, number> {
-  const byBranch = new Map<string, { id: number; arrived_at: string }[]>()
+export function kindLabels(
+  rows: { id: number; branch_name: string; arrived_at: string; kind: TruckKind }[],
+): Map<number, string> {
+  const g = new Map<string, { id: number; arrived_at: string }[]>()
   for (const r of rows) {
-    const k = r.branch_name.trim().toLowerCase()
-    const list = byBranch.get(k)
+    const k = `${r.branch_name.trim().toLowerCase()}|${r.kind}`
+    const list = g.get(k)
     if (list) list.push(r)
-    else byBranch.set(k, [r])
+    else g.set(k, [r])
   }
-  const out = new Map<number, number>()
-  for (const list of byBranch.values()) {
-    if (list.length < 2) continue
+  const out = new Map<number, string>()
+  for (const [k, list] of g) {
+    const base = KIND_TH[k.endsWith('|extra') ? 'extra' : 'main']
     list
       .slice()
       .sort((a, b) => a.arrived_at.localeCompare(b.arrived_at))
-      .forEach((r, i) => out.set(r.id, i + 1))
+      .forEach((r, i) => out.set(r.id, i === 0 ? base : `${base} ${i + 1}`))
   }
   return out
 }
@@ -154,6 +168,7 @@ export interface TruckDoneRow {
   branch_name: string
   branch_code: string | null
   zone: string | null
+  kind: TruckKind
   arrived_at: string
   allow_min: number
   due_at: string
@@ -176,7 +191,7 @@ export interface TruckDoneRow {
 export async function listTruckDone(fromISO: string, toISO: string): Promise<TruckDoneRow[]> {
   const { data, error } = await supabase
     .from('truck_done_rows')
-    .select('id,branch_name,branch_code,zone,arrived_at,allow_min,due_at,left_at,late_min,on_time,dwell_min,by_name,closed_by_name')
+    .select('id,branch_name,branch_code,zone,kind,arrived_at,allow_min,due_at,left_at,late_min,on_time,dwell_min,by_name,closed_by_name')
     .gte('arrived_at', fromISO)
     .lte('arrived_at', toISO)
     .order('arrived_at', { ascending: true })
