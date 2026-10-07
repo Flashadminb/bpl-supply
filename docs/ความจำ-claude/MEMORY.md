@@ -1,0 +1,4 @@
+- [Deploy BPL SUPPLY](deploy-bpl-supply.md) — ต้องใช้ `npx.cmd` ไม่ใช่ `npx` และ cache PWA จะหลอกว่า deploy ไม่ขึ้น
+- [รัน SQL ให้ผู้ใช้](bpl-supply-sql-editor.md) — ยัด migration เข้า Supabase SQL Editor ผ่าน Monaco ได้เลย ไม่ต้องให้เขา copy-paste
+- [บัตรเบรค: สองข้อที่ตัดสินใจแล้ว](break-pass-decisions.md) — ส่งชีตแล้วลบทันที และเริ่มนับเวลาตอนหัวหน้ายื่นบัตร
+- [ตัวกรองวันที่](ui-date-filter.md) — ทุกหน้าที่ค้นตามวันใช้ปฏิทินเลือกช่วง ไม่ใช่ดรอปดาวน์
