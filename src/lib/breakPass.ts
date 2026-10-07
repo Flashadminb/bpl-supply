@@ -98,6 +98,13 @@ export type BreakScan =
       gate_out_at: string | null
       gate_out_people: number | null
       in_ban: boolean
+      /**
+       * รูปตอนยื่นบัตรใบแรก · ว่าง = ใบเก่าที่ยังไม่มีรูป
+       *
+       * ส่งมาแค่ file_id ไม่ได้ส่งลิงก์ Drive เพราะลิงก์อยู่นอกระบบสิทธิ์ของแอพ
+       * รูปไหลผ่าน Edge Function ซึ่งตรวจสิทธิ์ซ้ำอีกชั้นเสมอ
+       */
+      photo_file_id: string | null
     }
 
 export interface BreakPhotoIn {

@@ -59,9 +59,20 @@ function StatusPill({ r }: { r: BreakRow }) {
   return <span className="badge-ok">ตรงเวลา</span>
 }
 
-/** แถวที่กางออก — รูปตอนปล่อยอยู่ซ้าย รูปตอนรับกลับอยู่ขวา */
+/**
+ * แถวที่กางออก — รูปตอนปล่อยอยู่ซ้าย รูปตอนรับกลับอยู่ขวา
+ *
+ * กดรูปแล้วขยายในแอพ ไม่ได้ลิงก์ออกไป Drive เหมือนเดิม
+ * ของเดิมหุ้มรูปทุกใบด้วย <a href={web_link}> ซึ่งบนคอมไม่ค่อยมีใครกดโดน
+ * แต่บนมือถือนิ้วโดนง่ายมาก แล้วจะเจอหนึ่งในสองอย่าง
+ *   บัญชี Google ส่วนตัวไม่มีสิทธิ์ในโฟลเดอร์ → หน้าขอสิทธิ์ซึ่งงงเปล่า ๆ
+ *   มีสิทธิ์ → เท่ากับเปิดทางเข้า Drive ที่อยู่นอกระบบสิทธิ์ของแอพทั้งหมด
+ *             ส่งต่อลิงก์ให้ใครก็ได้ และไม่มีใครรู้ว่าใครเปิดดู
+ * ตรงกับกติกาข้อ 4 และ 6 ที่ห้ามลิงก์ Drive โผล่ฝั่งหน้าจอ
+ */
 function Photos({ passId }: { passId: number }) {
   const shots = useAsync(() => listBreakPhotos(passId), [passId])
+  const [big, setBig] = useState<string | null>(null)
   if (shots.loading) return <Loading label="กำลังโหลดรูป…" />
   if (shots.error) return <ErrorBox message={shots.error} onRetry={shots.reload} />
   const all = shots.data ?? []
@@ -77,9 +88,13 @@ function Photos({ passId }: { passId: number }) {
             <span className="text-xs text-ink-400">ไม่มีรูป</span>
           ) : (
             issue.map((s) => (
-              <a key={s.id} href={s.web_link} target="_blank" rel="noreferrer">
-                <EvidenceImg fileId={s.file_id} enabled className="h-28 w-20 rounded-btn" />
-              </a>
+              <EvidenceImg
+                key={s.id}
+                fileId={s.file_id}
+                enabled
+                className="h-28 w-20 rounded-btn"
+                onClick={() => setBig(s.file_id)}
+              />
             ))
           )}
         </div>
@@ -91,13 +106,21 @@ function Photos({ passId }: { passId: number }) {
           </p>
           <div className="flex flex-wrap gap-1.5">
             {ret.map((s) => (
-              <a key={s.id} href={s.web_link} target="_blank" rel="noreferrer">
-                <EvidenceImg fileId={s.file_id} enabled className="h-28 w-20 rounded-btn" />
-              </a>
+              <EvidenceImg
+                key={s.id}
+                fileId={s.file_id}
+                enabled
+                className="h-28 w-20 rounded-btn"
+                onClick={() => setBig(s.file_id)}
+              />
             ))}
           </div>
         </div>
       )}
+
+      <Modal open={Boolean(big)} onClose={() => setBig(null)} title="รูปหลักฐาน">
+        {big && <EvidenceImg fileId={big} enabled className="w-full rounded-card" />}
+      </Modal>
     </div>
   )
 }

@@ -53,6 +53,7 @@ export function PhotoSteps({
   onShots,
   kind,
   namePrefix = 'asset',
+  maxEdge,
 }: {
   /** ขั้นตอนบังคับ — ว่างแปลว่าถ่ายอิสระ */
   steps: AssetPhotoStep[]
@@ -66,6 +67,13 @@ export function PhotoSteps({
   kind?: 'evidence' | 'break'
   /** ขึ้นต้นชื่อไฟล์ใน Drive · ของเดิมขึ้นต้นด้วย asset ทุกใบไม่ว่าจะเป็นงานอะไร */
   namePrefix?: string
+  /**
+   * ด้านยาวสุดของรูปที่จะอัป · ไม่ส่งมาใช้ 1024 เหมือนเดิม
+   *
+   * มีไว้ให้งานที่ต้องโหลดรูปซ้ำบ่อย ๆ ที่หน้างานย่อลงได้
+   * เช่นรูปบัตรเบรคที่ รปภ ต้องเปิดดูทุกครั้งที่สแกน ทั้งขาออกและขากลับ
+   */
+  maxEdge?: number
 }) {
   const cameraRef = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
@@ -131,7 +139,7 @@ export function PhotoSteps({
         for (let i = 0; i < picked.length && i < queue.length; i++) {
           const seq = queue[i]
           const step = steps.find((st) => st.seq === seq)
-          const img = await compressImage(picked[i], { stamp })
+          const img = await compressImage(picked[i], { stamp, maxEdge })
           added.push({
             key: `${seq}-${Date.now()}-${i}`,
             seq,
@@ -143,7 +151,7 @@ export function PhotoSteps({
       } else {
         const room = cap - shots.length
         for (const f of picked.slice(0, Math.max(0, room))) {
-          const img = await compressImage(f, { stamp })
+          const img = await compressImage(f, { stamp, maxEdge })
           added.push({
             key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             seq: 0,

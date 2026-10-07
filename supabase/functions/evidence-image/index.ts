@@ -16,7 +16,7 @@
 // secrets: GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REFRESH_TOKEN
 // =====================================================================
 
-const VERSION = 'os-v4'
+const VERSION = 'break-v5'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -95,6 +95,7 @@ async function getAccessToken(): Promise<string> {
  * รูปหลักฐานเบิก-คืน  แอดมินขึ้นไป และผู้ตรวจสอบ — ตามกฎข้อ 4 ใน CLAUDE.md
  * รูปกระสอบ          ทุกคนที่ล็อกอินและยังไม่ถูกระงับ
  * รูปหน้าพนักงาน OS   ทุกคนที่ล็อกอิน — รปภ ต้องเปิดดูได้ ไม่งั้นเทียบหน้าไม่ได้
+ * รูปตอนยื่นบัตรเบรค  เฉพาะ รปภ และเฉพาะใบที่ยังไม่ปิด — กติกาอยู่ใน SQL
  *
  * ทำไมรูปกระสอบถึงเปิดกว้างกว่า
  *   มันไม่ใช่หลักฐานการเบิกของใคร แต่เป็นของที่หน้างานถ่ายเองเพื่อเอาไปแปะในแชท
@@ -117,13 +118,14 @@ async function requireViewer(req: Request, fileId: string): Promise<void> {
 
   const key = serviceKey()
   const pres = await fetch(
-    `${envOrThrow('SUPABASE_URL')}/rest/v1/profiles?id=eq.${user.id}&select=role,is_active,can_dispatch`,
+    `${envOrThrow('SUPABASE_URL')}/rest/v1/profiles?id=eq.${user.id}&select=role,is_active,can_dispatch,can_break_guard`,
     { headers: { apikey: key, Authorization: `Bearer ${key}` } },
   )
   const rows = (await pres.json()) as {
     role?: string
     is_active?: boolean
     can_dispatch?: boolean
+    can_break_guard?: boolean
   }[]
   const me = rows[0]
   if (!me?.is_active) throw new Error('บัญชีนี้ถูกระงับการใช้งาน')
@@ -148,6 +150,30 @@ async function requireViewer(req: Request, fileId: string): Promise<void> {
     )
     const hit = (await res2.json()) as unknown[]
     if (Array.isArray(hit) && hit.length > 0) return
+  }
+
+  /**
+   * รูปตอนยื่นบัตรเบรค — รปภ ต้องเห็นตอนสแกน ไม่งั้นบอกไม่ได้ว่าชุดนี้มีใครบ้าง
+   *
+   * กติกาทั้งก้อนอยู่ใน break_photo_viewable ฝั่ง SQL ไม่ได้เขียนซ้ำตรงนี้
+   * เพราะกติกาของเบรคอยู่ในฐานข้อมูลทั้งหมด แยกมาอีกภาษาเมื่อไหร่
+   * วันหนึ่งสองที่จะไม่ตรงกันโดยไม่มีใครรู้
+   *
+   * ที่ตัวมันตรวจให้แล้ว — เป็น รปภ จริง ไฟล์เป็นรูป phase issue จริง
+   * และใบยังไม่ปิดหรือเพิ่งปิดไม่เกินสองชั่วโมง
+   * รูปตอนแจ้งปัญหาและรูปตอนรับกลับไม่เข้าเงื่อนไข จึงยังปิดอยู่
+   */
+  if (me.can_break_guard === true) {
+    const res3 = await fetch(`${envOrThrow('SUPABASE_URL')}/rest/v1/rpc/break_photo_viewable`, {
+      method: 'POST',
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ p_user: user.id, p_file_id: fileId }),
+    })
+    if (res3.ok && (await res3.json()) === true) return
   }
 
   throw new Error('บัญชีนี้เปิดดูรูปหลักฐานไม่ได้')

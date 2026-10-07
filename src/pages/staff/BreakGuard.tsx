@@ -5,6 +5,7 @@ import { useAuth } from '../../lib/auth'
 import { useAsync } from '../../lib/useAsync'
 import { stampLines } from '../../lib/image'
 import { CodeScanner } from '../../components/CodeScanner'
+import { EvidenceImg } from '../../components/EvidenceThumbs'
 import { PhotoSteps, shotsToPhotos, type Shot } from '../../components/PhotoSteps'
 import { StaffPage, TopBar } from '../../components/Shell'
 import { BreakBanBar } from '../../components/BreakBanBar'
@@ -490,6 +491,49 @@ export default function BreakGuard() {
 }
 
 /** กล่องผลการสแกน — สีคือสิ่งเดียวที่ รปภ ต้องดู */
+/**
+ * รูปตอนยื่นบัตร · ขึ้นใต้แถบเขียว-แดงเสมอ
+ *
+ * วางไว้ใต้คำตอบ ไม่ใช่เหนือคำตอบ เพราะที่ประตูคนต่อแถว
+ * ถ้ารูปอยู่บนแล้วโหลดช้า แถบสีจะถูกดันลงไปอยู่นอกจอพอดีตอนที่ต้องอ่าน
+ * กล่องจองที่ไว้ตายตัวตั้งแต่แรก รูปมาทีหลังจึงไม่ทำให้ของข้างบนกระโดด
+ *
+ * กดที่รูปแล้วขยายเต็มจอ เผื่อแดดจ้าหรือคนยืนไกล
+ */
+function GatePhoto({ fileId }: { fileId: string | null }) {
+  const [big, setBig] = useState(false)
+  if (!fileId) return null
+  return (
+    <>
+      <button
+        type="button"
+        className="mt-3 block h-[180px] w-full overflow-hidden rounded-card border border-line bg-surface-2"
+        onClick={() => setBig(true)}
+        aria-label="ดูรูปใหญ่"
+      >
+        <EvidenceImg fileId={fileId} enabled alt="คนที่ออกไปกับบัตรใบนี้" className="h-full w-full" />
+      </button>
+      <p className="mt-1 text-xs text-ink-400">รูปตอนหัวหน้ายื่นบัตร · กดเพื่อดูใหญ่</p>
+
+      {big && (
+        <button
+          type="button"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-3"
+          onClick={() => setBig(false)}
+          aria-label="ปิดรูป"
+        >
+          <EvidenceImg
+            fileId={fileId}
+            enabled
+            alt="คนที่ออกไปกับบัตรใบนี้"
+            className="max-h-full w-full"
+          />
+        </button>
+      )}
+    </>
+  )
+}
+
 function ScanResult({ hit, now }: { hit: BreakScan; now: number }) {
   if (hit.state === 'unknown' || hit.state === 'free') {
     return (
@@ -554,6 +598,7 @@ function ScanResult({ hit, now }: { hit: BreakScan; now: number }) {
           ใบนี้ปล่อยในช่วงห้ามเบรค
         </p>
       )}
+      <GatePhoto fileId={hit.photo_file_id} />
     </div>
   )
 }
