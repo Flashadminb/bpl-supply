@@ -68,7 +68,12 @@ const TruckBoard = lazy(() => import('./pages/trucks/TruckBoard'))
 const TruckTv = lazy(() => import('./pages/trucks/TruckTv'))
 const TruckStats = lazy(() => import('./pages/trucks/TruckStats'))
 const TruckLog = lazy(() => import('./pages/trucks/TruckLog'))
+// รถรอลงงาน — คนละงานกับปล่อยรถ ใช้ร่วมกันแค่นาฬิกากับเสียงเตือน
+const WaitBoard = lazy(() => import('./pages/wait/WaitBoard'))
+const WaitUpload = lazy(() => import('./pages/wait/WaitUpload'))
+const WaitTv = lazy(() => import('./pages/wait/WaitTv'))
 const TruckAdmin = lazy(() => import('./pages/admin/TruckAdmin'))
+const WaitAdmin = lazy(() => import('./pages/admin/WaitAdmin'))
 
 function Guard({
   children,
@@ -256,6 +261,14 @@ export default function App() {
       <Route path="/trucks/tv" element={<Guard><TruckTv /></Guard>} />
       <Route path="/trucks/stats" element={<Guard><TruckStats /></Guard>} />
       <Route path="/trucks/history" element={<Guard><TruckLog /></Guard>} />
+      {/*
+        รถรอลงงาน · รอบแรกเปิดให้เจ้าของระบบกับผู้ตรวจสอบเท่านั้นตามที่สั่งไว้ เพื่อทดสอบก่อนปล่อยหน้างาน
+        ด่านจริงอยู่ที่ my_can_wait_truck() ใน RLS · เส้นทางนี้แค่ไม่ให้กดเข้ามาเจอหน้าว่าง
+        วันเปิดให้หน้างานจริง แก้ฟังก์ชันตัวนั้นกับสามบรรทัดนี้
+      */}
+      <Route path="/wait" element={<Guard roles={['admin']} allowDispatch><WaitBoard /></Guard>} />
+      <Route path="/wait/upload" element={<Guard roles={['admin']} allowDispatch><WaitUpload /></Guard>} />
+      <Route path="/wait/tv" element={<Guard roles={['admin']} allowDispatch><WaitTv /></Guard>} />
       <Route path="/assets" element={<Guard><AssetBasket /></Guard>} />
       <Route path="/assets/done/:refNo" element={<Guard><AssetDone /></Guard>} />
       <Route path="/assets/:typeCode" element={<Guard><AssetPick /></Guard>} />
@@ -366,6 +379,8 @@ export default function App() {
         {/* การปล่อยรถ — งานตั้งค่าและเก็บประวัติ แยกจากกระดานที่หน้างานเปิดค้างไว้ทั้งกะ
             ด่านจริงอยู่ที่ RLS เส้นทางนี้แค่ไม่ให้กดเข้ามาเจอหน้าว่าง */}
         <Route path="trucks" element={<Guard roles={['admin']}><TruckAdmin /></Guard>} />
+        {/* สถิติรถรอลงงาน · ผู้ตรวจสอบดูได้ แต่แก้เกณฑ์ไม่ได้ ซึ่งบังคับที่ RLS ของ wait_truck_kpi */}
+        <Route path="wait" element={<Guard roles={['admin']} allowDispatch><WaitAdmin /></Guard>} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -119,6 +119,8 @@ const GROUPS: Group[] = [
     links: [
       { to: '/trucks', label: 'กระดานปล่อยรถ', icon: 'clipboard', adminOnly: true },
       { to: '/admin/trucks', label: 'ส่งชีต สาขา แจ้งเตือน', icon: 'sheet', adminOnly: true },
+      { to: '/wait', label: 'กระดานรถรอลงงาน', icon: 'clock', audit: true },
+      { to: '/admin/wait', label: 'สถิติและเกณฑ์รถรอลงงาน', icon: 'chart', audit: true },
     ],
   },
   {

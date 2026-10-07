@@ -193,6 +193,35 @@ export default function Home() {
                     <circle cx="17" cy="18" r="1.8" />
                   </svg>
                 </Link>
+              {/*
+                รถรอลงงาน · รอบแรกเห็นเฉพาะเจ้าของระบบกับผู้ตรวจสอบ เพื่อทดสอบก่อนปล่อยหน้างาน
+                ไอคอนเป็นตู้รถที่มีลูกศรลงของกับนาฬิกา ให้แยกออกจากไอคอนปล่อยรถที่อยู่ข้าง ๆ
+              */}
+              {(can('admin') || profile?.can_dispatch) && (
+                <Link
+                  to="/wait"
+                  aria-label="รถรอลงงาน"
+                  className="flex h-tap w-tap items-center justify-center rounded-btn"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="26"
+                    height="26"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.9"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                  >
+                    <path d="M3 5h11v10H3z" />
+                    <path d="M8.5 7.5v4" />
+                    <path d="M6.5 9.8l2 2 2-2" />
+                    <circle cx="17.3" cy="15.6" r="4.7" />
+                    <path d="M17.3 13.2v2.6l1.8 1" />
+                  </svg>
+                </Link>
+              )}
               {/* ลิงก์งาน — เห็นเฉพาะแอดมิน เจ้าของระบบ และผู้ตรวจสอบ */}
               <WorkLinks />
               {can(...MANAGER_ROLES) && <NotifyBell />}
