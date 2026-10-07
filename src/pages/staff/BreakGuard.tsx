@@ -109,7 +109,7 @@ export default function BreakGuard() {
   const [tick, setTick] = useState(0)
   const [slow, setSlow] = useState(0)
   const board = useAsync(
-    () => (profile ? listBreakBoard(profile.id) : Promise.resolve([])),
+    () => (profile ? listBreakBoard({ gateOutBy: profile.id }) : Promise.resolve([])),
     [tick, profile?.id],
   )
   const ban = useAsync(() => breakBanNow(), [slow])

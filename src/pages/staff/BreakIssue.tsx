@@ -38,7 +38,14 @@ export default function BreakIssue() {
   const cards = useAsync(() => listMyBreakCards(), [])
   const reasons = useAsync(() => listBreakReasons(), [])
   const [tick, setTick] = useState(0)
-  const board = useAsync(() => listBreakBoard(), [tick])
+  // เอาเฉพาะใบที่ตัวเองปล่อย · ของเดิมลากใบที่ยังไม่กลับของทั้งฮับมาทุกครึ่งนาที
+  const board = useAsync(
+    () =>
+      profile?.employee_code
+        ? listBreakBoard({ issuedByCode: profile.employee_code })
+        : Promise.resolve([]),
+    [tick, profile?.employee_code],
+  )
   const ban = useAsync(() => breakBanNow(), [tick])
   const banNext = useAsync(() => breakBanNext(), [tick])
 
@@ -60,16 +67,28 @@ export default function BreakIssue() {
     return () => clearInterval(t)
   }, [])
 
-  // ดึงใบที่เปิดอยู่ใหม่ทุกครึ่งนาที เผื่อ รปภ รับกลับไปแล้วบัตรจะได้ว่างให้ปล่อยซ้ำ
+  /**
+   * ดึงใหม่นาทีละครั้ง และเฉพาะตอนที่จอเปิดอยู่จริง
+   *
+   * ของเดิมครึ่งนาทีและยิงต่อแม้สลับไปแอพอื่นแล้ว ซึ่งคือเวลาส่วนใหญ่ของวัน
+   * กลับมาดูอีกทีดึงให้ทันที จึงไม่ต้องรอรอบถัดไป
+   */
   useEffect(() => {
-    const t = setInterval(() => setTick((n) => n + 1), 30_000)
-    return () => clearInterval(t)
+    const fire = () => {
+      if (document.visibilityState === 'visible') setTick((n) => n + 1)
+    }
+    const t = setInterval(fire, 60_000)
+    document.addEventListener('visibilitychange', fire)
+    return () => {
+      clearInterval(t)
+      document.removeEventListener('visibilitychange', fire)
+    }
   }, [])
 
   const list = cards.data ?? []
   const rs = reasons.data ?? []
   const banNow = ban.data ?? null
-  const mine = (board.data ?? []).filter((r) => r.issued_by_code === profile?.employee_code)
+  const mine = board.data ?? []
 
   // เลือกเหตุผลแล้วนาทีเด้งมาให้เอง หัวหน้าไม่ต้องคิดตอนรีบ แต่กดเปลี่ยนได้
   useEffect(() => {

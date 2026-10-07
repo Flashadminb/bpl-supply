@@ -51,10 +51,26 @@ export default function BreakMine() {
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [])
-  // ใบที่ยังไม่ปิดต้องสดพอจะเชื่อได้ · รปภ กดรับแล้วต้องหายไปเองภายในไม่กี่วินาที
+  /**
+   * ดึงใหม่นาทีละครั้ง และเฉพาะตอนที่จอเปิดอยู่จริง
+   *
+   * ของเดิมทุก 15 วินาที และยิงต่อแม้พับแอพไปแล้ว หน้านี้เปิดได้ 32 คน
+   * ถ้าเปิดค้างกันทั้งกะคือยิงเปล่า ๆ หลายหมื่นครั้งต่อวัน
+   *
+   * นาฬิกานับถอยหลังเดินในเครื่องทุกวินาทีอยู่แล้ว ตัวเลขจึงไม่ค้าง
+   * สิ่งเดียวที่ช้าลงคือการเห็นว่า รปภ เพิ่งกดรับกลับ ซึ่งรอหนึ่งนาทีได้
+   * และกลับมาดูอีกทีก็ดึงให้ทันที
+   */
   useEffect(() => {
-    const t = setInterval(() => setTick((n) => n + 1), 15_000)
-    return () => clearInterval(t)
+    const fire = () => {
+      if (document.visibilityState === 'visible') setTick((n) => n + 1)
+    }
+    const t = setInterval(fire, 60_000)
+    document.addEventListener('visibilitychange', fire)
+    return () => {
+      clearInterval(t)
+      document.removeEventListener('visibilitychange', fire)
+    }
   }, [])
 
   const rows = mine.data ?? []

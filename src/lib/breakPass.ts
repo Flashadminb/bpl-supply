@@ -286,7 +286,7 @@ export async function breakProblem(args: {
 /** ใบที่ยังเปิดอยู่ · เห็นได้แค่ไหนขึ้นกับว่าใครถาม RLS จัดการให้ */
 /** คอลัมน์ที่กระดาน รปภ วาดจริง · ที่เหลือไม่ต้องลากข้ามเน็ตมาทุกนาที */
 const BOARD_COLS =
-  'id,card_code,reason_label,people,gate_out_people,gate_out_by,issued_at,gate_out_at,due_at,waiting_gate'
+  'id,card_code,reason_label,people,gate_out_people,gate_out_by,issued_by_code,issued_at,gate_out_at,due_at,waiting_gate'
 
 /**
  * บัตรที่ยังไม่กลับ
@@ -301,9 +301,13 @@ const BOARD_COLS =
  * วัดจริงแล้วตกราว 740 MB ต่อวันเมื่อ รปภ สองเครื่องเปิดค้างครบ 24 ชั่วโมง
  * ซึ่งกินโควต้าฟรีทั้งก้อนภายในสัปดาห์เดียว
  */
-export async function listBreakBoard(gateOutBy?: string): Promise<BreakBoardRow[]> {
+export async function listBreakBoard(
+  filter: { gateOutBy?: string; issuedByCode?: string } = {},
+): Promise<BreakBoardRow[]> {
   let q = supabase.from('break_board_rows').select(BOARD_COLS).order('issued_at')
-  if (gateOutBy) q = q.eq('gate_out_by', gateOutBy)
+  if (filter.gateOutBy) q = q.eq('gate_out_by', filter.gateOutBy)
+  // หัวหน้าสนใจแค่ใบของตัวเอง ไม่ต้องลากใบของทั้งฮับมาทุกนาที
+  if (filter.issuedByCode) q = q.eq('issued_by_code', filter.issuedByCode)
   const { data, error } = await q
   if (error) throw new Error(readableError(error))
   return (data ?? []) as unknown as BreakBoardRow[]
