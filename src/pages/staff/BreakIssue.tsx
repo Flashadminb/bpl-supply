@@ -31,7 +31,16 @@ import {
  */
 
 const PEOPLE = [1, 2, 3, 4, 5]
-const MINUTES = [4, 5, 6, 8, 10, 15, 20]
+/**
+ * ปุ่มกดเร็ว · สี่ค่าที่หน้างานใช้จริงบ่อยที่สุด
+ *
+ * ของเดิมมีเจ็ดปุ่มเรียงเต็มแถว ซึ่งต้องกวาดตาหาทุกครั้งทั้งที่ส่วนใหญ่กดอยู่ไม่กี่ค่า
+ * เหลือสี่ปุ่มแล้วที่เหลือไปอยู่ในดรอปดาวน์ เลือกได้ทุกนาทีตั้งแต่ 1 ถึง 120
+ */
+const MINUTES = [3, 6, 10, 12]
+
+/** เพดานเดียวกับที่ฐานข้อมูลตรวจใน break_issue */
+const MINUTE_MAX = 120
 
 export default function BreakIssue() {
   const { profile } = useAuth()
@@ -394,12 +403,12 @@ export default function BreakIssue() {
               </span>
             )}
           </p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {MINUTES.map((m) => (
               <button
                 key={m}
                 type="button"
-                className={`rounded-btn border px-3.5 py-2 text-sm ${
+                className={`rounded-btn border px-4 py-2 text-sm ${
                   minutes === m
                     ? 'border-ink bg-ink font-semibold text-white'
                     : 'border-line bg-surface text-ink-700'
@@ -409,6 +418,23 @@ export default function BreakIssue() {
                 {m}
               </button>
             ))}
+
+            {/* ดรอปดาวน์เลือกอิสระ · ค่าที่เลือกจากปุ่มก็โชว์ตรงนี้ด้วย
+                สองทางจึงไม่เคยขัดกัน มองที่เดียวก็รู้ว่าตอนนี้กี่นาที */}
+            <span className="text-sm text-ink-400">หรือ</span>
+            <select
+              className="input h-tap w-auto min-w-[7.5rem] py-2 text-sm"
+              value={minutes ?? ''}
+              onChange={(e) => setMinutes(e.target.value ? Number(e.target.value) : null)}
+              aria-label="เลือกจำนวนนาทีเอง"
+            >
+              <option value="">เลือกเอง</option>
+              {Array.from({ length: MINUTE_MAX }, (_, i) => i + 1).map((m) => (
+                <option key={m} value={m}>
+                  {m} นาที
+                </option>
+              ))}
+            </select>
           </div>
           <p className="mt-2 mb-4 rounded-btn bg-ink/5 px-3 py-2 text-xs text-ink-500">
             เวลาเริ่มเดินตอนกดยื่นบัตร ไม่ใช่ตอนถึง รปภ — เผื่อเวลาเดินไว้ในนาทีนี้แล้ว
