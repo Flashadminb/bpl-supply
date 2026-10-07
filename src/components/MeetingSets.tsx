@@ -263,9 +263,21 @@ function MeetingSet({
     absent: rows.filter((r) => r.state === 'absent').length,
   }
 
-  // คนที่สถานะจะเปลี่ยนถ้ากดเช็คทั้งหมด — ต้องได้อ่านก่อนกด ไม่ใช่กดแล้วค่อยรู้
+  /**
+   * คนที่สถานะจะเปลี่ยนถ้ากดเช็คทั้งหมด — ต้องได้อ่านก่อนกด ไม่ใช่กดแล้วค่อยรู้
+   *
+   * แยกสองกองให้ตรงกับที่หน้างานคิดจริง ไม่ใช่ตรงกับที่โค้ดคิด
+   *   lateOnes  เช็คชื่อเข้ามาแล้วแต่ยังไม่ขึ้นว่ามาตรงเวลา = คนมาสาย
+   *   noShow    ไม่เคยเช็คชื่อเข้ามาเลย = คนขาด
+   *
+   * ของเดิมเขียนปุ่มว่า "เฉพาะคนที่กดเช็คชื่อแล้ว 4 คน" ซึ่งอ่านแล้วนึกว่า
+   * หมายถึงทุกคนที่เช็คชื่อมา แต่เลขจริงนับเฉพาะคนที่ยังไม่ขึ้นว่ามาตรงเวลา
+   * ซึ่งก็คือคนมาสายล้วน ๆ · เจ้าของระบบอ่านแล้วงงว่าทำไมเลขไม่ตรงกับที่เห็น
+   */
   const willChange = rows.filter((r) => r.state !== 'ontime')
-  const sentOnly = willChange.filter((r) => r.checked_at)
+  const lateOnes = willChange.filter((r) => r.checked_at)
+  const noShow = willChange.length - lateOnes.length
+  const sentOnly = lateOnes
   const pendingSlips = rows.filter((r) => r.checkin_id && r.status === 'pending')
 
   function run(fn: () => Promise<unknown>, after?: () => void) {
@@ -467,12 +479,17 @@ function MeetingSet({
                 เขียนแยกไว้เพราะสองปุ่มข้างล่างต่างกันตรงนี้จุดเดียว
                 และกดผิดปุ่มแปลว่าคนที่ไม่ได้มา กลายเป็นคนมาตรงเวลา */}
             <p className="mt-2 rounded-btn bg-surface-2 px-3 py-2 text-xs text-ink-600">
-              <b>สองปุ่มนี้ต่างกันที่เดียว</b> คือจะแตะคนที่ไม่ได้กดเช็คชื่อด้วยไหม
+              <b>ตอนนี้มีสองกอง</b>
               <br />
-              ปุ่มซ้าย แตะเฉพาะคนที่กดเช็คชื่อเข้ามาจริงแล้ว เช่นคนที่ขึ้นสายให้กลายเป็นมาตรงเวลา
-              ส่วนคนที่เงียบหายไปเลยยังขึ้นขาดเหมือนเดิม
+              <b className="text-warn-txt">มาสาย {lateOnes.length} คน</b> — เช็คชื่อเข้ามาแล้ว
+              แต่เข้ามาหลังเวลาผ่อนผัน
               <br />
-              ปุ่มขวา แตะทุกคนรวมคนที่ไม่เคยกดอะไรเลย ใช้ตอนที่รู้แน่ว่าเขามาจริงแต่ไม่ได้กดในแอพ
+              <b className="text-danger-txt">ขาด {noShow} คน</b> — ไม่เคยเช็คชื่อเข้ามาเลย
+              <br />
+              <br />
+              ปุ่มซ้ายยกเฉพาะ<b>คนมาสาย</b>ให้เป็นมาตรงเวลา คนขาดยังขึ้นขาดเหมือนเดิม
+              <br />
+              ปุ่มขวายก<b>ทั้งคนสายและคนขาด</b> ใช้ตอนที่รู้แน่ว่าทุกคนมาจริงแต่ไม่ได้กดในแอพ
             </p>
             <p className="mt-1 text-xs text-ink-500">
               กดแล้วยังย้อนดูได้ว่าเดิมระบบคำนวณไว้ว่าใครสายใครขาด และใครเป็นคนกดแก้
@@ -488,7 +505,7 @@ function MeetingSet({
                   disabled={busy}
                   onClick={() => checkAll(true)}
                 >
-                  {busy ? <Spinner /> : null} เฉพาะคนที่กดเช็คชื่อแล้ว {sentOnly.length} คน
+                  {busy ? <Spinner /> : null} ยกคนมาสาย {lateOnes.length} คน
                 </button>
               )}
               {willChange.length > sentOnly.length && (
@@ -498,7 +515,7 @@ function MeetingSet({
                   disabled={busy}
                   onClick={() => checkAll(false)}
                 >
-                  {busy ? <Spinner /> : null} ทุกคน รวมคนที่ไม่ได้กด {willChange.length} คน
+                  {busy ? <Spinner /> : null} ยกคนสายและคนขาด {willChange.length} คน
                 </button>
               )}
             </div>

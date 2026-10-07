@@ -90,14 +90,24 @@ export function AudiencePicker({
     return m
   }, [pickable])
 
-  /** จำนวนคนที่จะได้รับจริง — นับหัวไม่ซ้ำ เพราะคนหนึ่งอาจเข้าทั้งสองเงื่อนไข */
+  /**
+   * จำนวนคนที่จะได้รับจริง แยกเป็นสองกอง
+   *
+   * ติ๊กชื่อไว้เอง กับ โดนแผนกลากเข้ามาทั้งที่ไม่ได้ติ๊กชื่อ
+   *
+   * ต้องแยกให้เห็น เพราะเคยเกิดจริงกับนัด W39 — ติ๊กชื่อไว้ 28 คน
+   * แล้วติ๊กแผนกไปด้วยอีกสี่แผนก รายชื่อจริงกลายเป็น 53 คน
+   * เจ้าของระบบเห็นแล้วงงว่าคนที่ไม่ได้ติ๊กโผล่มาได้ยังไง
+   * ของเดิมบอกแค่ยอดรวม ซึ่งไม่ได้ผิด แต่ไม่ได้บอกว่าส่วนเกินมาจากไหน
+   */
   const reach = useMemo(() => {
-    if (value.mode === 'all') return pickable.length
-    const set = new Set(value.userIds)
+    if (value.mode === 'all') return { total: pickable.length, picked: pickable.length, byDept: 0 }
+    const named = new Set(value.userIds)
+    const set = new Set(named)
     for (const p of pickable) {
       if (value.deptCodes.includes(p.dept_code ?? 'ALL')) set.add(p.id)
     }
-    return set.size
+    return { total: set.size, picked: named.size, byDept: set.size - named.size }
   }, [value, pickable])
 
   const toggleDept = (code: string) =>
@@ -250,14 +260,26 @@ export function AudiencePicker({
 
       <p
         className={`mt-2 rounded-card px-3 py-2 text-sm ${
-          (pickedOnly || value.mode === 'picked') && reach === 0
+          (pickedOnly || value.mode === 'picked') && reach.total === 0
             ? 'bg-danger-bg text-danger-txt'
-            : 'bg-brand-50 text-ink-700'
+            : reach.byDept > 0
+              ? 'bg-warn-bg text-warn-txt'
+              : 'bg-brand-50 text-ink-700'
         }`}
       >
-        {value.mode === 'picked' && reach === 0
-          ? 'ยังไม่ได้เลือกใครเลย — ตอนนี้จะไม่มีใครได้รับ'
-          : `รวม ${reach} คน`}
+        {(pickedOnly || value.mode === 'picked') && reach.total === 0 ? (
+          'ยังไม่ได้เลือกใครเลย — ตอนนี้จะไม่มีใครได้รับ'
+        ) : reach.byDept > 0 ? (
+          <>
+            <b>รวม {reach.total} คน</b>
+            <br />
+            ติ๊กชื่อไว้เอง {reach.picked} คน · <b>แผนกที่ติ๊กลากเข้ามาอีก {reach.byDept} คน</b>
+            <br />
+            ถ้าอยากได้เฉพาะคนที่ติ๊กชื่อ ให้เอาปุ่มแผนกออกให้หมด
+          </>
+        ) : (
+          <>รวม {reach.total} คน</>
+        )}
       </p>
     </div>
   )
