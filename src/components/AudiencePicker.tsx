@@ -12,6 +12,10 @@ import { ErrorBox, Loading } from './ui'
  *
  * แผนกกับรายคนเป็น "หรือ" กัน — ใครเข้าข้อใดข้อหนึ่งก็ได้รับ
  * เลือกแผนก OUT 4W แล้วเติมชื่อคนจากแผนกอื่นได้ โดยไม่ต้องเลือกทั้งแผนกเขา
+ *
+ * ปุ่มแผนกนับหัวให้เห็นบนตัวปุ่มเลย เพราะเคยมีคนติ๊ก "ทุกแผนก" โดยคิดว่าเป็นแผนกหนึ่ง
+ * แล้วนัดประชุม W39 ก็กลายเป็นเชิญทั้งฮับ 85 คน คนที่ไม่รู้เรื่องขึ้นขาดกันหมด
+ * ตัวเลขข้างชื่อแผนกทำให้เห็นก่อนกดว่ากำลังจะลากใครเข้ามากี่คน
  */
 
 export interface Audience {
@@ -27,11 +31,19 @@ export function AudiencePicker({
   onChange,
   allLabel = 'ทุกคนในระบบ',
   allHint = 'ทุกคนที่ล็อกอินได้จะได้รับ',
+  pickedOnly = false,
 }: {
   value: Audience
   onChange: (v: Audience) => void
   allLabel?: string
   allHint?: string
+  /**
+   * ซ่อนปุ่มเลือกโหมด เหลือแค่ให้ติ๊กแผนกกับรายคน
+   *
+   * ใช้ตอนแก้รายชื่อของนัดที่ประกาศไปแล้ว ซึ่งฝั่งฐานข้อมูลรับได้แค่แบบเจาะจง
+   * โชว์ปุ่ม "ทุกคนในระบบ" ไว้แล้วกดไม่ติด แย่กว่าไม่โชว์
+   */
+  pickedOnly?: boolean
 }) {
   const depts = useAsync(listDepartments, [])
   const people = useAsync(listProfiles, [])
@@ -61,15 +73,29 @@ export function AudiencePicker({
     )
   }, [pickable, find, deptName])
 
+/**
+   * คนในแผนกนั้น ๆ
+   *
+   * เทียบกับ dept_code ของตัวเองเท่านั้น ไม่เอา extra_depts มาปน
+   * เพราะ extra_depts แปลว่า "คนนี้มองเห็นของแผนกอื่นได้" ไม่ใช่ "สังกัดแผนกอื่น"
+   * ของเดิมเอามาปน แปลว่าวันไหนเปิดให้ใครเห็นของแผนก QC เขาจะถูกเรียกเข้าประชุม QC ด้วย
+   * ตรงกับกติกาฝั่งฐานข้อมูลใน meeting_audience_members ตั้งแต่ 119
+   */
+  const headcount = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const p of pickable) {
+      const d = p.dept_code ?? 'ALL'
+      m.set(d, (m.get(d) ?? 0) + 1)
+    }
+    return m
+  }, [pickable])
+
   /** จำนวนคนที่จะได้รับจริง — นับหัวไม่ซ้ำ เพราะคนหนึ่งอาจเข้าทั้งสองเงื่อนไข */
   const reach = useMemo(() => {
     if (value.mode === 'all') return pickable.length
     const set = new Set(value.userIds)
     for (const p of pickable) {
-      const mine = [p.dept_code, ...(p.extra_depts ?? [])].filter(Boolean) as string[]
-      if (value.deptCodes.includes('ALL') || mine.some((d) => value.deptCodes.includes(d))) {
-        set.add(p.id)
-      }
+      if (value.deptCodes.includes(p.dept_code ?? 'ALL')) set.add(p.id)
     }
     return set.size
   }, [value, pickable])
@@ -92,7 +118,7 @@ export function AudiencePicker({
 
   return (
     <div>
-      <div className="space-y-2">
+      <div className={`space-y-2 ${pickedOnly ? 'hidden' : ''}`}>
         {(
           [
             { key: 'all' as const, label: allLabel, hint: allHint },
@@ -124,24 +150,37 @@ export function AudiencePicker({
         ))}
       </div>
 
-      {value.mode === 'picked' && (
+      {(pickedOnly || value.mode === 'picked') && (
         <div className="mt-3 rounded-card border border-line p-3">
           <p className="label">แผนก</p>
           {depts.loading && <Loading />}
           <div className="flex flex-wrap gap-2">
             {(depts.data ?? [])
               .filter((d) => d.is_active)
-              .map((d) => (
-                <button
-                  key={d.code}
-                  type="button"
-                  className={`chip ${value.deptCodes.includes(d.code) ? 'chip-on' : ''}`}
-                  onClick={() => toggleDept(d.code)}
-                >
-                  {d.name}
-                </button>
-              ))}
+              .map((d) => {
+                const n = headcount.get(d.code) ?? 0
+                return (
+                  <button
+                    key={d.code}
+                    type="button"
+                    className={`chip ${value.deptCodes.includes(d.code) ? 'chip-on' : ''} ${
+                      n === 0 ? 'opacity-50' : ''
+                    }`}
+                    onClick={() => toggleDept(d.code)}
+                  >
+                    {d.code === 'ALL' ? 'ไม่สังกัดแผนก' : d.name}
+                    <span className="ml-1 text-xs opacity-70">{n}</span>
+                  </button>
+                )
+              })}
           </div>
+          {/* แถวนี้ชื่อ "ทุกแผนก" ในตารางแผนก ซึ่งอ่านเหมือนจะเหมาทั้งฮับ
+              แต่จริง ๆ เป็นแผนกของคนที่ไม่ได้สังกัดแผนกไหน เช่นบัญชีส่วนกลาง
+              จึงเขียนให้ตรงกับความหมาย แล้วบอกทางที่ถูกไว้ข้างล่าง */}
+          <p className="mt-1 text-xs text-ink-400">
+            ตัวเลขคือจำนวนคนในแผนกนั้น
+            {!pickedOnly && <> · ถ้าอยากเชิญทั้งฮับจริง ๆ ให้ย้อนขึ้นไปเลือก “{allLabel}”</>}
+          </p>
 
           <p className="label mt-4">
             รายคน
@@ -211,14 +250,14 @@ export function AudiencePicker({
 
       <p
         className={`mt-2 rounded-card px-3 py-2 text-sm ${
-          value.mode === 'picked' && reach === 0
+          (pickedOnly || value.mode === 'picked') && reach === 0
             ? 'bg-danger-bg text-danger-txt'
             : 'bg-brand-50 text-ink-700'
         }`}
       >
         {value.mode === 'picked' && reach === 0
           ? 'ยังไม่ได้เลือกใครเลย — ตอนนี้จะไม่มีใครได้รับ'
-          : `จะถึงมือ ${reach} คน`}
+          : `รวม ${reach} คน`}
       </p>
     </div>
   )

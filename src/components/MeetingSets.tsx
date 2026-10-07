@@ -6,11 +6,15 @@ import {
   closeMeeting,
   deleteMeetings,
   listMeetingEvents,
+  meetingPicks,
   meetingRoster,
   reopenMeeting,
   setAttendance,
+  setMeetingAudience,
   setMeetingStatus,
+  syncMeetingMembers,
 } from '../lib/api'
+import { AudiencePicker, EMPTY_AUDIENCE, type Audience } from './AudiencePicker'
 import { EmptyState, ErrorBox, Loading, Modal, Spinner } from './ui'
 import { EvidenceImg } from './EvidenceThumbs'
 import { fmtDateTime } from '../lib/format'
@@ -109,6 +113,94 @@ function LazyThumb({ fileId, alt, onOpen }: { fileId: string; alt: string; onOpe
   )
 }
 
+/**
+ * แก้ว่าใครต้องเข้านัดนี้ หลังประกาศไปแล้ว
+ *
+ * จำเป็นตั้งแต่ 119 ล็อกรายชื่อไว้ตอนประกาศ เพราะถ้าติ๊กผิดแล้วแก้ไม่ได้เลย
+ * ก็ต้องยกเลิกนัดแล้วประกาศใหม่ ซึ่งทำให้ใบที่คนส่งมาแล้วหายไปทั้งกอง
+ *
+ * ปุ่มดึงคนเข้าใหม่แยกไว้ต่างหาก เพราะเป็นคนละเรื่องกัน
+ * อันนั้นคือ "ติ๊กถูกแล้วแต่มีคนเข้าใหม่หลังประกาศ" ไม่ได้แปลว่าติ๊กผิด
+ */
+function AudienceBox({
+  event,
+  open,
+  onClose,
+  onDone,
+}: {
+  event: MeetingEvent
+  open: boolean
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [aud, setAud] = useState<Audience>(EMPTY_AUDIENCE)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [note, setNote] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setErr(null)
+    setNote(null)
+    meetingPicks(event.id)
+      .then((p) => setAud({ mode: 'picked', deptCodes: p.deptCodes, userIds: p.userIds }))
+      .catch((e) => setErr((e as Error).message))
+  }, [open, event.id])
+
+  function run(fn: () => Promise<{ added: number; removed: number; total: number }>) {
+    setBusy(true)
+    setErr(null)
+    void fn()
+      .then((r) => {
+        setNote(`รายชื่อตอนนี้ ${r.total} คน · เพิ่ม ${r.added} ถอดออก ${r.removed}`)
+        onDone()
+      })
+      .catch((e) => setErr((e as Error).message))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={`รายชื่อผู้เข้าประชุม · ${event.title}`}>
+      <p className="mb-2 rounded-btn bg-surface-2 px-3 py-2 text-xs text-ink-500">
+        รายชื่อถูกล็อกไว้ตั้งแต่ตอนประกาศ คนเข้าใหม่หลังจากนั้นจึงไม่โผล่เอง
+        <br />
+        คนที่ส่งใบเช็คชื่อมาแล้ว หรือถูกแก้สถานะไว้ จะไม่ถูกถอดออกไม่ว่าติ๊กยังไง
+        เพราะหลักฐานของเขาต้องมีเจ้าของเสมอ
+      </p>
+
+      <AudiencePicker value={aud} onChange={setAud} pickedOnly />
+
+      {note && (
+        <p className="mt-2 rounded-btn bg-success-bg px-3 py-2 text-sm text-success-txt">{note}</p>
+      )}
+      {err && (
+        <div className="mt-2">
+          <ErrorBox message={err} />
+        </div>
+      )}
+
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <button
+          type="button"
+          className="btn-soft h-tap px-4 text-sm"
+          disabled={busy}
+          onClick={() => run(() => syncMeetingMembers(event.id))}
+        >
+          {busy ? <Spinner /> : null} ดึงคนเข้าใหม่เข้ามา
+        </button>
+        <button
+          type="button"
+          className="btn-primary h-tap px-4 text-sm"
+          disabled={busy || (aud.deptCodes.length === 0 && aud.userIds.length === 0)}
+          onClick={() => run(() => setMeetingAudience(event.id, aud.deptCodes, aud.userIds))}
+        >
+          {busy ? <Spinner /> : null} บันทึกรายชื่อใหม่
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
 export function MeetingSets({ from, to }: { from: string; to: string }) {
   const events = useAsync(() => listMeetingEvents(from, to), [from, to])
   const [open, setOpen] = useState<string | null>(null)
@@ -161,6 +253,7 @@ function MeetingSet({
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [asking, setAsking] = useState(false)
+  const [audOpen, setAudOpen] = useState(false)
   const [big, setBig] = useState<RosterRow | null>(null)
 
   const n = {
@@ -254,6 +347,13 @@ function MeetingSet({
               onClick={() => setAsking(true)}
             >
               เช็คทั้งหมดว่ามา
+            </button>
+            <button
+              type="button"
+              className="btn-soft h-tap px-4 text-sm"
+              onClick={() => setAudOpen(true)}
+            >
+              แก้รายชื่อ · {rows.length} คน
             </button>
 
             {event.closed_at ? (
@@ -351,7 +451,9 @@ function MeetingSet({
                     {r.note && <span className="block text-xs text-ink-500">“{r.note}”</span>}
                   </span>
                   <span className={STATE_CLASS[r.state]}>{STATE_TH[r.state]}</span>
-                  {!r.checked_at && <span className="text-xs text-danger-txt">ไม่ได้ส่งใบ</span>}
+                  {!r.checked_at && (
+                    <span className="text-xs text-danger-txt">ไม่ได้เช็คชื่อเข้ามา</span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -361,6 +463,17 @@ function MeetingSet({
                 แล้วย้ายไปอยู่หน้าหลักฐานการเข้าประชุม
               </p>
             )}
+            {/* คำว่า "ใบ" คือใบเช็คชื่อที่หน้างานกดส่งมาพร้อมรูปในแอพ
+                เขียนแยกไว้เพราะสองปุ่มข้างล่างต่างกันตรงนี้จุดเดียว
+                และกดผิดปุ่มแปลว่าคนที่ไม่ได้มา กลายเป็นคนมาตรงเวลา */}
+            <p className="mt-2 rounded-btn bg-surface-2 px-3 py-2 text-xs text-ink-600">
+              <b>สองปุ่มนี้ต่างกันที่เดียว</b> คือจะแตะคนที่ไม่ได้กดเช็คชื่อด้วยไหม
+              <br />
+              ปุ่มซ้าย แตะเฉพาะคนที่กดเช็คชื่อเข้ามาจริงแล้ว เช่นคนที่ขึ้นสายให้กลายเป็นมาตรงเวลา
+              ส่วนคนที่เงียบหายไปเลยยังขึ้นขาดเหมือนเดิม
+              <br />
+              ปุ่มขวา แตะทุกคนรวมคนที่ไม่เคยกดอะไรเลย ใช้ตอนที่รู้แน่ว่าเขามาจริงแต่ไม่ได้กดในแอพ
+            </p>
             <p className="mt-1 text-xs text-ink-500">
               กดแล้วยังย้อนดูได้ว่าเดิมระบบคำนวณไว้ว่าใครสายใครขาด และใครเป็นคนกดแก้
             </p>
@@ -375,7 +488,7 @@ function MeetingSet({
                   disabled={busy}
                   onClick={() => checkAll(true)}
                 >
-                  {busy ? <Spinner /> : null} เช็คเฉพาะคนที่ส่งใบมา {sentOnly.length} คน
+                  {busy ? <Spinner /> : null} เฉพาะคนที่กดเช็คชื่อแล้ว {sentOnly.length} คน
                 </button>
               )}
               {willChange.length > sentOnly.length && (
@@ -385,13 +498,23 @@ function MeetingSet({
                   disabled={busy}
                   onClick={() => checkAll(false)}
                 >
-                  {busy ? <Spinner /> : null} เช็คทุกคนรวมคนที่ขาด {willChange.length} คน
+                  {busy ? <Spinner /> : null} ทุกคน รวมคนที่ไม่ได้กด {willChange.length} คน
                 </button>
               )}
             </div>
           </>
         )}
       </Modal>
+
+      <AudienceBox
+        event={event}
+        open={audOpen}
+        onClose={() => setAudOpen(false)}
+        onDone={() => {
+          roster.reload()
+          onEventChanged()
+        }}
+      />
 
       {/* ดูรูปใหญ่ */}
       <Modal

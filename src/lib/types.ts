@@ -451,7 +451,10 @@ export interface TransferNotice {
   side: 'in' | 'out'
   asset_code: string
   type_name: string
-  to_dept: string
+  /** ชื่อคนที่รับโอน · ตั้งแต่ 041 โอนให้ "คน" ไม่ใช่ "แผนก" แล้ว */
+  to_name: string | null
+  /** แผนกปลายทางของการโอนยุคเก่า · แถวใหม่ว่างเสมอ */
+  to_dept: string | null
   from_dept: string | null
   from_name: string | null
   by_name: string
@@ -927,8 +930,11 @@ export interface AssetTransferRow {
   claimed_at: string | null
   claimed_by_name: string | null
   ack_at: string | null
-  /** claimed = ปลายทางรับแล้ว · waiting = ยังไม่มีใครกดรับ */
-  state: 'claimed' | 'waiting'
+  cancelled_at: string | null
+  cancelled_by_name: string | null
+  cancel_reason: string | null
+  /** claimed = ปลายทางรับแล้ว · waiting = ยังไม่มีใครกดรับ · cancelled = ยกเลิกแล้ว แต่ยังอยู่ในประวัติ */
+  state: 'claimed' | 'waiting' | 'cancelled'
 }
 
 /** ใบแจ้งเสียทั้งฮับ พ่วงชื่อคนแจ้งและชื่อประเภทเครื่องมาให้แล้ว */

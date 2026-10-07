@@ -1141,9 +1141,30 @@ export async function ackTransfer(id: number) {
   if (error) throw new Error(readableError(error))
 }
 
-/** ยกเลิกการโอนที่ปลายทางยังไม่ได้รับ */
-export async function cancelTransfer(id: number) {
-  const { error } = await supabase.rpc('asset_transfer_cancel', { p_id: id })
+/**
+ * เหตุผลสำเร็จรูปตอนยกเลิกการโอน
+ *
+ * ตัวเลือกมาจากสามเหตุที่เจ้าของระบบบอกว่าเกิดจริง
+ * ยังพิมพ์เองได้ ตัวเลือกมีไว้ให้กดเร็วตอนยืนอยู่หน้างาน ไม่ได้มีไว้บังคับ
+ */
+export const TRANSFER_CANCEL_REASONS = [
+  'โอนผิด',
+  'ปลายทางไม่เบิก',
+  'เปลี่ยนคนรับ',
+] as const
+
+/**
+ * ยกเลิกการโอนที่ปลายทางยังไม่ได้รับ
+ *
+ * ไม่ได้ลบแถวทิ้งแล้วตั้งแต่ 118 · แถวยังอยู่ในประวัติพร้อมเหตุผลและชื่อคนกดยกเลิก
+ * เพราะตอนโอนระบบตัดรายการค้างของคนเดิมไปแล้ว ถ้าลบทิ้งจะเหลือใบคืนลอย ๆ
+ * ที่ไม่มีอะไรอธิบายว่าทำไมเครื่องหลุดจากมือเขา
+ */
+export async function cancelTransfer(id: number, reason: string) {
+  const { error } = await supabase.rpc('asset_transfer_cancel', {
+    p_id: id,
+    p_reason: reason,
+  })
   if (error) throw new Error(readableError(error))
 }
 
@@ -1882,6 +1903,49 @@ export async function meetingWindow(): Promise<MeetingWindow | null> {
 /* ------------------------------------------- สถานะการเข้าประชุม */
 
 /** รายชื่อที่ต้องเข้าประชุมพร้อมสถานะ — คิดสดที่ฐานข้อมูลทุกครั้ง */
+/**
+ * ดึงคนที่เข้าข่ายแต่ยังไม่อยู่ในรายชื่อ เข้ามาเพิ่ม
+ *
+ * รายชื่อถูกล็อกไว้ตอนประกาศตั้งแต่ 119 คนเข้าใหม่หลังจากนั้นจึงไม่โผล่เอง
+ * ซึ่งเป็นสิ่งที่ต้องการ ไม่งั้นคนเข้าใหม่วันนี้จะไปขึ้นขาดในประชุมเดือนที่แล้ว
+ */
+export async function syncMeetingMembers(eventId: string) {
+  const { data, error } = await supabase.rpc('meeting_sync_members', { p_event: eventId })
+  if (error) throw new Error(readableError(error))
+  return data as { added: number; removed: number; total: number }
+}
+
+/** แก้ว่าใครต้องเข้านัดนี้ หลังประกาศไปแล้ว — ใช้ตอนติ๊กผิด */
+export async function setMeetingAudience(
+  eventId: string,
+  deptCodes: string[],
+  userIds: string[],
+) {
+  const { data, error } = await supabase.rpc('meeting_set_audience', {
+    p_event: eventId,
+    p_depts: deptCodes,
+    p_users: userIds,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as { added: number; removed: number; total: number }
+}
+
+/** แผนกและรายคนที่ถูกติ๊กไว้ตอนประกาศ — ใช้ตั้งค่าเริ่มต้นให้กล่องแก้รายชื่อ */
+export async function meetingPicks(
+  eventId: string,
+): Promise<{ deptCodes: string[]; userIds: string[] }> {
+  const [d, u] = await Promise.all([
+    supabase.from('meeting_event_depts').select('dept_code').eq('event_id', eventId),
+    supabase.from('meeting_event_users').select('user_id').eq('event_id', eventId),
+  ])
+  if (d.error) throw new Error(readableError(d.error))
+  if (u.error) throw new Error(readableError(u.error))
+  return {
+    deptCodes: (d.data ?? []).map((r) => r.dept_code as string),
+    userIds: (u.data ?? []).map((r) => r.user_id as string),
+  }
+}
+
 export async function meetingRoster(eventId: string): Promise<RosterRow[]> {
   const { data, error } = await supabase.rpc('meeting_roster', { p_event: eventId })
   if (error) throw new Error(readableError(error))

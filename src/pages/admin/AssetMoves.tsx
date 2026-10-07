@@ -1,15 +1,22 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { assetIssueEvidence, deleteAssetIssues, resolveAssetIssue } from '../../lib/api'
 import { BulkDeleteBar, PickBox } from '../../components/BulkDeleteBar'
 import { TextHistory } from '../../components/TextHistory'
 import { EvidenceImg } from '../../components/EvidenceThumbs'
 import { IssueFixSheet } from '../../components/IssueFixSheet'
-import { listAssetIssueRows, listAssetTransferRows } from '../../lib/api'
+import {
+  cancelTransfer,
+  listAssetIssueRows,
+  listAssetTransferRows,
+  TRANSFER_CANCEL_REASONS,
+} from '../../lib/api'
+import { readableError } from '../../lib/supabase'
 import { useAsync } from '../../lib/useAsync'
 import { DateRangePicker } from '../../components/DateRangePicker'
-import { EmptyState, ErrorBox, Loading } from '../../components/ui'
+import { EmptyState, ErrorBox, Loading, Modal, Spinner } from '../../components/ui'
 import { fmtDateTime, relativeAge } from '../../lib/format'
+import type { AssetTransferRow } from '../../lib/types'
 
 /**
  * โอน-แจ้งเสีย — ดูย้อนหลังทั้งฮับในหน้าเดียว
@@ -29,6 +36,111 @@ import { fmtDateTime, relativeAge } from '../../lib/format'
 
 type Tab = 'transfer' | 'issue' | 'history'
 
+/**
+ * ยกเลิกการโอนที่ปลายทางยังไม่ได้กดรับ
+ *
+ * ไม่ได้ลบแถวทิ้ง · แถวยังอยู่ในประวัติพร้อมเหตุผลและชื่อคนกดยกเลิก
+ * บังคับใส่เหตุผลด้วยเหตุผลเดียวกับการยกเลิกรถ
+ * ยกเลิกเปล่า ๆ อ่านย้อนหลังแล้วตอบไม่ได้ว่าควรโอนใหม่ไหม
+ */
+function CancelTransferBox({
+  row,
+  onClose,
+  onDone,
+}: {
+  row: AssetTransferRow | null
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [why, setWhy] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const reason = why.trim()
+
+  useEffect(() => {
+    if (row) {
+      setWhy('')
+      setErr(null)
+    }
+  }, [row])
+
+  async function go() {
+    if (!row || !reason) return
+    setBusy(true)
+    setErr(null)
+    try {
+      await cancelTransfer(row.id, reason)
+      onDone()
+      onClose()
+    } catch (e) {
+      setErr(readableError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal open={Boolean(row)} onClose={onClose} title="ยกเลิกการโอน">
+      {row && (
+        <>
+          <p className="rounded-btn bg-surface-2 px-3 py-2 text-sm">
+            <span className="font-mono">{row.asset_code}</span> · {row.type_name}
+            <br />
+            โอนให้ <b>{row.to_name ?? '—'}</b> เมื่อ {fmtDateTime(row.created_at)}
+          </p>
+
+          <p className="label mt-3">เหตุผล</p>
+          <div className="mb-2 flex flex-wrap gap-2">
+            {TRANSFER_CANCEL_REASONS.map((r) => (
+              <button
+                key={r}
+                type="button"
+                className={`chip ${reason === r ? 'chip-on' : ''}`}
+                onClick={() => setWhy(r)}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+          <input
+            className="input"
+            placeholder="หรือพิมพ์เอง"
+            value={why}
+            onChange={(e) => setWhy(e.target.value)}
+          />
+
+          <p className="mt-2 rounded-btn bg-warn-bg px-3 py-2 text-xs text-warn-txt">
+            รายการนี้จะไม่หายไปจากประวัติ · จะขึ้นว่ายกเลิกแล้ว พร้อมเหตุผลและชื่อคนกด
+            <br />
+            เครื่องกลับไปเป็นของว่างของแผนกเจ้าของ ไม่ได้เด้งกลับไปอยู่กับคนเดิมที่ถูกตัดตอนโอน
+            ถ้าอยากให้กลับไปอยู่กับเขา ต้องให้เขากดเบิกใหม่
+          </p>
+
+          {err && (
+            <div className="mt-2">
+              <ErrorBox message={err} />
+            </div>
+          )}
+
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button type="button" className="btn-ghost" onClick={onClose}>
+              ไม่ยกเลิกแล้ว
+            </button>
+            <button
+              type="button"
+              className="btn-danger h-tap px-4"
+              disabled={busy || !reason}
+              onClick={() => void go()}
+            >
+              {busy ? <Spinner /> : null} ยืนยันยกเลิกการโอน
+            </button>
+          </div>
+        </>
+      )}
+    </Modal>
+  )
+}
+
 function dayKey(offset = 0): string {
   const d = new Date()
   d.setDate(d.getDate() + offset)
@@ -42,6 +154,7 @@ export default function AssetMoves() {
   const [openId, setOpenId] = useState<number | null>(null)
   const [fixId, setFixId] = useState<number | null>(null)
   const [picked, setPicked] = useState<Set<number>>(new Set())
+  const [killing, setKilling] = useState<AssetTransferRow | null>(null)
   // ย้อนหลัง 30 วันเป็นค่าตั้งต้น การโอนกับของพังไม่ได้เกิดทุกวันเหมือนการเบิก
   // ตั้งไว้วันเดียวแล้วหน้าจะว่างเปล่าเกือบตลอด ซึ่งดูเหมือนระบบไม่ทำงาน
   const [from, setFrom] = useState(dayKey(-30))
@@ -63,6 +176,7 @@ export default function AssetMoves() {
   const iRows = issues.data ?? []
   const openCount = iRows.filter((r) => r.is_open).length
   const waiting = mRows.filter((r) => r.state === 'waiting').length
+  const cancelled = mRows.filter((r) => r.state === 'cancelled').length
 
   const loading = tab === 'transfer' ? moves.loading : tab === 'issue' ? issues.loading : false
   const error = tab === 'transfer' ? moves.error : tab === 'issue' ? issues.error : null
@@ -83,7 +197,7 @@ export default function AssetMoves() {
       <div className="mb-4">
         <h1 className="font-display text-xl">โอน-แจ้งเสีย</h1>
         <p className="text-sm text-ink-400">
-          ประวัติการโอนเครื่องและการแจ้งเสียทั้งฮับ · ดูอย่างเดียว ไม่เปลี่ยนสถานะอะไร
+          ประวัติการโอนเครื่องและการแจ้งเสียทั้งฮับ · ยกเลิกการโอนที่ยังไม่มีใครรับได้จากตรงนี้
         </p>
       </div>
 
@@ -115,6 +229,7 @@ export default function AssetMoves() {
         >
           การโอน · {mRows.length}
           {waiting > 0 && <span className="ml-1 text-warn-txt">(รอรับ {waiting})</span>}
+          {cancelled > 0 && <span className="ml-1 text-ink-400">(ยกเลิก {cancelled})</span>}
         </button>
         <button
           type="button"
@@ -201,6 +316,15 @@ export default function AssetMoves() {
                           {r.claimed_by_name ?? ''} {r.claimed_at ? fmtDateTime(r.claimed_at) : ''}
                         </span>
                       </>
+                    ) : r.state === 'cancelled' ? (
+                      <>
+                        <span className="badge-mute">ยกเลิกแล้ว</span>
+                        <span className="block text-xs text-ink-600">{r.cancel_reason}</span>
+                        <span className="block text-xs text-ink-400">
+                          {r.cancelled_by_name ?? ''}{' '}
+                          {r.cancelled_at ? fmtDateTime(r.cancelled_at) : ''}
+                        </span>
+                      </>
                     ) : (
                       <>
                         <span className="badge bg-warn-bg text-warn-txt">รอปลายทางกดรับ</span>
@@ -208,6 +332,13 @@ export default function AssetMoves() {
                         <span className="block text-xs text-ink-400">
                           ค้าง {relativeAge(r.created_at)}
                         </span>
+                        <button
+                          type="button"
+                          className="btn-soft mt-1 h-tap px-3 text-xs"
+                          onClick={() => setKilling(r)}
+                        >
+                          ยกเลิกการโอน
+                        </button>
                       </>
                     )}
                   </td>
@@ -217,6 +348,12 @@ export default function AssetMoves() {
           </table>
         </div>
       )}
+
+      <CancelTransferBox
+        row={killing}
+        onClose={() => setKilling(null)}
+        onDone={() => moves.reload()}
+      />
 
       {tab === 'issue' && iRows.length > 0 && (
         <>

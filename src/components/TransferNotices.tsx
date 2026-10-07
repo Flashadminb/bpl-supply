@@ -65,8 +65,11 @@ export function TransferNotices() {
           </div>
         ) : (
           <div key={`out-${n.id}`} className="rounded-card border border-warn/40 bg-warn-bg p-3">
+            {/* 041 เปลี่ยนจากโอนให้แผนกเป็นโอนให้คน แต่บรรทัดนี้ยังอ่าน to_dept
+                ซึ่งวิวไม่เคยส่งออกมา หน้าจอจึงขึ้นว่า "ถูกโอนไปให้แผนก " แล้วจบประโยค */}
             <p className="font-display text-warn-txt">
-              {n.type_name} {n.asset_code} ถูกโอนไปให้แผนก {n.to_dept} แล้ว
+              {n.type_name} {n.asset_code} ถูกโอนไปให้{' '}
+              {n.to_name ?? (n.to_dept ? 'แผนก ' + n.to_dept : 'คนอื่น')} แล้ว
             </p>
             <p className="mt-[2px] text-sm text-warn-txt">
               โดย {n.by_name} · <b>ไม่ต้องคืนเครื่องนี้แล้ว</b>
