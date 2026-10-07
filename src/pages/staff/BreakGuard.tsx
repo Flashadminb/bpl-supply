@@ -18,7 +18,6 @@ import {
   countdown,
   breakBanNext,
   breakBanNow,
-  countOpenPasses,
   listBreakBoard,
   scanBreakCard,
   type BreakScan,
@@ -63,7 +62,6 @@ export default function BreakGuard() {
     () => (profile ? listBreakBoard(profile.id) : Promise.resolve([])),
     [tick, profile?.id],
   )
-  const openAll = useAsync(() => countOpenPasses(), [tick])
   const ban = useAsync(() => breakBanNow(), [slow])
   const banNext = useAsync(() => breakBanNext(), [slow])
   const [open, setOpen] = useState(false)
@@ -94,8 +92,6 @@ export default function BreakGuard() {
   }, [])
 
   const rows = board.data ?? []
-  /** ใบที่ยังไม่กลับทั้งฮับ · ของกะก่อนหน้าก็นับอยู่ในนี้ */
-  const outAll = openAll.data ?? 0
 
   /**
    * ส่องอะไรมาก็รับ · เป็นบัตร OS ก็ส่งต่อไปหน้าสแกนบัตร OS ให้เลย
@@ -317,21 +313,12 @@ export default function BreakGuard() {
 
         {/* ───────── กระดาน · เฉพาะใบที่ตัวเองปล่อยออก ───────── */}
         <h2 className="mb-2 font-display text-sm text-ink-500">
-          ใบที่คุณปล่อยออกและยังไม่กลับ · {rows.length} ใบ ·{' '}
+          บัตรที่ปล่อยออกไปและยังไม่กลับ · {rows.length} ใบ ·{' '}
           {rows.reduce((n, r) => n + (r.gate_out_people ?? r.people), 0)} คน
         </h2>
-        {/* กระดานโชว์เฉพาะของตัวเอง พอเปลี่ยนกะคนใหม่จะเห็นว่าง
-            ทั้งที่ยังมีคนอยู่ข้างนอกจากกะก่อน บรรทัดนี้กันไม่ให้เข้าใจผิด */}
-        {outAll > rows.length && (
-          <p className="mb-2 rounded-btn bg-warn-bg px-3 py-2 text-xs text-warn-txt">
-            ทั้งฮับยังไม่กลับอีก {outAll - rows.length} ใบ ที่คนอื่นเป็นคนปล่อยออก
-            <br />
-            ไม่ขึ้นในกระดานนี้ แต่สแกนบัตรใบนั้นแล้วกดรับกลับได้ตามปกติ
-          </p>
-        )}
         {rows.length === 0 ? (
           <EmptyState
-            title={outAll > 0 ? 'คุณยังไม่ได้ปล่อยใบไหนออกไป' : 'ตอนนี้ไม่มีใครออกไป'}
+            title="ตอนนี้ไม่มีใครออกไป"
             hint="เลขที่ไม่ขึ้นตอนสแกน = ไม่ได้รับอนุญาต ไม่ต้องปล่อย"
           />
         ) : (

@@ -291,8 +291,11 @@ const BOARD_COLS =
 /**
  * บัตรที่ยังไม่กลับ
  *
- * ส่ง gateOutBy มา = เอาเฉพาะใบที่คนนั้นเป็นคนกดปล่อยออกเอง
- * ซึ่งเป็นสิ่งเดียวที่ รปภ ต้องรู้ คือ "ฉันปล่อยใบไหนไปแล้วบ้าง และยังไม่กลับ"
+ * ส่ง gateOutBy มา = เอาเฉพาะใบที่บัญชีนั้นเป็นคนกดปล่อยออกเอง
+ * ซึ่งเป็นสิ่งเดียวที่ รปภ ต้องรู้ คือ ปล่อยใบไหนไปแล้วบ้าง และยังไม่กลับ
+ *
+ * รปภ ทุกคนใช้บัญชีเดียวกัน การกรองด้วยบัญชีจึงเท่ากับ "ทุกใบที่ รปภ ปล่อยออก"
+ * ไม่ว่าจะเป็นกะไหน เปลี่ยนกะแล้วคนใหม่ยังเห็นของเดิมครบ
  *
  * ของเดิมดึงทุกคอลัมน์ของทั้งฮับ แล้วหน้าจอยิงซ้ำทุก 15 วินาที
  * วัดจริงแล้วตกราว 740 MB ต่อวันเมื่อ รปภ สองเครื่องเปิดค้างครบ 24 ชั่วโมง
@@ -304,21 +307,6 @@ export async function listBreakBoard(gateOutBy?: string): Promise<BreakBoardRow[
   const { data, error } = await q
   if (error) throw new Error(readableError(error))
   return (data ?? []) as unknown as BreakBoardRow[]
-}
-
-/**
- * นับใบที่ยังไม่กลับทั้งฮับ · เอาแค่ตัวเลข ไม่ดึงแถวมาสักแถว
- *
- * มีไว้เพราะกระดานโชว์เฉพาะใบของตัวเอง พอเปลี่ยนกะแล้วคนใหม่จะเห็นกระดานว่าง
- * ทั้งที่ยังมีคนอยู่ข้างนอกจากกะก่อน ตัวเลขนี้บอกว่ายังเหลืออีกกี่ใบ
- * ส่วนจะรับกลับใบไหน ก็สแกนบัตรใบนั้นได้ตามปกติ ไม่ต้องเห็นในกระดานก่อน
- */
-export async function countOpenPasses(): Promise<number> {
-  const { count, error } = await supabase
-    .from('break_board_rows')
-    .select('id', { count: 'exact', head: true })
-  if (error) throw new Error(readableError(error))
-  return count ?? 0
 }
 
 export async function listBreakRows(args: {
