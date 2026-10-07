@@ -16,11 +16,10 @@ import {
   breakProblem,
   breakReturn,
   countdown,
-  secToMMSS,
   breakBanNext,
   breakBanNow,
+  countOpenPasses,
   listBreakBoard,
-  listBreakRecent,
   scanBreakCard,
   type BreakScan,
 } from '../../lib/breakPass'
@@ -45,11 +44,28 @@ export default function BreakGuard() {
   const { profile } = useAuth()
   const nav = useNavigate()
   const [sp] = useSearchParams()
+  /**
+   * สองนาฬิกา ไม่ใช่อันเดียว
+   *
+   * tick  กระดานของตัวเอง · นาทีละครั้ง
+   * slow  ช่วงห้ามเบรค · ห้านาทีครั้ง เพราะตารางห้ามเปลี่ยนไม่กี่ครั้งต่อเดือน
+   *
+   * ของเดิมยิงทั้งสี่คำขอทุก 15 วินาที รวมประวัติ 24 ชั่วโมงของทั้งฮับ 80 แถว
+   * วัดจริงแล้วตกราว 740 MB ต่อวันเมื่อ รปภ สองเครื่องเปิดค้างครบวัน
+   * ซึ่งกินโควต้าฟรี 5 GB ทั้งก้อนภายในสัปดาห์เดียว
+   *
+   * เวลานับถอยหลังบนกระดานไม่ได้มาจากเน็ต มาจากนาฬิกาในเครื่องที่เดินทุกวินาที
+   * ลดรอบโหลดจึงไม่ได้ทำให้ตัวเลขบนจอค้าง
+   */
   const [tick, setTick] = useState(0)
-  const board = useAsync(() => listBreakBoard(), [tick])
-  const recent = useAsync(() => listBreakRecent(), [tick])
-  const ban = useAsync(() => breakBanNow(), [tick])
-  const banNext = useAsync(() => breakBanNext(), [tick])
+  const [slow, setSlow] = useState(0)
+  const board = useAsync(
+    () => (profile ? listBreakBoard(profile.id) : Promise.resolve([])),
+    [tick, profile?.id],
+  )
+  const openAll = useAsync(() => countOpenPasses(), [tick])
+  const ban = useAsync(() => breakBanNow(), [slow])
+  const banNext = useAsync(() => breakBanNext(), [slow])
   const [open, setOpen] = useState(false)
   const [manual, setManual] = useState('')
   const [hit, setHit] = useState<BreakScan | null>(null)
@@ -68,15 +84,18 @@ export default function BreakGuard() {
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [])
-  // กระดานต้องสดพอจะเชื่อได้ ถ้าหัวหน้าเพิ่งปล่อยใบใหม่ต้องขึ้นเองภายในไม่กี่วินาที
   useEffect(() => {
-    const t = setInterval(() => setTick((n) => n + 1), 15_000)
+    const t = setInterval(() => setTick((n) => n + 1), 60_000)
+    return () => clearInterval(t)
+  }, [])
+  useEffect(() => {
+    const t = setInterval(() => setSlow((n) => n + 1), 300_000)
     return () => clearInterval(t)
   }, [])
 
   const rows = board.data ?? []
-  // ใบที่ยังค้างขึ้นกระดานข้างบนอยู่แล้ว ตรงนี้เอาไว้ตอบว่า "เมื่อกี้ใบไหนออกไปตอนกี่โมง"
-  const history = (recent.data ?? []).filter((r) => r.closed_at)
+  /** ใบที่ยังไม่กลับทั้งฮับ · ของกะก่อนหน้าก็นับอยู่ในนี้ */
+  const outAll = openAll.data ?? 0
 
   /**
    * ส่องอะไรมาก็รับ · เป็นบัตร OS ก็ส่งต่อไปหน้าสแกนบัตร OS ให้เลย
@@ -296,15 +315,24 @@ export default function BreakGuard() {
           </>
         )}
 
-        {/* ───────── กระดาน ───────── */}
+        {/* ───────── กระดาน · เฉพาะใบที่ตัวเองปล่อยออก ───────── */}
         <h2 className="mb-2 font-display text-sm text-ink-500">
-          บัตรที่ออกไปอยู่ · {rows.length} ใบ ·{' '}
+          ใบที่คุณปล่อยออกและยังไม่กลับ · {rows.length} ใบ ·{' '}
           {rows.reduce((n, r) => n + (r.gate_out_people ?? r.people), 0)} คน
         </h2>
+        {/* กระดานโชว์เฉพาะของตัวเอง พอเปลี่ยนกะคนใหม่จะเห็นว่าง
+            ทั้งที่ยังมีคนอยู่ข้างนอกจากกะก่อน บรรทัดนี้กันไม่ให้เข้าใจผิด */}
+        {outAll > rows.length && (
+          <p className="mb-2 rounded-btn bg-warn-bg px-3 py-2 text-xs text-warn-txt">
+            ทั้งฮับยังไม่กลับอีก {outAll - rows.length} ใบ ที่คนอื่นเป็นคนปล่อยออก
+            <br />
+            ไม่ขึ้นในกระดานนี้ แต่สแกนบัตรใบนั้นแล้วกดรับกลับได้ตามปกติ
+          </p>
+        )}
         {rows.length === 0 ? (
           <EmptyState
-            title="ตอนนี้ไม่มีใครออกไป"
-            hint="เลขที่ไม่ขึ้นบนกระดานนี้ = ไม่ได้รับอนุญาต ไม่ต้องปล่อย"
+            title={outAll > 0 ? 'คุณยังไม่ได้ปล่อยใบไหนออกไป' : 'ตอนนี้ไม่มีใครออกไป'}
+            hint="เลขที่ไม่ขึ้นตอนสแกน = ไม่ได้รับอนุญาต ไม่ต้องปล่อย"
           />
         ) : (
           <ul className="space-y-2">
@@ -346,42 +374,6 @@ export default function BreakGuard() {
           </ul>
         )}
 
-        {/* ───────── ประวัติวันนี้ ───────── */}
-        {history.length > 0 && (
-          <>
-            <h2 className="mb-2 mt-6 font-display text-sm text-ink-500">
-              ปิดไปแล้วใน 24 ชั่วโมง · {history.length} ใบ
-            </h2>
-            <ul className="space-y-1.5">
-              {history.map((r) => (
-                <li
-                  key={r.id}
-                  className="flex flex-wrap items-center gap-2 rounded-card border border-line-2 bg-surface px-3 py-2 text-xs"
-                >
-                  <span className="font-mono text-sm font-bold">{r.card_code}</span>
-                  <span className="min-w-0 flex-1 text-ink-500">
-                    ออก {fmtDateTime(r.gate_out_at ?? r.issued_at).slice(-5)} · กลับ{' '}
-                    {r.closed_at ? fmtDateTime(r.closed_at).slice(-5) : '—'}
-                    <br />
-                    {r.reason_label} · {r.gate_out_people ?? r.people} คน · ปล่อยโดย{' '}
-                    {r.issued_by_name}
-                  </span>
-                  {(r.over_sec ?? 0) > 0 ? (
-                    <span className="badge-dang">เกิน {secToMMSS(r.over_sec)}</span>
-                  ) : (
-                    <span className="badge-ok">ตรงเวลา</span>
-                  )}
-                  {r.missing_people > 0 && (
-                    <span className="badge-dang">ขาด {r.missing_people} คน</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-2 rounded-btn bg-ink/5 px-3 py-2 text-xs text-ink-500">
-              เก็บย้อนหลัง 24 ชั่วโมงพอให้ตอบที่ประตูได้ · ประวัติเต็มอยู่ในเมนูหลังบ้าน
-            </p>
-          </>
-        )}
       </StaffPage>
 
       {open && (
