@@ -82,11 +82,23 @@ export default function BreakIssue() {
 
   const chosen = list.find((c) => c.code === card) ?? null
 
-  // เพดานของแผนกนับจากใบที่เปิดอยู่ตอนนี้ · 0 แปลว่าไม่จำกัด
-  const capped = useMemo(() => {
-    if (!chosen || chosen.max_open === 0) return false
-    return chosen.open_now >= chosen.max_open
+  /**
+   * เพดานของแผนก · 0 แปลว่าไม่จำกัด
+   *
+   * ตัวที่กั้นจริงคือหัวคน ไม่ใช่จำนวนใบ ของเดิมนับใบ แปลว่าใบละคนเดียวสามใบ
+   * ชนเพดานเท่ากับใบละห้าคนสามใบ ทั้งที่ต่างกัน 12 คน
+   * เพดานใบยังเช็คอยู่เป็นคันโยกสำรอง แต่ปกติตั้งเป็น 0 ไว้
+   *
+   * ต้องเทียบกับจำนวนคนในใบนี้ด้วย ไม่ใช่แค่ดูว่าเต็มหรือยัง
+   * เหลือที่ว่าง 2 คนแต่กดใบละ 3 คน ก็ยังปล่อยไม่ได้
+   */
+  const roomLeft = useMemo(() => {
+    if (!chosen || chosen.max_people === 0) return Infinity
+    return Math.max(0, chosen.max_people - chosen.open_people)
   }, [chosen])
+
+  const cardsFull = Boolean(chosen && chosen.max_open > 0 && chosen.open_now >= chosen.max_open)
+  const capped = cardsFull || people > roomLeft
 
   const photos = shotsToPhotos(shots)
   const uploading = shots.some((s) => s.state === 'uploading' || s.state === 'ready')
@@ -253,9 +265,14 @@ export default function BreakIssue() {
             <section key={g} className="mb-4">
               <p className="mb-1.5 text-xs font-semibold text-ink-500">
                 {arr[0].group_name ? `${g} · ${arr[0].group_name}` : g}
+                {arr[0].max_people > 0 && (
+                  <span className="ml-2 font-normal">
+                    ออกไปแล้ว {arr[0].open_people}/{arr[0].max_people} คน
+                  </span>
+                )}
                 {arr[0].max_open > 0 && (
                   <span className="ml-2 font-normal">
-                    ออกไปแล้ว {arr[0].open_now}/{arr[0].max_open} ใบ
+                    · {arr[0].open_now}/{arr[0].max_open} ใบ
                   </span>
                 )}
               </p>
@@ -290,8 +307,24 @@ export default function BreakIssue() {
 
           {capped && (
             <p className="mb-4 rounded-btn bg-warn-bg px-3 py-2 text-sm text-warn-txt">
-              แผนกนี้ปล่อยพร้อมกันได้สูงสุด {chosen?.max_open} ใบ · ตอนนี้ครบแล้ว
-              ต้องรับกลับก่อนถึงจะปล่อยใบใหม่ได้
+              {cardsFull ? (
+                <>
+                  แผนกนี้ปล่อยพร้อมกันได้สูงสุด {chosen?.max_open} ใบ · ตอนนี้ครบแล้ว
+                  ต้องรับกลับก่อนถึงจะปล่อยใบใหม่ได้
+                </>
+              ) : roomLeft === 0 ? (
+                <>
+                  แผนกนี้ออกพร้อมกันได้สูงสุด {chosen?.max_people} คน · ตอนนี้ครบแล้ว
+                  ต้องรับกลับก่อนถึงจะปล่อยใบใหม่ได้
+                </>
+              ) : (
+                <>
+                  แผนกนี้ออกพร้อมกันได้สูงสุด {chosen?.max_people} คน ตอนนี้ออกไปแล้ว{' '}
+                  {chosen?.open_people} คน · <b>เหลือที่ว่างอีก {roomLeft} คน</b>
+                  <br />
+                  ใบนี้เลือกไว้ {people} คน ลดลงให้เหลือ {roomLeft} คน หรือรอรับกลับก่อน
+                </>
+              )}
             </p>
           )}
 

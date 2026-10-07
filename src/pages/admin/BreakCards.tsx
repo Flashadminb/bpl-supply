@@ -128,7 +128,15 @@ export function BreakCardFace({ code, group }: { code: string; group: string | n
   )
 }
 
-type Grp = { code: string; name: string | null; max_open: number; active: boolean; users: string[] }
+type Grp = {
+  code: string
+  name: string | null
+  max_open: number
+  max_people: number
+  open_people: number
+  active: boolean
+  users: string[]
+}
 type Crd = { code: string; group_code: string; active: boolean; busy: boolean; used: boolean }
 type Run = (fn: () => Promise<unknown>, ok: string) => void
 
@@ -587,7 +595,7 @@ function QuickAdd({
           onClick={() =>
             run(async () => {
               // สร้างกลุ่มให้เองถ้ายังไม่มี · มีอยู่แล้วก็ไม่ทับค่าที่ตั้งไว้
-              await saveBreakGroup({ code: group, maxOpen: 3 })
+              await saveBreakGroup({ code: group, maxOpen: 0, maxPeople: 15 })
               const r = await addBreakCards(group, preview)
               setPrefix('')
               setMsg(`เพิ่ม ${r.added} ใบเข้ากลุ่ม ${group} · มีอยู่แล้ว ${r.skipped} ใบ`)
@@ -635,6 +643,7 @@ function GroupCard({
 
   const [name, setName] = useState(g.name ?? '')
   const [max, setMax] = useState(g.max_open)
+  const [maxPeople, setMaxPeople] = useState(g.max_people)
 
   const selSet = new Set(sel)
   const owners = staff.filter((p) => g.users.includes(p.id))
@@ -672,8 +681,10 @@ function GroupCard({
         </h3>
         {!g.active && <span className="badge-dang">ปิดใช้งาน</span>}
         <span className="text-xs text-ink-500">
-          {cards.length} ใบ · ปล่อยพร้อมกันได้{' '}
-          {g.max_open === 0 ? 'ไม่จำกัด' : `${g.max_open} ใบ`}
+          {cards.length} ใบ · ออกพร้อมกันได้{' '}
+          {g.max_people === 0 ? 'ไม่จำกัด' : `${g.max_people} คน`}
+          {g.open_people > 0 && ` · ตอนนี้ออกไป ${g.open_people} คน`}
+          {g.max_open > 0 && ` · จำกัด ${g.max_open} ใบ`}
         </span>
         <button
           type="button"
@@ -699,19 +710,41 @@ function GroupCard({
               />
             </div>
             <div>
-              <label className="label" htmlFor={`m-${g.code}`}>
-                ปล่อยพร้อมกันได้ (0 = ไม่จำกัด)
+              <label className="label" htmlFor={`p-${g.code}`}>
+                ออกพร้อมกันได้กี่คน (0 = ไม่จำกัด)
               </label>
               <input
-                id={`m-${g.code}`}
+                id={`p-${g.code}`}
                 type="number"
                 min={0}
-                max={50}
+                max={500}
                 className="input"
-                value={max}
-                onChange={(e) => setMax(Number(e.target.value))}
+                value={maxPeople}
+                onChange={(e) => setMaxPeople(Number(e.target.value))}
               />
             </div>
+          </div>
+
+          {/* เพดานใบแยกไว้ล่าง เพราะปกติไม่ต้องแตะ
+              ของเดิมคุมที่จำนวนใบ ซึ่งทำให้ใบละคนเดียวสามใบ ชนเพดานเท่ากับ
+              ใบละห้าคนสามใบ ทั้งที่ต่างกันสิบสองคน · ตอนนี้คุมที่หัวคนแทน */}
+          <div className="mt-2">
+            <label className="label" htmlFor={`m-${g.code}`}>
+              จำกัดจำนวนใบด้วยไหม (0 = ไม่จำกัด · แนะนำให้ปล่อย 0)
+            </label>
+            <input
+              id={`m-${g.code}`}
+              type="number"
+              min={0}
+              max={200}
+              className="input"
+              value={max}
+              onChange={(e) => setMax(Number(e.target.value))}
+            />
+            <p className="mt-1 text-xs text-ink-400">
+              เพดานที่กั้นจริงคือจำนวนคนด้านบน · ช่องนี้เป็นตัวกั้นซ้อนอีกชั้นเผื่อบางแผนก
+              อยากจำกัดจำนวนใบด้วย ใส่เลขแล้วจะติดทั้งสองอย่าง
+            </p>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -720,7 +753,13 @@ function GroupCard({
               disabled={busy}
               onClick={() =>
                 run(async () => {
-                  await saveBreakGroup({ code: g.code, name, maxOpen: max, active: g.active })
+                  await saveBreakGroup({
+                    code: g.code,
+                    name,
+                    maxOpen: max,
+                    maxPeople,
+                    active: g.active,
+                  })
                   setEditing(false)
                 }, 'บันทึกแล้ว')
               }
@@ -738,6 +777,7 @@ function GroupCard({
                       code: g.code,
                       name: g.name,
                       maxOpen: g.max_open,
+                      maxPeople: g.max_people,
                       active: !g.active,
                     }),
                   g.active ? 'ปิดแผนกแล้ว' : 'เปิดแผนกแล้ว',

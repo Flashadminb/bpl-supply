@@ -12,8 +12,13 @@ export interface BreakCardOption {
   code: string
   group_code: string
   group_name: string | null
+  /** เพดานจำนวนใบที่ปล่อยพร้อมกันได้ · 0 = ไม่จำกัด · คันโยกสำรอง ปกติเป็น 0 */
   max_open: number
   open_now: number
+  /** เพดานจำนวนคนที่ออกพร้อมกันได้ · 0 = ไม่จำกัด · ตัวนี้คือเพดานจริงที่ใช้กัน */
+  max_people: number
+  /** หัวคนที่ออกไปแล้วตอนนี้ รวมทุกใบที่ยังไม่ปิด */
+  open_people: number
   busy: boolean
   busy_people: number | null
   busy_since: string | null
@@ -428,6 +433,8 @@ export interface BreakSettings {
     code: string
     name: string | null
     max_open: number
+    max_people: number
+    open_people: number
     active: boolean
     cards: number
     users: string[]
@@ -456,13 +463,17 @@ export async function getBreakSettings(): Promise<BreakSettings> {
 export async function saveBreakGroup(args: {
   code: string
   name?: string | null
+  /** เพดานจำนวนใบ · ค่าตั้งต้น 0 = ไม่จำกัด เพราะเพดานจริงคุมที่หัวคน */
   maxOpen?: number
+  /** เพดานจำนวนคนที่ออกพร้อมกันได้ · เจ้าของระบบเคาะไว้ที่ 15 */
+  maxPeople?: number
   active?: boolean
 }) {
   return rpc<{ ok: true; code: string }>('break_group_save', {
     p_code: args.code,
     p_name: args.name ?? null,
-    p_max_open: args.maxOpen ?? 3,
+    p_max_open: args.maxOpen ?? 0,
+    p_max_people: args.maxPeople ?? 15,
     p_active: args.active ?? true,
   })
 }
