@@ -39,6 +39,56 @@ import {
 
 type Pending = { pass: Extract<BreakScan, { state: 'ready' | 'out' }>; code: string }
 
+/**
+ * สมุดบันทึกของเครื่องนี้ · เก็บในเครื่อง ไม่ได้ถามเซิร์ฟเวอร์สักครั้ง
+ *
+ * ตอบคำถามที่เกิดจริงที่ประตู "ใบนี้ปล่อยไปแล้วยัง" "แก๊งนี้รับเข้ามาหรือยัง"
+ * ของเดิมตอบด้วยการดึงประวัติ 24 ชั่วโมงของทั้งฮับมาใหม่ทุก 15 วินาที
+ * ซึ่งกินโควต้าฟรีทั้งก้อนภายในสัปดาห์เดียว
+ *
+ * ตัวนี้ไม่กินอะไรเลย เพราะข้อมูลที่ต้องใช้อยู่ในมือ รปภ อยู่แล้ว
+ *   กดปล่อยออกเอง  → จดทันที พร้อมเวลาจริง
+ *   กดรับกลับเอง   → ปิดบรรทัดนั้นทันที
+ *   อีกเครื่องทำ    → รู้จากกระดานที่โหลดอยู่แล้วนาทีละครั้ง
+ *                     ใบโผล่มาใหม่ = มีคนปล่อย · ใบหายไป = มีคนรับกลับ
+ *
+ * เก็บ 24 ชั่วโมงและไม่เกิน 40 บรรทัด ล้างตัวเองทุกครั้งที่เปิดหน้า
+ * ลบแอพหรือล้างข้อมูลเบราว์เซอร์แล้วหาย ซึ่งรับได้ เพราะของจริงอยู่ที่หลังบ้านครบ
+ */
+const LOG_KEY = 'bpl-guard-log'
+const LOG_MAX = 40
+const LOG_HOURS = 24
+
+type GuardLog = { code: string; people: number; out: number; back: number | null }
+
+function readLog(): GuardLog[] {
+  try {
+    const raw = localStorage.getItem(LOG_KEY)
+    if (!raw) return []
+    const all = JSON.parse(raw) as GuardLog[]
+    const floor = Date.now() - LOG_HOURS * 3600_000
+    return all.filter((e) => e.out > floor).slice(0, LOG_MAX)
+  } catch {
+    return []
+  }
+}
+
+function writeLog(rows: GuardLog[]) {
+  try {
+    localStorage.setItem(LOG_KEY, JSON.stringify(rows.slice(0, LOG_MAX)))
+  } catch {
+    /* โหมดส่วนตัวหรือพื้นที่เต็ม · สมุดหายได้ แต่ห้ามทำให้หน้าพัง */
+  }
+}
+
+const hhmm = (ms: number) =>
+  new Intl.DateTimeFormat('th-TH', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Bangkok',
+  }).format(new Date(ms))
+
 export default function BreakGuard() {
   const { profile } = useAuth()
   const nav = useNavigate()
@@ -92,6 +142,66 @@ export default function BreakGuard() {
   }, [])
 
   const rows = board.data ?? []
+
+  const [log, setLog] = useState<GuardLog[]>(() => readLog())
+
+  /** จดเองตอนกดปุ่ม · เวลาตรงเป๊ะกว่ารอกระดานรอบถัดไป */
+  function noteOut(code: string, people: number) {
+    setLog((prev) => {
+      if (prev.some((e) => e.code === code && e.back === null)) return prev
+      const next = [{ code, people, out: Date.now(), back: null }, ...prev].slice(0, LOG_MAX)
+      writeLog(next)
+      return next
+    })
+  }
+  function noteBack(code: string) {
+    setLog((prev) => {
+      const next = prev.map((e) =>
+        e.code === code && e.back === null ? { ...e, back: Date.now() } : e,
+      )
+      writeLog(next)
+      return next
+    })
+  }
+
+  /**
+   * เทียบสมุดกับกระดาน · ของที่อีกเครื่องทำจะไหลเข้ามาทางนี้
+   *
+   * ทำเฉพาะตอนกระดานโหลดสำเร็จจริง ถ้าเน็ตหลุดแล้วได้ลิสต์ว่างมา
+   * แล้วเผลอไปปิดทุกบรรทัด สมุดจะโกหกว่าทุกคนกลับแล้วทั้งที่ยังอยู่ข้างนอก
+   */
+  useEffect(() => {
+    if (board.loading || board.error || !board.data) return
+    const live = board.data.filter((r) => !r.waiting_gate)
+    setLog((prev) => {
+      let changed = false
+      let next = prev.map((e) => {
+        if (e.back === null && !live.some((r) => r.card_code === e.code)) {
+          changed = true
+          return { ...e, back: Date.now() }
+        }
+        return e
+      })
+      for (const r of live) {
+        if (!next.some((e) => e.code === r.card_code && e.back === null)) {
+          changed = true
+          next = [
+            {
+              code: r.card_code,
+              people: r.gate_out_people ?? r.people,
+              out: Date.parse(r.gate_out_at ?? r.issued_at),
+              back: null,
+            },
+            ...next,
+          ]
+        }
+      }
+      if (!changed) return prev
+      next = next.slice(0, LOG_MAX)
+      writeLog(next)
+      return next
+    })
+  }, [board.data, board.loading, board.error])
 
   /**
    * ส่องอะไรมาก็รับ · เป็นบัตร OS ก็ส่งต่อไปหน้าสแกนบัตร OS ให้เลย
@@ -165,8 +275,8 @@ export default function BreakGuard() {
     // pick = จำนวนที่ขาด · 0 แปลว่าเลือก "อื่น ๆ" ซึ่งคนกลับครบแต่มีเรื่องอื่น
     const returned = pick === 0 ? total : total - pick
     await act(
-      () =>
-        breakProblem({
+      async () => {
+        await breakProblem({
           passId: problemFor.pass.pass_id,
           problem: pick === 0 ? 'อื่น ๆ' : `เข้าไม่ครบ · ขาด ${pick} คน`,
           returned,
@@ -176,7 +286,9 @@ export default function BreakGuard() {
             bytes: p.bytes,
           })),
           note: note.trim() || null,
-        }),
+        })
+        noteBack(problemFor.code)
+      },
       'แจ้งปัญหาและปิดใบแล้ว · เตือนผู้ตรวจสอบไปแล้ว',
     )
     closeProblem()
@@ -210,7 +322,10 @@ export default function BreakGuard() {
                   disabled={busy}
                   onClick={() =>
                     void act(
-                      () => breakGateOut(hit.pass_id, hit.people),
+                      async () => {
+                        await breakGateOut(hit.pass_id, hit.people)
+                        noteOut(hit.code, hit.people)
+                      },
                       `ปล่อยออก ${hit.code} · ${hit.people} คน`,
                     )
                   }
@@ -226,7 +341,10 @@ export default function BreakGuard() {
                   className="btn-ghost mt-2 w-full py-3 text-sm"
                   disabled={busy}
                   onClick={() =>
-                    void act(() => breakReturn(hit.pass_id), `ปิดใบ ${hit.code} แล้ว`)
+                    void act(async () => {
+                      await breakReturn(hit.pass_id)
+                      noteBack(hit.code)
+                    }, `ปิดใบ ${hit.code} แล้ว`)
                   }
                 >
                   คนนี้กลับมาแล้ว · ปิดใบเลย
@@ -242,7 +360,10 @@ export default function BreakGuard() {
                   disabled={busy}
                   onClick={() =>
                     void act(
-                      () => breakReturn(hit.pass_id),
+                      async () => {
+                        await breakReturn(hit.pass_id)
+                        noteBack(hit.code)
+                      },
                       `รับกลับ ${hit.code} · ${hit.gate_out_people ?? hit.people} คน`,
                     )
                   }
@@ -361,6 +482,39 @@ export default function BreakGuard() {
           </ul>
         )}
 
+        {/* ───────── สมุดของเครื่องนี้ ───────── */}
+        {log.length > 0 && (
+          <>
+            <h2 className="mb-2 mt-6 font-display text-sm text-ink-500">
+              บันทึกของเครื่องนี้ · {log.length} ใบ
+            </h2>
+            <ul className="space-y-1">
+              {log.map((e) => (
+                <li
+                  key={`${e.code}-${e.out}`}
+                  className={`flex flex-wrap items-center gap-2 rounded-btn px-3 py-1.5 text-xs ${
+                    e.back === null ? 'bg-warn-bg text-warn-txt' : 'bg-ink/5 text-ink-500'
+                  }`}
+                >
+                  <span className="font-mono text-sm font-bold">{e.code}</span>
+                  <span>{e.people} คน</span>
+                  <span className="min-w-0 flex-1">
+                    ออก {hhmm(e.out)}
+                    {e.back === null ? '' : ` · รับ ${hhmm(e.back)}`}
+                  </span>
+                  <span className="font-semibold">
+                    {e.back === null ? 'ยังไม่กลับ' : 'รับแล้ว'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 rounded-btn bg-ink/5 px-3 py-2 text-xs text-ink-500">
+              จดอยู่ในเครื่องนี้เครื่องเดียว เก็บ 24 ชั่วโมงแล้วล้างเอง · ไม่ได้โหลดจากเน็ต
+              <br />
+              ประวัติตัวจริงที่ครบทุกใบอยู่ในเมนูหลังบ้าน
+            </p>
+          </>
+        )}
       </StaffPage>
 
       {open && (
