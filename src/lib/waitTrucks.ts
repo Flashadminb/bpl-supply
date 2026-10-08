@@ -519,3 +519,16 @@ export async function listWaitLog(from: string, to: string): Promise<WaitLogRow[
   if (error) throw new Error(readableError(error))
   return (data ?? []) as WaitLogRow[]
 }
+
+export interface WaitSheetState {
+  pending: number
+  sent: number
+  last_at: string | null
+}
+
+/** ยังมีกี่คันที่ยังไม่ได้ส่งลงชีต · เอาไปขึ้นบนปุ่มส่ง */
+export async function waitSheetPending(): Promise<WaitSheetState | null> {
+  const { data, error } = await supabase.rpc('wait_sheet_pending')
+  if (error) throw new Error(readableError(error))
+  return (data ?? null) as WaitSheetState | null
+}

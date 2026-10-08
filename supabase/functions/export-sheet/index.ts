@@ -15,11 +15,14 @@
 // จึงไม่ต้องอ่านทั้งชีตมาเทียบทุกครั้ง — เร็วคงที่ไม่ว่าชีตจะใหญ่แค่ไหน
 //
 // ไฟล์นี้เขียนให้จบในตัวเอง ก๊อปวางใน Supabase Dashboard ได้ตรง ๆ
+//   รถรอลงงาน 2569-09  ประวัติรถรอลงงาน — ลงคนละไฟล์ ดู GSHEET_WAIT_ID
+//                        ไม่อยู่ใน scope 'all' ต้องขอ scope 'wait' โดยเฉพาะ
+//
 // secrets: GOOGLE_SA_EMAIL, GOOGLE_SA_PRIVATE_KEY, GSHEET_ID
 // ไม่บังคับ: GSHEET_MEETING_ID, GSHEET_SACK_ID, GSHEET_OSSCAN_ID (ไม่ตั้งก็ใช้ไฟล์ที่ฝังไว้ในโค้ด)
 // =====================================================================
 
-const VERSION = 'truck-v15'
+const VERSION = 'wait-v16'
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
 
 const HEADER = ['เลขที่คำขอ', 'วันเวลา', 'ผู้เบิก (ฮับ)', 'วัสดุ', 'จำนวน', 'หลักฐาน', 'Drive File ID']
@@ -74,6 +77,7 @@ const SACK_SHEET_ID = '1ZqSEG1dTPlCcC9mAJJSwcOQz8vdXyF9rF-RfzB5bvSI'
 const OSSCAN_SHEET_ID = '1Suklni1sHj_waOIRMnu4TU71D8Cdujju6eJbFSddQ74'
 const BREAK_SHEET_ID = '1Mv7zInXLBid27HrdWlwkwbmrd1rHXcYjfhZeY-KYmno'
 const TRUCK_SHEET_ID = '1j9P4eKX9JBNfcYUqDNQzC_4yWk7zZQypVUaG8UPkt1c'
+const WAIT_SHEET_ID = '1KItBMEgie6I9EaWA93N2ISAwr5rn_w5iJtai6cfg2Dg'
 
 /**
  * ประวัติการปล่อยรถ
@@ -83,6 +87,61 @@ const TRUCK_SHEET_ID = '1j9P4eKX9JBNfcYUqDNQzC_4yWk7zZQypVUaG8UPkt1c'
  *
  * ส่งเฉพาะคันที่ปล่อยแล้ว คันที่ยังอยู่ในคลังยังไม่รู้ผลว่าตรงเวลาหรือไม่
  */
+const WAIT_HEADER = [
+  'บาร์โค้ดรถ',
+  'เวลารถถึงจริง',
+  'สถานีก่อนหน้า',
+  'ประเภทรถ',
+  'ทะเบียนรถ',
+  'บริษัทรถ',
+  'ชื่อพนักงานขับรถ',
+  'เบอร์โทร',
+  'ชื่อเส้นทาง',
+  'พัสดุทั้งหมด',
+  'งานส่งตรง DO',
+  'ไม่ใช่งาน DO',
+  'เกณฑ์ (นาที)',
+  'ต้องเสร็จก่อน',
+  'ลงงานเสร็จเมื่อ',
+  'คนกดลงงานเสร็จ',
+  'รอไปกี่นาที',
+  'เกินเกณฑ์ (นาที)',
+  'ผล',
+  'ยกเลิกเมื่อ',
+  'คนยกเลิก',
+  'เหตุผลที่ยกเลิก',
+  'นำเข้าเมื่อ',
+  'คนอัปไฟล์',
+]
+
+interface DbWait {
+  id: number
+  truck_barcode: string
+  arrived_at: string
+  from_station: string | null
+  plate: string | null
+  vehicle_type: string | null
+  route_name: string | null
+  carrier: string | null
+  driver_name: string | null
+  driver_phone: string | null
+  parcels_all: number | null
+  parcels_do: number | null
+  parcels_nondo: number | null
+  kpi_minutes: number
+  due_at: string
+  done_at: string | null
+  done_by_name: string | null
+  cancelled_at: string | null
+  cancelled_by_name: string | null
+  cancel_reason: string | null
+  imported_at: string
+  imported_by_name: string | null
+  waited_min: number | null
+  over_min: number | null
+  result_th: string
+}
+
 const TRUCK_HEADER = [
   'สาขา',
   'รหัสสาขา',
@@ -790,7 +849,7 @@ Deno.serve(async (req) => {
       from?: string
       to?: string
       hub?: string
-      /** 'all' (ค่าเริ่มต้น) | 'supply' | 'asset' | 'by' | 'meeting' | 'sack' | 'osscan' */
+      /** 'all' (ค่าเริ่มต้น) | 'supply' | 'asset' | 'by' | 'meeting' | 'sack' | 'osscan' | 'truck' | 'break' | 'wait' */
       scope?: string
     }
 
@@ -1376,6 +1435,80 @@ Deno.serve(async (req) => {
                 ? { scan_id: r.key, tab: place.tab, row_no: place.row_no, exported_at: stamp }
                 : null
             }).filter(Boolean),
+          ),
+        })
+      }
+    }
+
+    /* ------------------------------------------------ ประวัติรถรอลงงาน */
+    // ลงคนละไฟล์กับทุกอย่าง และไม่อยู่ใน scope 'all' ตั้งใจ
+    // เหตุผลเดียวกับประวัติปล่อยรถ — โตวันละร้อยแถว พ่วงไปกับยอดเบิกประจำวัน
+    // คือการดึงของที่ไม่มีใครขอดู
+    //
+    // ส่งเฉพาะคันที่จบแล้ว · วิวฝั่งฐานข้อมูลกรองให้แล้วตั้งแต่ต้นทาง
+    // คันที่ยังรออยู่บนกระดานยังไม่ใช่ประวัติ ส่งไปแล้วต้องตามกลับมาแก้ทุกแถว
+    if (scope === 'wait') {
+      const wtSheet = Deno.env.get('GSHEET_WAIT_ID') || WAIT_SHEET_ID
+      const wqs = new URLSearchParams({ select: '*', order: 'arrived_at.asc,id.asc' })
+      if (payload.from) wqs.append('arrived_at', `gte.${payload.from}`)
+      if (payload.to) wqs.append('arrived_at', `lte.${payload.to}`)
+
+      const waits = await dbPaged<DbWait>(`wait_export_rows?${wqs}`)
+      const wrows: OutRow[] = waits.map((w) => ({
+        key: w.id,
+        tab: `รถรอลงงาน ${monthOf(w.arrived_at)}`,
+        values: [
+          w.truck_barcode,
+          thaiDateTime(w.arrived_at),
+          w.from_station ?? '',
+          w.vehicle_type ?? '',
+          w.plate ?? '',
+          w.carrier ?? '',
+          w.driver_name ?? '',
+          w.driver_phone ?? '',
+          w.route_name ?? '',
+          w.parcels_all === null ? '' : String(w.parcels_all),
+          w.parcels_do === null ? '' : String(w.parcels_do),
+          w.parcels_nondo === null ? '' : String(w.parcels_nondo),
+          String(w.kpi_minutes),
+          thaiDateTime(w.due_at),
+          thaiDateTime(w.done_at),
+          w.done_by_name ?? '',
+          w.waited_min === null ? '' : String(w.waited_min),
+          w.over_min === null ? '' : String(w.over_min),
+          w.result_th,
+          thaiDateTime(w.cancelled_at),
+          w.cancelled_by_name ?? '',
+          w.cancel_reason ?? '',
+          thaiDateTime(w.imported_at),
+          w.imported_by_name ?? '',
+        ],
+      }))
+
+      if (wrows.length > 0) {
+        const placed = await lookupPlaced('wait_sheet_exports', 'truck_id', wrows.map((r) => r.key))
+        const out = await pushRows(wtSheet, token, wrows, placed, WAIT_HEADER)
+        updated += out.updated
+        appended += out.appended
+        out.tabs.forEach((t) => tabs.add(t))
+
+        const stamp = new Date().toISOString()
+        await db('wait_sheet_exports?on_conflict=truck_id', {
+          method: 'POST',
+          headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify(
+            wrows
+              .map((r) => {
+                const fresh = out.fresh.findIndex((f) => f.key === r.key)
+                const place =
+                  fresh >= 0
+                    ? { tab: out.fresh[fresh].tab, row_no: out.rowNos[fresh] }
+                    : placed.get(r.key)
+                return place
+                  ? { truck_id: r.key, tab: place.tab, row_no: place.row_no, exported_at: stamp }
+                  : null
+              })
+              .filter(Boolean),
           ),
         })
       }

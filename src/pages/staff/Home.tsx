@@ -87,25 +87,99 @@ export default function Home() {
     return (
       <div className="bg-canvas">
         <header className="safe-t bg-brand-500 text-ink">
-          <div className="mx-auto flex max-w-phone items-start gap-3 px-4 pb-5 pt-4">
-            <div className="flex-1">
+          {/*
+          ชื่อกับไอคอนอยู่คนละบรรทัด
+          ของเดิมวางเรียงกันในแถวเดียว พอไอคอนเพิ่มขึ้นเรื่อย ๆ ช่องของชื่อก็แคบลง
+          จนชื่อยาวแตกเป็นบรรทัดละตัวอักษร · แถวไอคอนตกบรรทัดเองได้
+          แปลว่าเพิ่มไอคอนอีกกี่อันชื่อก็ไม่โดนบีบอีก
+        */}
+        <div className="mx-auto max-w-phone px-4 pb-4 pt-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
               <p className="text-sm">สวัสดี</p>
-              <p className="font-display text-lg font-semibold">{profile.full_name}</p>
+              <p className="font-display text-lg font-semibold leading-tight">
+                {profile?.full_name}
+              </p>
               <p className="mt-[2px] font-mono text-xs">
-                {profile.employee_code} · {hubName} · {roleLabel(profile)}
+                {profile?.employee_code} · {hubName} · {profile ? roleLabel(profile) : ''}
               </p>
             </div>
-            <div className="flex flex-col items-end gap-1">
-              <span className="flex items-center gap-2">
-                <MeetingCheckIn />
-                <WorkLinks />
-              </span>
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              {(can(...MANAGER_ROLES) || profile?.can_dispatch) && (
+                <Link to="/admin" className="rounded-btn bg-ink px-3 py-2 text-sm text-white">
+                  {can(...MANAGER_ROLES) ? 'หน้าแอดมิน' : 'หน้าตรวจสอบ'}
+                </Link>
+              )}
               <Link to="/account" className="min-h-tap px-1 py-2 text-sm underline">
                 บัญชีของฉัน
               </Link>
             </div>
           </div>
-        </header>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {/* เช็คอินประชุมเห็นทุกคน ไม่ใช่ของแอดมิน */}
+            <MeetingCheckIn />
+
+            {/* ตารางปล่อยรถ · เห็นทุกคน ยกเว้น รปภ ซึ่งออกไปทางสาขาอื่นของหน้านี้แล้ว */}
+            <Link
+              to="/trucks"
+              aria-label="ตารางปล่อยรถ"
+              className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink/10"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="26"
+                height="26"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.9"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M2 7h10v9H2z" />
+                <path d="M12 10h4.5l3.5 3.5V16H12z" />
+                <circle cx="7" cy="18" r="1.8" />
+                <circle cx="17" cy="18" r="1.8" />
+              </svg>
+            </Link>
+
+            {/*
+              รถรอลงงาน · รอบแรกเห็นเฉพาะเจ้าของระบบกับผู้ตรวจสอบ เพื่อทดสอบก่อนปล่อยหน้างาน
+              ไอคอนเป็นตู้รถที่มีลูกศรลงของกับนาฬิกา ให้แยกออกจากไอคอนปล่อยรถที่อยู่ข้าง ๆ
+            */}
+            {(can('admin') || profile?.can_dispatch) && (
+              <Link
+                to="/wait"
+                aria-label="รถรอลงงาน"
+                className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink/10"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="26"
+                  height="26"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M3 5h11v10H3z" />
+                  <path d="M8.5 7.5v4" />
+                  <path d="M6.5 9.8l2 2 2-2" />
+                  <circle cx="17.3" cy="15.6" r="4.7" />
+                  <path d="M17.3 13.2v2.6l1.8 1" />
+                </svg>
+              </Link>
+            )}
+
+            {/* ลิงก์งาน — เห็นเฉพาะแอดมิน เจ้าของระบบ และผู้ตรวจสอบ */}
+            <WorkLinks />
+            {can(...MANAGER_ROLES) && <NotifyBell />}
+          </div>
+        </div>
+      </header>
 
         <StaffPage className="-mt-3" nav={false}>
           <NoticeBoard />

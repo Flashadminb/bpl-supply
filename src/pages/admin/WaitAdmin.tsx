@@ -3,7 +3,13 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { useAsync } from '../../lib/useAsync'
 import { readableError } from '../../lib/supabase'
-import { listWaitTruckKpi, saveWaitTruckKpi, type WaitTruckKpi } from '../../lib/waitTrucks'
+import {
+  listWaitTruckKpi,
+  saveWaitTruckKpi,
+  waitSheetPending,
+  type WaitTruckKpi,
+} from '../../lib/waitTrucks'
+import { exportToSheet } from '../../lib/api'
 import { PanelHead } from '../../components/charts'
 import { ErrorBox, Loading, Toggle } from '../../components/ui'
 
@@ -49,6 +55,8 @@ export default function WaitAdmin() {
           </Link>
         </div>
       </div>
+
+      <SheetBackup />
 
       <section className="rounded-panel bg-surface p-4 shadow-card">
         <PanelHead
@@ -189,5 +197,110 @@ function KpiTable({
         ช่อง “ลงงานให้เสร็จใน” ยังไม่ถูกใช้ตัดสินอะไร เก็บไว้เพราะไฟล์ของหน้างานมีเกณฑ์นี้อยู่แล้ว
       </p>
     </>
+  )
+}
+
+/**
+ * สำรองประวัติลง Google Sheet
+ *
+ * กดเอง ไม่ได้ตั้งเวลา · เหตุผลเดียวกับการส่งออกชุดอื่นในระบบนี้
+ * งานตั้งเวลาที่ไม่ทำงานคืนหนึ่ง จะเงียบไปเฉย ๆ แล้วไม่มีใครรู้จนกว่าจะต้องใช้ข้อมูล
+ * ส่วนปุ่มที่กดเองนั้น คนกดเห็นผลทันทีว่าสำเร็จกี่แถว
+ *
+ * กดซ้ำกี่ครั้งก็ไม่เกิดแถวซ้ำ เพราะฐานข้อมูลจำตำแหน่งที่เคยเขียนไว้
+ * แถวที่เคยส่งแล้วแต่ข้อมูลเปลี่ยน จะถูกเขียนทับที่เดิม
+ *
+ * ส่งเฉพาะคันที่จบแล้ว คันที่ยังรออยู่บนกระดานยังไม่ใช่ประวัติ
+ */
+function SheetBackup() {
+  const state = useAsync(waitSheetPending, [])
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const s = state.data
+
+  async function send() {
+    setBusy(true)
+    setMsg(null)
+    try {
+      const res = await exportToSheet({ scope: 'wait' })
+      setMsg({
+        ok: true,
+        text: `เพิ่มใหม่ ${res.appended} แถว · อัปเดตของเดิม ${res.updated} แถว · แท็บ ${res.sheet}`,
+      })
+      state.reload()
+    } catch (e) {
+      setMsg({ ok: false, text: readableError(e) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="rounded-panel bg-surface p-4 shadow-card">
+      <PanelHead
+        title="สำรองประวัติลง Google Sheet"
+        hint="กดซ้ำได้ ไม่เกิดแถวซ้ำในชีต · ส่งเฉพาะคันที่ลงงานเสร็จหรือถูกยกเลิกแล้ว"
+        hue={1}
+        right={
+          <a
+            href="https://docs.google.com/spreadsheets/d/1KItBMEgie6I9EaWA93N2ISAwr5rn_w5iJtai6cfg2Dg/edit"
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm underline"
+          >
+            เปิดชีต
+          </a>
+        }
+      />
+
+      {state.loading && <Loading />}
+      {state.error && <ErrorBox message={state.error} onRetry={state.reload} />}
+
+      {s && (
+        <>
+          <div className="grid grid-cols-3 gap-2">
+            <div className={`rounded-card border p-3 ${s.pending > 0 ? 'border-brand-300 bg-brand-50' : ''}`}>
+              <p className="text-sm text-ink-500">ยังไม่ส่ง</p>
+              <p className="mt-1 font-display text-xl leading-none">{s.pending}</p>
+              <p className="mt-1 text-xs text-ink-400">คัน</p>
+            </div>
+            <div className="rounded-card border p-3">
+              <p className="text-sm text-ink-500">ส่งแล้ว</p>
+              <p className="mt-1 font-display text-xl leading-none">{s.sent}</p>
+              <p className="mt-1 text-xs text-ink-400">คัน</p>
+            </div>
+            <div className="rounded-card border p-3">
+              <p className="text-sm text-ink-500">ส่งล่าสุด</p>
+              <p className="mt-1 text-sm font-bold leading-tight">
+                {s.last_at
+                  ? new Date(s.last_at).toLocaleString('th-TH', {
+                      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+                    })
+                  : 'ยังไม่เคยส่ง'}
+              </p>
+            </div>
+          </div>
+
+          <button
+            disabled={busy}
+            onClick={() => void send()}
+            className="mt-3 h-tap w-full rounded-btn bg-ink text-sm font-extrabold text-white disabled:opacity-50"
+          >
+            {busy ? 'กำลังส่ง…' : s.pending > 0 ? `ส่งลงชีต · ค้างอยู่ ${s.pending} คัน` : 'ส่งลงชีตอีกครั้ง'}
+          </button>
+
+          {msg && (
+            <p className={`mt-2 text-sm font-bold ${msg.ok ? 'text-success' : 'text-danger'}`}>
+              {msg.text}
+            </p>
+          )}
+
+          <p className="mt-3 text-xs text-ink-400">
+            แท็บในชีตแยกรายเดือน เช่น “รถรอลงงาน 2569-10” · ฐานข้อมูลลบของเกิน 400 วันทิ้งเอง
+            ชีตจึงเป็นที่เดียวที่เก็บยาวกว่านั้นได้โดยไม่กินพื้นที่
+          </p>
+        </>
+      )}
+    </section>
   )
 }
