@@ -138,6 +138,44 @@ function sweep(ctx: AudioContext, at: number, from: number, to: number, dur: num
   o.stop(at + dur + 0.05)
 }
 
+/**
+ * เสียงนำของขั้นสุดท้าย · ใช้ร่วมกันทุกชุด
+ *
+ * สองโน้ตสลับกันเร็ว ๆ ห่างกันเป็นไตรโทน ซึ่งเป็นคู่เสียงที่ฟังแล้วไม่สบายหู
+ * โดยธรรมชาติ · เป็นคู่เดียวกับที่ระบบเตือนภัยทั่วโลกใช้ ไม่ใช่เรื่องบังเอิญ
+ *
+ * จงใจให้เหมือนกันทุกชุด เพราะสิ่งที่ต้องจำคือ "นี่คือขั้นสุดท้าย"
+ * ไม่ใช่ "นี่คือชุดเสียงอะไร" · เปลี่ยนชุดเสียงแล้วยังต้องรู้ทันทีเหมือนเดิม
+ *
+ * ขั้น 20 กับ 10 นาทีไม่มีอันนี้ จึงแยกออกจากกันได้ตั้งแต่เสียงแรก
+ * ก่อนที่ประโยคจะทันเริ่มด้วยซ้ำ
+ */
+function finalAlert(ctx: AudioContext, at: number) {
+  const lp = ctx.createBiquadFilter()
+  lp.type = 'lowpass'
+  lp.frequency.setValueAtTime(2600, at)
+  lp.connect(ctx.destination)
+
+  const step = 0.115
+  for (let i = 0; i < 4; i++) {
+    const o = ctx.createOscillator()
+    const g = ctx.createGain()
+    o.type = 'square'
+    o.frequency.setValueAtTime(i % 2 === 0 ? 932 : 622, at + i * step)
+    g.gain.setValueAtTime(0.0001, at + i * step)
+    g.gain.exponentialRampToValueAtTime(0.22, at + i * step + 0.008)
+    g.gain.setValueAtTime(0.22, at + i * step + step - 0.03)
+    g.gain.exponentialRampToValueAtTime(0.0001, at + i * step + step)
+    o.connect(g)
+    g.connect(lp)
+    o.start(at + i * step)
+    o.stop(at + i * step + step + 0.02)
+  }
+
+  // คลื่นต่ำรองข้างใต้ · ให้รู้สึกหนัก ไม่ใช่แค่แหลม
+  osc(ctx, at, 110, 0.62, 0.22, 'sine', 0.03)
+}
+
 export interface Pack {
   key: string
   name: string
@@ -169,10 +207,10 @@ export const WAIT_PACKS: Pack[] = [
         horn(ctx, t, 247, 0.34, 0.28)
         horn(ctx, t + 0.46, 247, 0.34, 0.28)
       } else {
-        horn(ctx, t, 294, 0.3, 0.3)
-        horn(ctx, t + 0.4, 294, 0.3, 0.3)
-        horn(ctx, t + 0.8, 294, 0.3, 0.3)
-        horn(ctx, t + 1.3, 165, 0.9, 0.3)
+        finalAlert(ctx, t)
+        horn(ctx, t + 0.6, 294, 0.3, 0.3)
+        horn(ctx, t + 0.6 + 0.4, 294, 0.3, 0.3)
+        horn(ctx, t + 0.6 + 0.9, 165, 0.9, 0.3)
       }
     },
   },
@@ -187,10 +225,11 @@ export const WAIT_PACKS: Pack[] = [
         chime(ctx, t, 659, 0.32)
         chime(ctx, t + 0.4, 523, 0.32)
       } else {
-        chime(ctx, t, 784, 0.34)
-        chime(ctx, t + 0.3, 659, 0.34)
-        chime(ctx, t + 0.6, 523, 0.34)
-        chime(ctx, t + 0.9, 392, 0.34)
+        finalAlert(ctx, t)
+        chime(ctx, t + 0.6, 784, 0.34)
+        chime(ctx, t + 0.6 + 0.3, 659, 0.34)
+        chime(ctx, t + 0.6 + 0.6, 523, 0.34)
+        chime(ctx, t + 0.6 + 0.9, 392, 0.34)
       }
     },
   },
@@ -205,9 +244,9 @@ export const WAIT_PACKS: Pack[] = [
         buzz(ctx, t, 180, 0.3, 0.22)
         buzz(ctx, t + 0.45, 180, 0.3, 0.22)
       } else {
-        buzz(ctx, t, 210, 0.42, 0.24)
-        buzz(ctx, t + 0.55, 210, 0.42, 0.24)
-        buzz(ctx, t + 1.1, 150, 0.9, 0.24)
+        finalAlert(ctx, t)
+        buzz(ctx, t + 0.6, 210, 0.42, 0.24)
+        buzz(ctx, t + 0.6 + 0.55, 150, 0.9, 0.24)
       }
     },
   },
@@ -222,8 +261,9 @@ export const WAIT_PACKS: Pack[] = [
         hit(ctx, t, 1050, 0.14, 0.52)
         hit(ctx, t + 0.18, 1050, 0.14, 0.52)
       } else {
-        for (let i = 0; i < 5; i++) hit(ctx, t + i * 0.16, 1250, 0.12, 0.55)
-        hit(ctx, t + 0.95, 520, 0.35, 0.5, 5)
+        finalAlert(ctx, t)
+        for (let i = 0; i < 4; i++) hit(ctx, t + 0.6 + i * 0.16, 1250, 0.12, 0.55)
+        hit(ctx, t + 0.6 + 0.8, 520, 0.35, 0.5, 5)
       }
     },
   },
@@ -239,8 +279,9 @@ export const WAIT_PACKS: Pack[] = [
         sweep(ctx, t + 0.24, 520, 900, 0.18, 0.26)
         sweep(ctx, t + 0.44, 580, 1000, 0.2, 0.28)
       } else {
-        let x = t
-        for (let i = 0; i < 3; i++) {
+        finalAlert(ctx, t)
+        let x = t + 0.6
+        for (let i = 0; i < 2; i++) {
           sweep(ctx, x, 420, 900, 0.34, 0.3)
           x += 0.34
           sweep(ctx, x, 900, 420, 0.34, 0.3)
@@ -257,12 +298,8 @@ export const WAIT_PACKS: Pack[] = [
     voice: { rate: 1.12, pitch: 0.8 },
     // เสียงนำเป็นเคาะเหล็ก ให้คนเงยหน้าก่อนประโยคจะเริ่ม
     play: (ctx, t, s) => {
-      if (s === 'late') {
-        hit(ctx, t, 1250, 0.12, 0.5)
-        hit(ctx, t + 0.15, 1250, 0.12, 0.5)
-      } else {
-        hit(ctx, t, 1050, 0.13, 0.42)
-      }
+      if (s === 'late') finalAlert(ctx, t)
+      else hit(ctx, t, 1050, 0.13, 0.42)
     },
     say: (s) =>
       s === 'm20'
@@ -279,8 +316,8 @@ export const WAIT_PACKS: Pack[] = [
     voice: { rate: 1.16, pitch: 0.72 },
     // เคาะสามทีถี่ ๆ ให้รู้ว่าคราวนี้ไม่ใช่เตือนเฉย ๆ
     play: (ctx, t, s) => {
-      const n = s === 'late' ? 3 : s === 'm10' ? 2 : 1
-      for (let i = 0; i < n; i++) hit(ctx, t + i * 0.13, 1250, 0.11, 0.52)
+      if (s === 'late') finalAlert(ctx, t)
+      else for (let i = 0; i < (s === 'm10' ? 2 : 1); i++) hit(ctx, t + i * 0.13, 1250, 0.11, 0.52)
     },
     say: (s) =>
       s === 'm20'
@@ -295,7 +332,10 @@ export const WAIT_PACKS: Pack[] = [
     hint: 'ประกาศสุภาพแบบเสียงตามสาย · เหมาะกับตอนมีคนนอกเดินผ่าน',
     kind: 'voice',
     voice: { rate: 0.96, pitch: 1 },
-    play: (ctx, t) => chime(ctx, t, 784, 0.22),
+    play: (ctx, t, s) => {
+      if (s === 'late') finalAlert(ctx, t)
+      else chime(ctx, t, 784, 0.22)
+    },
     say: (s) =>
       s === 'm20'
         ? 'แจ้งเตือน เหลือเวลาอีกยี่สิบนาที กรุณาเตรียมลงงาน'
@@ -309,9 +349,12 @@ export const WAIT_PACKS: Pack[] = [
     hint: 'หยอกเบา ๆ ไม่กดดัน · ฟังทั้งกะแล้วไม่เครียด',
     kind: 'voice',
     voice: { rate: 1.08, pitch: 1.35 },
-    play: (ctx, t) => {
-      chime(ctx, t, 1047, 0.18)
-      chime(ctx, t + 0.14, 1319, 0.18)
+    play: (ctx, t, s) => {
+      if (s === 'late') finalAlert(ctx, t)
+      else {
+        chime(ctx, t, 1047, 0.18)
+        chime(ctx, t + 0.14, 1319, 0.18)
+      }
     },
     say: (s) =>
       s === 'm20'
@@ -401,7 +444,8 @@ function fire(p: Pack, stage: Stage, onEnd?: () => void) {
   if (p.say) {
     const text = p.say(stage)
     const v = p.voice ?? { rate: 1, pitch: 1 }
-    window.setTimeout(() => speak(text, v, onEnd), 320)
+    // เสียงนำของขั้นสุดท้ายยาวกว่าขั้นอื่น ต้องรอให้จบก่อนไม่งั้นคำแรกหาย
+    window.setTimeout(() => speak(text, v, onEnd), stage === 'late' ? 780 : 320)
   } else {
     onEnd?.()
   }
