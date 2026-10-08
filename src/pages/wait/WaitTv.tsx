@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import {
   listWaitBoard,
@@ -6,6 +7,7 @@ import {
   type WaitTruckRow,
 } from '../../lib/waitTrucks'
 import { useAlarmPref, useTruckAlarm } from '../trucks/alarm'
+import { playWaitAlarm, WAIT_ALARM_PREF } from './waitAlarm'
 import { AlarmGate, EdgeGlow, worstStage } from '../trucks/alert-ui'
 import { p2 } from '../trucks/parts'
 import {
@@ -23,6 +25,10 @@ import {
   STATE_COLOR,
   Strip,
   Timer,
+  FLASH_MS,
+  FlashBell,
+  WaitAlarmChip,
+  WaitLogo,
 } from './parts'
 
 /**
@@ -41,22 +47,38 @@ import {
 
 const FLIP_MS = 20_000
 
+const PAGES = ['กระดาน', 'สถิติ'] as const
+
+/** จำไว้ว่าจอนี้ให้สลับเองหรือเปล่า · จอทีวีไม่มีใครมาตั้งใหม่ทุกเช้า */
+const AUTO_PREF = 'wait.tv.auto'
+
 export default function WaitTv() {
+  const nav = useNavigate()
   const board = useAsync(listWaitBoard, [])
   const counts = useAsync(waitTruckCounts, [])
   const [now, setNow] = useState(() => Date.now())
   const [page, setPage] = useState(0)
-  const alarm = useAlarmPref()
+  // ค่าเริ่มต้นคือสลับเอง · จอที่แขวนไว้เฉย ๆ ต้องหมุนเองตั้งแต่เสียบปลั๊ก
+  const [auto, setAuto] = useState(() => localStorage.getItem(AUTO_PREF) !== 'off')
+  const alarm = useAlarmPref(WAIT_ALARM_PREF)
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [])
 
+  /**
+   * นับเวลาใหม่ทุกครั้งที่หน้าเปลี่ยน ไม่ใช่เดินนาฬิกาตัวเดียวทิ้งไว้
+   *
+   * ถ้าใช้ตัวจับเวลาตัวเดียว คนที่กดสลับหน้าเองตอนวินาทีที่ 19
+   * จะโดนเด้งกลับในอีกหนึ่งวินาที ซึ่งเหมือนปุ่มเสีย
+   * ผูกกับ page ไว้ด้วย การกดเองจึงรีเซ็ตเวลาให้อัตโนมัติ
+   */
   useEffect(() => {
-    const t = setInterval(() => setPage((p) => (p + 1) % 2), FLIP_MS)
-    return () => clearInterval(t)
-  }, [])
+    if (!auto) return
+    const t = setTimeout(() => setPage((p) => (p + 1) % PAGES.length), FLIP_MS)
+    return () => clearTimeout(t)
+  }, [auto, page])
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -74,9 +96,16 @@ export default function WaitTv() {
     [board.data, now],
   )
 
-  useTruckAlarm(
+  const fired = useTruckAlarm(
     useMemo(() => live.map(({ r, sec }) => ({ id: r.id, sec })), [live]),
     alarm.on,
+    playWaitAlarm,
+  )
+
+  /** คันที่เพิ่งเตือน · หายเองหลัง FLASH_MS เพราะ now เดินทุกวินาที */
+  const flashing = useMemo(
+    () => new Set(now - fired.at < FLASH_MS ? fired.ids : []),
+    [fired, now],
   )
 
   return (
@@ -84,10 +113,23 @@ export default function WaitTv() {
       <EdgeGlow stage={worstStage(live.map(({ sec }) => ({ sec })))} />
       <AlarmGate open={!alarm.asked} onEnable={() => void alarm.turnOn()} onSkip={alarm.decline} />
 
-      <TvHead now={now} page={page} live={live} />
+      <TvHead
+        now={now}
+        page={page}
+        live={live}
+        auto={auto}
+        onPage={setPage}
+        onAuto={(v) => {
+          setAuto(v)
+          localStorage.setItem(AUTO_PREF, v ? 'on' : 'off')
+        }}
+        alarmOn={alarm.on}
+        onAlarmOn={() => void alarm.turnOn()}
+        onGo={nav}
+      />
 
       {page === 0 ? (
-        <BoardPage live={live} loading={board.loading} />
+        <BoardPage live={live} loading={board.loading} flashing={flashing} />
       ) : (
         <StatsPage live={live} done={counts.data?.done ?? 0} onTime={counts.data?.on_time ?? 0} />
       )}
@@ -95,14 +137,33 @@ export default function WaitTv() {
   )
 }
 
+/**
+ * หัวจอ
+ *
+ * ปุ่มทั้งแถวนี้ไม่ได้มีไว้ใช้ตอนทำงานปกติ จอทีวีไม่มีใครเดินไปกด
+ * มีไว้ตอนตั้งจอ ตอนอยากหยุดดูหน้าสถิตินาน ๆ และตอนเปิดจากมือถือ
+ * จึงทำให้เล็กและจางกว่าตัวเลขทุกตัวบนจอ แต่ยังกดติดด้วยนิ้วที่ใส่ถุงมือ
+ */
 function TvHead({
   now,
   page,
   live,
+  auto,
+  onPage,
+  onAuto,
+  alarmOn,
+  onAlarmOn,
+  onGo,
 }: {
   now: number
   page: number
   live: { r: WaitTruckRow; sec: number }[]
+  auto: boolean
+  onPage: (p: number) => void
+  onAuto: (v: boolean) => void
+  alarmOn: boolean
+  onAlarmOn: () => void
+  onGo: (to: string) => void
 }) {
   const d = new Date(now)
   let over = 0
@@ -116,8 +177,9 @@ function TvHead({
   }
 
   return (
-    <header className="mb-4 flex items-end gap-4">
-      <h1 className="text-[34px] font-extrabold leading-none">รถรอลงงาน</h1>
+    <header className="mb-4">
+      <div className="flex items-end gap-4">
+      <WaitLogo size={30} />
       <div className="flex flex-1 gap-3">
         <TvChip label="เกินเวลา" n={over} color="#E5484D" />
         <TvChip label="เฝ้าระวัง" n={warn} color="#E8B931" />
@@ -129,7 +191,7 @@ function TvHead({
           {p2(d.getHours())}:{p2(d.getMinutes())}
         </div>
         <div className="mt-1 flex justify-end gap-1">
-          {[0, 1].map((i) => (
+          {PAGES.map((_, i) => (
             <span
               key={i}
               className="block h-[6px] rounded-full transition-all"
@@ -138,7 +200,74 @@ function TvHead({
           ))}
         </div>
       </div>
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <TvBtn onClick={() => onGo('/wait')}>← กระดานหน้างาน</TvBtn>
+        <TvBtn onClick={() => onGo('/wait/upload')}>อัปไฟล์</TvBtn>
+
+        <span className="mx-1 h-6 w-px" style={{ background: LINE }} />
+
+        {PAGES.map((label, i) => (
+          <TvBtn key={label} onClick={() => onPage(i)} active={page === i}>
+            {i + 1}. {label}
+          </TvBtn>
+        ))}
+
+        {/* ติ๊กไว้เป็นค่าเริ่มต้น · ปลดเมื่ออยากค้างหน้าสถิติไว้ดูนาน ๆ */}
+        <button
+          type="button"
+          onClick={() => onAuto(!auto)}
+          className="flex h-11 items-center gap-2 rounded-xl px-3 text-[13px] font-bold"
+          style={{
+            background: auto ? '#15301F' : '#1B2430',
+            color: auto ? '#8FE3B4' : '#8A97A6',
+            border: `1px solid ${auto ? '#25A35A' : LINE}`,
+          }}
+        >
+          <span
+            className="flex h-5 w-5 items-center justify-center rounded-[5px] text-[13px] font-extrabold"
+            style={{
+              background: auto ? '#25A35A' : 'transparent',
+              border: `2px solid ${auto ? '#25A35A' : '#55616F'}`,
+              color: '#fff',
+            }}
+          >
+            {auto ? '✓' : ''}
+          </span>
+          สลับหน้าเองทุก 20 วิ
+        </button>
+
+        <span className="ml-auto">
+          <WaitAlarmChip on={alarmOn} onTurnOn={onAlarmOn} compact />
+        </span>
+      </div>
     </header>
+  )
+}
+
+function TvBtn({
+  children,
+  onClick,
+  active,
+}: {
+  children: React.ReactNode
+  onClick: () => void
+  active?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="h-11 shrink-0 rounded-xl px-3 text-[13px] font-bold"
+      style={
+        active
+          ? { background: '#EAF0F7', color: '#101316' }
+          : { background: CARD, border: `1px solid ${LINE}`, color: '#AFC0D4' }
+      }
+    >
+      {children}
+    </button>
   )
 }
 
@@ -163,7 +292,15 @@ function TvChip({ label, n, color }: { label: string; n: number | string; color:
  * วิธีเดียวกับแถบเร่งด่วนของจอปล่อยรถ · คันที่ถูกตัดออกคือคันที่ไม่มีใครเห็นเลย
  * ซึ่งอันตรายกว่าคันที่ตัวเล็กลง
  */
-function BoardPage({ live, loading }: { live: { r: WaitTruckRow; sec: number }[]; loading: boolean }) {
+function BoardPage({
+  live,
+  loading,
+  flashing,
+}: {
+  live: { r: WaitTruckRow; sec: number }[]
+  loading: boolean
+  flashing: Set<number>
+}) {
   if (loading && live.length === 0) {
     return <p className="py-24 text-center text-2xl" style={{ color: DIM }}>กำลังโหลด…</p>
   }
@@ -183,7 +320,7 @@ function BoardPage({ live, loading }: { live: { r: WaitTruckRow; sec: number }[]
   return (
     <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
       {live.map(({ r, sec }) => (
-        <TvCard key={r.id} r={r} sec={sec} big={big} timer={timer} />
+        <TvCard key={r.id} r={r} sec={sec} big={big} timer={timer} flash={flashing.has(r.id)} />
       ))}
     </div>
   )
@@ -194,11 +331,13 @@ function TvCard({
   sec,
   big,
   timer,
+  flash,
 }: {
   r: WaitTruckRow
   sec: number
   big: boolean
   timer: number
+  flash: boolean
 }) {
   const st = liveState(r, sec)
   return (
@@ -215,6 +354,7 @@ function TvCard({
           >
             {r.from_station ?? 'ไม่ระบุสถานี'}
           </h2>
+          {flash && <FlashBell size={big ? 20 : 16} />}
           <Pill state={st} size={big ? 14 : 12} />
         </div>
 
@@ -298,7 +438,7 @@ function StatsPage({
   }, [live])
 
   return (
-    <div className="grid gap-3 lg:grid-cols-2" style={{ minHeight: 'calc(100dvh - 110px)', gridAutoRows: '1fr' }}>
+    <div className="grid gap-3 lg:grid-cols-2" style={{ minHeight: 'calc(100dvh - 180px)', gridAutoRows: '1fr' }}>
       <Hero
         title="คันที่รอนานสุดตอนนี้"
         rows={byWait}

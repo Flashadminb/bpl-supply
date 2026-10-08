@@ -13,7 +13,8 @@ import {
 } from '../../lib/waitTrucks'
 import { Modal } from '../../components/ui'
 import { useAlarmPref, useTruckAlarm } from '../trucks/alarm'
-import { AlarmChip, AlarmGate, EdgeGlow, worstStage } from '../trucks/alert-ui'
+import { AlarmGate, EdgeGlow, worstStage } from '../trucks/alert-ui'
+import { playWaitAlarm, WAIT_ALARM_PREF } from './waitAlarm'
 import {
   BG,
   CARD,
@@ -32,6 +33,10 @@ import {
   STATE_COLOR,
   Strip,
   Timer,
+  FLASH_MS,
+  FlashBell,
+  WaitAlarmChip,
+  WaitLogo,
 } from './parts'
 
 /**
@@ -57,7 +62,7 @@ export default function WaitBoard() {
   const [phone, setPhone] = useState<WaitTruckRow | null>(null)
   const [cancelling, setCancelling] = useState<WaitTruckRow | null>(null)
   const [showDone, setShowDone] = useState(false)
-  const alarm = useAlarmPref()
+  const alarm = useAlarmPref(WAIT_ALARM_PREF)
 
   // นาฬิกาเดินในเครื่อง ไม่ได้ถามเซิร์ฟเวอร์ทุกวินาที
   useEffect(() => {
@@ -86,9 +91,16 @@ export default function WaitBoard() {
    * ซึ่งคือสิ่งที่ต้องการพอดี — ไฟล์รายชั่วโมงมักมีคันที่เลยเวลามาตั้งแต่ก่อนอัป
    * ปลุกย้อนหลังใส่คนที่เพิ่งกดอัปไฟล์ไม่ได้ช่วยอะไร เขาเห็นสีแดงอยู่แล้ว
    */
-  useTruckAlarm(
+  const fired = useTruckAlarm(
     useMemo(() => live.map(({ r, sec }) => ({ id: r.id, sec })), [live]),
     alarm.on,
+    playWaitAlarm,
+  )
+
+  /** คันที่เพิ่งเตือน · หายเองหลัง FLASH_MS เพราะ now เดินทุกวินาที */
+  const flashing = useMemo(
+    () => new Set(now - fired.at < FLASH_MS ? fired.ids : []),
+    [fired, now],
   )
 
   const count = useMemo(() => {
@@ -128,8 +140,10 @@ export default function WaitBoard() {
       <header className="sticky top-0 z-20 px-3 pb-2 pt-3" style={{ background: BG }}>
         <div className="mx-auto w-full max-w-5xl">
           <div className="mb-2 flex items-center gap-2">
-            <h1 className="min-w-0 flex-1 truncate text-xl font-extrabold">รถรอลงงาน</h1>
-            <AlarmChip on={alarm.on} onClick={() => void alarm.turnOn()} />
+            <span className="min-w-0 flex-1 truncate">
+              <WaitLogo size={20} />
+            </span>
+            <WaitAlarmChip on={alarm.on} onTurnOn={() => void alarm.turnOn()} compact />
             <HeadBtn onClick={() => nav('/wait/upload')} tone="go">
               อัปไฟล์
             </HeadBtn>
@@ -199,6 +213,7 @@ export default function WaitBoard() {
               r={r}
               sec={sec}
               busy={busy === r.id}
+              flash={flashing.has(r.id)}
               onDone={() => void act(r.id, () => doneWaitTruck(r.id))}
               onPhone={() => setPhone(r)}
               onCancel={() => setCancelling(r)}
@@ -280,6 +295,7 @@ function TruckCard({
   r,
   sec,
   busy,
+  flash,
   onDone,
   onPhone,
   onCancel,
@@ -287,6 +303,8 @@ function TruckCard({
   r: WaitTruckRow
   sec: number
   busy: boolean
+  /** เพิ่งมีเสียงเตือนเพราะคันนี้ · ขึ้นกระดิ่งกระพริบให้รู้ว่าคันไหน */
+  flash: boolean
   onDone: () => void
   onPhone: () => void
   onCancel: () => void
@@ -306,6 +324,7 @@ function TruckCard({
           <h2 className="min-w-0 flex-1 text-[17px] font-extrabold leading-tight">
             {r.from_station ?? 'ไม่ระบุสถานีก่อนหน้า'}
           </h2>
+          {flash && <FlashBell size={18} />}
           <Pill state={st} />
         </div>
 

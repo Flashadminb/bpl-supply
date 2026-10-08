@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 import { Countdown, p2 } from '../trucks/parts'
+import { Bell } from '../trucks/alert-ui'
+import { previewWaitAll } from './waitAlarm'
 import type { WaitState, WaitTruckRow } from '../../lib/waitTrucks'
 
 /**
@@ -201,4 +203,89 @@ export const nf = (n: number | null | undefined): string =>
 export function pct(part: number, total: number): string {
   if (total <= 0) return '—'
   return Math.round((part / total) * 100) + '%'
+}
+
+/**
+ * ปุ่มเสียงเตือนของกระดานนี้
+ *
+ * เขียนแยกจากของปล่อยรถเพราะปุ่มนั้นผูกกับชุดเสียงของปล่อยรถไว้ตายตัว
+ * กดฟังตัวอย่างแล้วจะได้ยินเสียงผิดกระดาน ซึ่งคือสิ่งที่ตั้งใจเลี่ยงตั้งแต่แรก
+ */
+export function WaitAlarmChip({
+  on,
+  onTurnOn,
+  compact = false,
+}: {
+  on: boolean
+  onTurnOn: () => void
+  compact?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => (on ? previewWaitAll() : onTurnOn())}
+      className="flex h-11 shrink-0 items-center gap-2 rounded-xl px-3 font-bold"
+      style={{
+        background: on ? '#1B2430' : '#3A2A14',
+        color: on ? '#AFC0D4' : '#FFC400',
+        fontSize: compact ? 12 : 13,
+      }}
+    >
+      <Bell size={16} color={on ? '#35D98A' : '#FFC400'} ring={!on} />
+      {compact ? (on ? 'เสียงเปิด' : 'เสียงปิด') : on ? 'เสียงเตือนเปิดอยู่ · กดฟังตัวอย่าง' : 'เสียงเตือนปิดอยู่ · กดเปิด'}
+    </button>
+  )
+}
+
+/** กระดิ่งค้างบนการ์ดกี่วินาทีหลังเตือน · นานพอให้คนที่เพิ่งเงยหน้ายังเห็นทัน */
+export const FLASH_MS = 30_000
+
+/**
+ * กระดิ่งกระพริบบนคันที่เพิ่งเตือน
+ *
+ * เสียงบอกว่ามีอะไรเกิดขึ้น แต่ไม่ได้บอกว่าคันไหน
+ * บนกระดานสิบคันที่แดงอยู่แล้วห้าคัน คนได้ยินเสียงแล้วหาไม่เจอว่าคันไหนเพิ่งเปลี่ยน
+ * จุดกระพริบจุดเดียวตอบคำถามนั้นได้ทันทีโดยไม่ต้องอ่านอะไรเลย
+ *
+ * กระพริบแค่ช่วงสั้น ๆ แล้วหายไปเอง · ถ้าค้างไว้ตลอด
+ * เดี๋ยวทั้งกระดานก็กระพริบหมด ซึ่งเท่ากับไม่มีอะไรกระพริบ
+ */
+export function FlashBell({ size = 22 }: { size?: number }) {
+  return (
+    <span
+      className="inline-flex shrink-0 animate-pulse items-center justify-center rounded-full"
+      style={{
+        width: size + 10,
+        height: size + 10,
+        background: '#E5484D',
+        boxShadow: '0 0 0 4px rgba(229,72,77,.28)',
+      }}
+      aria-label="คันนี้เพิ่งมีเสียงเตือน"
+      title="คันนี้เพิ่งมีเสียงเตือน"
+    >
+      <Bell size={size} color="#fff" ring={false} />
+    </span>
+  )
+}
+
+/**
+ * โลโก้หัวจอ · ชุดเดียวกับจอปล่อยรถ
+ *
+ * เหมือนกันโดยตั้งใจ สองจอนี้แขวนอยู่ในคลังเดียวกันและเป็นระบบเดียวกัน
+ * ต่างกันแค่ชื่องาน ซึ่งเป็นสิ่งเดียวที่คนต้องอ่านเพื่อรู้ว่ากำลังดูจอไหน
+ */
+export function WaitLogo({ title = 'รถรอลงงาน 21BPL', size = 30 }: { title?: string; size?: number }) {
+  return (
+    <span className="flex items-center gap-3">
+      <span
+        className="rounded-lg px-3 py-1.5 font-extrabold leading-none"
+        style={{ background: '#FFC400', color: '#0B0E11', fontSize: Math.round(size * 0.68) }}
+      >
+        FLASH
+      </span>
+      <span className="font-extrabold leading-none" style={{ fontSize: size }}>
+        {title}
+      </span>
+    </span>
+  )
 }

@@ -52,6 +52,18 @@ export function audioOn(): boolean {
 }
 
 /**
+ * ให้ชุดเสียงอื่นยืมเครื่องเสียงตัวเดียวกันไปใช้
+ *
+ * เบราว์เซอร์จำกัดจำนวน AudioContext ต่อหน้า และแต่ละตัวต้องถูกปลดล็อกแยกกัน
+ * สร้างคนละตัวแปลว่าคนต้องกดเปิดเสียงสองครั้งโดยไม่รู้ว่าทำไม
+ *
+ * คืน null เมื่อยังไม่ได้ปลดล็อก · คนเรียกต้องเช็คเองทุกครั้ง
+ */
+export function audioCtx(): AudioContext | null {
+  return ctx && ctx.state === 'running' ? ctx : null
+}
+
+/**
  * ปลดล็อกเสียง
  *
  * เบราว์เซอร์ห้ามเล่นเสียงจนกว่าคนจะแตะหน้าจอนั้นสักครั้ง
@@ -145,12 +157,33 @@ const PREF = 'truck.alarm'
  * รอบเดียวกันมีหลายคันข้ามเส้นพร้อมกัน ให้เล่นเสียงของขั้นที่หนักที่สุดเสียงเดียว
  * เสียงซ้อนกันสามเสียงฟังไม่ออกว่าเสียงอะไร และกลายเป็นเสียงรบกวนทันที
  */
-export function useTruckAlarm(items: { id: number; sec: number }[], enabled: boolean) {
+export function useTruckAlarm(
+  items: { id: number; sec: number }[],
+  enabled: boolean,
+  /**
+   * ชุดเสียงที่จะเล่น · ค่าเริ่มต้นคือเสียงของตารางปล่อยรถ
+   *
+   * รถรอลงงานส่งชุดของตัวเองเข้ามา เพราะสองกระดานดังพร้อมกันได้ในคลังเดียวกัน
+   * แยกตรรกะไปเขียนใหม่ไม่ได้ กติกา "เพิ่งเห็นครั้งแรกไม่ส่งเสียง" ละเอียดเกินกว่าจะมีสองชุด
+   */
+  play: (s: Stage) => void = playAlarm,
+): { ids: number[]; at: number } {
   const seen = useRef(new Map<number, Stage | null>())
   const seeded = useRef(false)
+  /**
+   * คันที่เพิ่งข้ามเส้นรอบล่าสุด · ส่งคืนให้หน้าจอเอาไปขึ้นกระดิ่งกระพริบ
+   *
+   * เสียงบอกว่า "มีอะไรเกิดขึ้น" แต่ไม่ได้บอกว่าคันไหน
+   * บนกระดานที่มีสิบคัน คนได้ยินเสียงแล้วต้องกวาดตาหาเองว่าคันไหนเพิ่งเปลี่ยน
+   * ซึ่งเสียเวลาและหาผิดได้ ถ้ามีคันอื่นสีเดียวกันอยู่ก่อนแล้ว
+   *
+   * เก็บไว้แม้ตอนปิดเสียง เพราะจอที่ปิดเสียงยิ่งต้องการเครื่องหมายบนจอ
+   */
+  const [fired, setFired] = useState<{ ids: number[]; at: number }>({ ids: [], at: 0 })
 
   useEffect(() => {
     const next = new Map<number, Stage | null>()
+    const hit: number[] = []
     let fire: Stage | null = null
     for (const it of items) {
       const st = stageOf(it.sec)
@@ -159,16 +192,23 @@ export function useTruckAlarm(items: { id: number; sec: number }[], enabled: boo
       // prev เป็น undefined แปลว่าเพิ่งเห็นคันนี้ครั้งแรก ไม่ใช่คันที่เพิ่งข้ามเส้นต่อหน้า
       // กรอกรถย้อนหลังที่เลยกำหนดไปแล้ว จึงไม่ปลุกนาฬิกาใส่หน้าคนกรอก
       // เขารู้อยู่แล้วว่ามันเลย เพราะเขาเป็นคนพิมพ์เวลานั้นเอง
-      if (seeded.current && st && prev !== undefined && st !== prev && (!fire || RANK[st] > RANK[fire]))
-        fire = st
+      if (seeded.current && st && prev !== undefined && st !== prev) {
+        hit.push(it.id)
+        if (!fire || RANK[st] > RANK[fire]) fire = st
+      }
     }
     seen.current = next
     if (!seeded.current) {
       seeded.current = true
       return
     }
-    if (fire && enabled) playAlarm(fire)
+    // ตั้งค่าเฉพาะตอนมีของจริง · items เปลี่ยนตัวตนทุกวินาทีอยู่แล้ว
+    // ถ้าเซ็ตทุกรอบจะได้การวาดจอเพิ่มมาวินาทีละครั้งโดยไม่ได้อะไรเลย
+    if (hit.length) setFired({ ids: hit, at: Date.now() })
+    if (fire && enabled) play(fire)
   }, [items, enabled])
+
+  return fired
 }
 
 /**
@@ -181,12 +221,12 @@ export function useTruckAlarm(items: { id: number; sec: number }[], enabled: boo
  * ถ้าตอบว่าเปิด ระบบจะลองเปิดเสียงเองก่อน ไม่สำเร็จก็รอให้แตะอะไรก็ได้บนหน้านั้น
  * แตะปุ่มไหนก็ได้ เลื่อนจอก็ได้ เสียงจะกลับมาเองโดยไม่ต้องกดอะไรเพิ่ม
  */
-export function useAlarmPref() {
+export function useAlarmPref(prefKey: string = PREF) {
   const [on, setOn] = useState(() => audioOn())
-  const [asked, setAsked] = useState(() => localStorage.getItem(PREF) !== null)
+  const [asked, setAsked] = useState(() => localStorage.getItem(prefKey) !== null)
 
   useEffect(() => {
-    if (localStorage.getItem(PREF) !== 'on' || audioOn()) return
+    if (localStorage.getItem(prefKey) !== 'on' || audioOn()) return
     let dead = false
     const wake = () => {
       void unlockAudio().then((ok) => {
@@ -200,18 +240,18 @@ export function useAlarmPref() {
       dead = true
       evs.forEach((e) => document.removeEventListener(e, wake))
     }
-  }, [])
+  }, [prefKey])
 
   async function turnOn() {
     const ok = await unlockAudio()
     setOn(ok)
     setAsked(true)
-    localStorage.setItem(PREF, ok ? 'on' : 'off')
+    localStorage.setItem(prefKey, ok ? 'on' : 'off')
     return ok
   }
   function decline() {
     setAsked(true)
-    localStorage.setItem(PREF, 'off')
+    localStorage.setItem(prefKey, 'off')
   }
   return { on, asked, turnOn, decline }
 }
