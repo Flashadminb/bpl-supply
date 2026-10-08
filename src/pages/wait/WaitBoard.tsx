@@ -182,6 +182,7 @@ export default function WaitBoard() {
               <HeadBtn onClick={() => fileRef.current?.click()} tone="go">
                 อัปไฟล์
               </HeadBtn>
+              <HeadBtn onClick={() => nav('/wait/history')}>ประวัติ</HeadBtn>
               <HeadBtn onClick={() => nav('/wait/tv')}>ทีวี</HeadBtn>
             </div>
 
