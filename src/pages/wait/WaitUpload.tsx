@@ -290,18 +290,25 @@ export default function WaitUpload() {
               </details>
             )}
 
-            <Preview rows={rows} onBoard={onBoard} />
-
+            {/*
+              ปุ่มส่งอยู่เหนือตารางตัวอย่าง ไม่ใช่ใต้สุดของหน้า
+              คนตัดสินใจจากตัวเลขสรุปสี่ช่องข้างบน ตารางข้างล่างเป็นของประกอบ
+              และที่สำคัญกว่านั้น ใต้สุดของหน้าคือที่ของแถบ "มีเวอร์ชันใหม่" ซึ่งลอยทับอยู่
+              ปุ่มที่สำคัญที่สุดของหน้าไม่ควรไปนั่งอยู่ตรงนั้น
+            */}
             <button
               disabled={!canSend}
               onClick={() => void send()}
-              className="mt-3 h-14 w-full rounded-2xl text-base font-extrabold disabled:opacity-40"
+              className="mb-3 h-14 w-full rounded-2xl text-base font-extrabold disabled:opacity-40"
               style={{ background: canSend ? '#25A35A' : '#1C2430', color: '#fff' }}
             >
               {unknown.length > 0
                 ? `เลือกประเภทรถให้ครบอีก ${unknown.length} คัน`
                 : `ส่งขึ้นกระดาน · คันใหม่ ${fresh.length} คัน`}
             </button>
+
+            <Preview rows={rows} onBoard={onBoard} />
+
           </>
         )}
 
