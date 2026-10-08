@@ -72,6 +72,7 @@ const TruckLog = lazy(() => import('./pages/trucks/TruckLog'))
 const WaitBoard = lazy(() => import('./pages/wait/WaitBoard'))
 const WaitTv = lazy(() => import('./pages/wait/WaitTv'))
 const WaitLog = lazy(() => import('./pages/wait/WaitLog'))
+const WaitStats = lazy(() => import('./pages/wait/WaitStats'))
 const TruckAdmin = lazy(() => import('./pages/admin/TruckAdmin'))
 const WaitAdmin = lazy(() => import('./pages/admin/WaitAdmin'))
 
@@ -271,6 +272,7 @@ export default function App() {
       <Route path="/wait/upload" element={<Navigate to="/wait?upload=1" replace />} />
       <Route path="/wait/tv" element={<Guard roles={['admin']} allowDispatch><WaitTv /></Guard>} />
       <Route path="/wait/history" element={<Guard roles={['admin']} allowDispatch><WaitLog /></Guard>} />
+      <Route path="/wait/stats" element={<Guard roles={['admin']} allowDispatch><WaitStats /></Guard>} />
       <Route path="/assets" element={<Guard><AssetBasket /></Guard>} />
       <Route path="/assets/done/:refNo" element={<Guard><AssetDone /></Guard>} />
       <Route path="/assets/:typeCode" element={<Guard><AssetPick /></Guard>} />

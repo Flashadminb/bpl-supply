@@ -83,6 +83,13 @@ export default function WaitLog() {
             ← กระดาน
           </button>
           <WaitLogo size={18} title="ประวัติรถรอลงงาน" />
+          <button
+            onClick={() => nav('/wait/stats')}
+            className="h-11 shrink-0 rounded-xl px-3 text-[13px] font-bold"
+            style={{ background: CARD, border: `1px solid ${LINE}` }}
+          >
+            แดชบอร์ด
+          </button>
           <span className="ml-auto">
             <DateRangePicker
               from={from}

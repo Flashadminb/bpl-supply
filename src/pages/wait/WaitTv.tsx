@@ -247,6 +247,7 @@ function TvHead({
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <TvBtn onClick={() => onGo('/wait')}>← กระดานหน้างาน</TvBtn>
         <TvBtn onClick={() => onGo('/wait?upload=1')}>อัปไฟล์</TvBtn>
+        <TvBtn onClick={() => onGo('/wait/stats')}>แดชบอร์ด</TvBtn>
         <TvBtn onClick={() => onGo('/wait/history')}>ประวัติ</TvBtn>
 
         <span className="mx-1 h-6 w-px" style={{ background: LINE }} />
