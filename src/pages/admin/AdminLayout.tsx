@@ -121,6 +121,7 @@ const GROUPS: Group[] = [
       { to: '/admin/trucks', label: 'ส่งชีต สาขา แจ้งเตือน', icon: 'sheet', adminOnly: true },
       { to: '/wait', label: 'กระดานรถรอลงงาน', icon: 'clock', audit: true },
       { to: '/admin/wait', label: 'สถิติและเกณฑ์รถรอลงงาน', icon: 'chart', audit: true },
+      { to: '/wait/history', label: 'ประวัติรถรอลงงาน', icon: 'history', audit: true },
     ],
   },
   {

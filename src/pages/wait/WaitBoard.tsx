@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import { readableError } from '../../lib/supabase'
 import {
@@ -7,7 +7,9 @@ import {
   doneWaitTruck,
   listWaitBoard,
   listWaitDone,
+  listWaitTruckKpi,
   undoneWaitTruck,
+  waitTruckCounts,
   WAIT_CANCEL_REASONS,
   type WaitTruckRow,
 } from '../../lib/waitTrucks'
@@ -15,67 +17,81 @@ import { Modal } from '../../components/ui'
 import { useAlarmPref, useTruckAlarm } from '../trucks/alarm'
 import { AlarmGate, EdgeGlow, worstStage } from '../trucks/alert-ui'
 import { playWaitAlarm, WAIT_ALARM_PREF } from './waitAlarm'
+import { UploadBox } from './UploadBox'
 import {
   BG,
   CARD,
   clock,
   Chip,
   DIM,
-  Field,
-  Inset,
+  FLASH_MS,
+  FlashBell,
   INSET,
+  LastUpdate,
   LINE,
   liveState,
   nf,
+  Parcels,
   PhoneIcon,
   Pill,
   secLeft,
   STATE_COLOR,
-  Strip,
   Timer,
-  FLASH_MS,
-  FlashBell,
   WaitAlarmChip,
   WaitLogo,
 } from './parts'
 
 /**
- * กระดานรถรอลงงาน
+ * กระดานรถรอลงงาน · หน้าที่หน้างานเปิดค้างไว้ทั้งกะ
  *
- * ของเดิมคือไฟล์ Excel ที่มีสูตรนับถอยหลังกับ VBA ซึ่งพังสองทาง
- * ต้องกดปุ่มเริ่มนาฬิกาเอง ลืมกดแล้วตัวเลขค้างทั้งวัน
- * และช่องทัน-ไม่ทันเป็นช่องให้ติ๊กมือ ซึ่งติ๊กให้สวยได้ สถิติจึงเชื่อไม่ได้
+ * หน้านี้ทำสามอย่างเท่านั้น — กดลงงานเสร็จ กดยกเลิก กดโทรหาคนขับ
+ * ทุกอย่างที่ไม่ได้ช่วยสามอย่างนั้นคือสิ่งที่ต้องเล็กลงหรือหายไป
  *
- * ของใหม่ไม่มีปุ่มเริ่ม นาฬิกาเดินตั้งแต่เวลารถถึงที่อยู่ในไฟล์อยู่แล้ว
- * และมีปุ่มเดียวคือลงงานเสร็จ ทัน-ไม่ทันตัดสินจากนาฬิกาตอนกด
- *
- * ไม่มีขั้น "กำลังลงงาน" โดยตั้งใจ · ปุ่มที่ต้องกดสองครั้ง
- * คือปุ่มที่หน้างานจะลืมกดครั้งแรก แล้วตัวเลขทั้งกระดานก็เชื่อไม่ได้อีก
+ * การ์ดถูกบีบให้เตี้ยที่สุดเท่าที่ยังใส่ข้อมูลครบ
+ * เพราะกระดานที่เห็นสิบคันในจอเดียว มีประโยชน์กว่ากระดานที่เห็นสามคันแต่สวย
+ * ปุ่มเล็กลงแต่ยังสูง 44px ตามกติกาเรื่องคนใส่ถุงมือ
  */
 
 export default function WaitBoard() {
   const nav = useNavigate()
+  const [params, setParams] = useSearchParams()
   const board = useAsync(listWaitBoard, [])
+  const counts = useAsync(waitTruckCounts, [])
+  const kpi = useAsync(listWaitTruckKpi, [])
+
   const [now, setNow] = useState(() => Date.now())
   const [busy, setBusy] = useState<number | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [q, setQ] = useState('')
   const [phone, setPhone] = useState<WaitTruckRow | null>(null)
   const [cancelling, setCancelling] = useState<WaitTruckRow | null>(null)
   const [showDone, setShowDone] = useState(false)
+  const [picked, setPicked] = useState<File | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
   const alarm = useAlarmPref(WAIT_ALARM_PREF)
 
-  // นาฬิกาเดินในเครื่อง ไม่ได้ถามเซิร์ฟเวอร์ทุกวินาที
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [])
 
-  // ดึงของใหม่ทุกนาที และหยุดดึงเมื่อหน้าถูกพับไว้ ไม่ให้กินโควตาเปล่า
   useEffect(() => {
     const t = setInterval(() => {
-      if (document.visibilityState === 'visible') board.reload()
+      if (document.visibilityState === 'visible') {
+        board.reload()
+        counts.reload()
+      }
     }, 60_000)
     return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // มาจากปุ่มอัปไฟล์บนจอทีวี · เปิดช่องเลือกไฟล์ให้เลย ไม่ต้องกดซ้ำ
+  useEffect(() => {
+    if (params.get('upload') === '1') {
+      setParams({}, { replace: true })
+      fileRef.current?.click()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -86,36 +102,49 @@ export default function WaitBoard() {
     [rows, now],
   )
 
-  /**
-   * คันที่เพิ่งโผล่มาครั้งแรกจะถูกจำไว้เงียบ ๆ ไม่ปลุกเสียง
-   * ซึ่งคือสิ่งที่ต้องการพอดี — ไฟล์รายชั่วโมงมักมีคันที่เลยเวลามาตั้งแต่ก่อนอัป
-   * ปลุกย้อนหลังใส่คนที่เพิ่งกดอัปไฟล์ไม่ได้ช่วยอะไร เขาเห็นสีแดงอยู่แล้ว
-   */
   const fired = useTruckAlarm(
     useMemo(() => live.map(({ r, sec }) => ({ id: r.id, sec })), [live]),
     alarm.on,
     playWaitAlarm,
   )
-
-  /** คันที่เพิ่งเตือน · หายเองหลัง FLASH_MS เพราะ now เดินทุกวินาที */
   const flashing = useMemo(
     () => new Set(now - fired.at < FLASH_MS ? fired.ids : []),
     [fired, now],
   )
 
-  const count = useMemo(() => {
+  /**
+   * ค้นหาจากทุกช่องที่คนน่าจะจำได้
+   *
+   * หน้างานจำได้คนละอย่าง บางคนจำทะเบียน บางคนจำสาขาต้นทาง
+   * บางคนถือใบที่มีแต่บาร์โค้ด · บังคับให้ค้นได้ช่องเดียวคือบังคับให้เขาเลื่อนหา
+   */
+  const shown = useMemo(() => {
+    const k = q.trim().toLowerCase()
+    if (!k) return live
+    return live.filter(({ r }) =>
+      [r.from_station, r.plate, r.truck_barcode, r.vehicle_type, r.driver_name, r.carrier].some(
+        (v) => (v ?? '').toLowerCase().includes(k),
+      ),
+    )
+  }, [live, q])
+
+  const onBoardCodes = useMemo(() => new Set(rows.map((r) => r.truck_barcode)), [rows])
+
+  const tally = useMemo(() => {
     let over = 0
     let warn = 0
     let wait = 0
-    let pcs = 0
+    let doJob = 0
+    let nondo = 0
     for (const { r, sec } of live) {
       const st = liveState(r, sec)
       if (st === 'overdue') over++
       else if (st === 'warn') warn++
       else wait++
-      pcs += r.parcels ?? 0
+      doJob += r.parcels_do ?? 0
+      nondo += r.parcels_nondo ?? 0
     }
-    return { over, warn, wait, pcs }
+    return { over, warn, wait, doJob, nondo }
   }, [live])
 
   async function act(id: number, fn: () => Promise<unknown>) {
@@ -124,6 +153,7 @@ export default function WaitBoard() {
     try {
       await fn()
       board.reload()
+      counts.reload()
     } catch (e) {
       setErr(readableError(e))
     } finally {
@@ -131,111 +161,176 @@ export default function WaitBoard() {
     }
   }
 
+  function reloadAll() {
+    board.reload()
+    counts.reload()
+  }
+
   return (
     <>
       <div className="min-h-dvh pb-24 text-white" style={{ background: BG }}>
-      <EdgeGlow stage={worstStage(live.map(({ sec }) => ({ sec })))} />
-      <AlarmGate open={!alarm.asked} onEnable={() => void alarm.turnOn()} onSkip={alarm.decline} />
+        <EdgeGlow stage={worstStage(live.map(({ sec }) => ({ sec })))} />
+        <AlarmGate open={!alarm.asked} onEnable={() => void alarm.turnOn()} onSkip={alarm.decline} />
 
-      <header className="sticky top-0 z-20 px-3 pb-2 pt-3" style={{ background: BG }}>
-        <div className="mx-auto w-full max-w-5xl">
-          <div className="mb-2 flex items-center gap-2">
-            <span className="min-w-0 flex-1 truncate">
-              <WaitLogo size={20} />
-            </span>
-            <WaitAlarmChip on={alarm.on} onTurnOn={() => void alarm.turnOn()} compact />
-            <HeadBtn onClick={() => nav('/wait/upload')} tone="go">
-              อัปไฟล์
-            </HeadBtn>
-            <HeadBtn onClick={() => nav('/wait/tv')}>ทีวี</HeadBtn>
+        <header className="sticky top-0 z-20 px-3 pb-2 pt-3" style={{ background: BG }}>
+          <div className="mx-auto w-full max-w-5xl">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate">
+                <WaitLogo size={19} />
+              </span>
+              <WaitAlarmChip on={alarm.on} onTurnOn={() => void alarm.turnOn()} compact />
+              <HeadBtn onClick={() => fileRef.current?.click()} tone="go">
+                อัปไฟล์
+              </HeadBtn>
+              <HeadBtn onClick={() => nav('/wait/tv')}>ทีวี</HeadBtn>
+            </div>
+
+            <div className="mb-2">
+              <LastUpdate at={counts.data?.last_import} now={now} />
+            </div>
+
+            <div className="mb-2 flex gap-2">
+              <Chip label="เกินเวลา" n={tally.over} color="#E5484D" />
+              <Chip label="เฝ้าระวัง" n={tally.warn} color="#E8B931" />
+              <Chip label="กำลังรอ" n={tally.wait} color="#2F7FE0" />
+              <Chip label="DO" n={nf(tally.doJob)} color="#17566E" sub="ชิ้น" />
+              <Chip label="ไม่ใช่ DO" n={nf(tally.nondo)} color="#3D2C66" sub="ชิ้น" />
+            </div>
+
+            <div className="relative">
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="ค้นหา สาขา ทะเบียน บาร์โค้ด ประเภทรถ ชื่อคนขับ"
+                className="h-11 w-full rounded-xl pl-9 pr-9 text-sm font-bold outline-none"
+                style={{ background: CARD, border: `1px solid ${LINE}`, color: '#EAF0F7' }}
+              />
+              <span
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[15px]"
+                style={{ color: DIM }}
+              >
+                ⌕
+              </span>
+              {q !== '' && (
+                <button
+                  onClick={() => setQ('')}
+                  aria-label="ล้างคำค้น"
+                  className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg"
+                  style={{ color: DIM }}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
+        </header>
+
+        <main className="mx-auto w-full max-w-5xl px-3">
+          {err && (
+            <div
+              className="mb-3 rounded-xl p-3 text-sm font-bold"
+              style={{ background: '#3A1416', border: '1px solid #E5484D', color: '#FFD9DA' }}
+            >
+              {err}
+            </div>
+          )}
+
+          {board.loading && rows.length === 0 && (
+            <p className="py-16 text-center text-sm" style={{ color: DIM }}>
+              กำลังโหลดกระดาน…
+            </p>
+          )}
+
+          {board.error && (
+            <div className="rounded-2xl p-4 text-center" style={{ background: CARD }}>
+              <p className="text-sm font-bold" style={{ color: '#FFB4B6' }}>
+                {board.error}
+              </p>
+              <button
+                onClick={board.reload}
+                className="mt-3 h-11 rounded-xl px-5 text-sm font-bold"
+                style={{ background: INSET, border: `1px solid ${LINE}` }}
+              >
+                ลองใหม่
+              </button>
+            </div>
+          )}
+
+          {!board.loading && !board.error && rows.length === 0 && (
+            <div className="rounded-2xl p-8 text-center" style={{ background: CARD }}>
+              <p className="text-base font-bold">ยังไม่มีรถรอลงงาน</p>
+              <p className="mt-1 text-sm" style={{ color: DIM }}>
+                โหลดไฟล์รายงานจากระบบบริษัทแล้วโยนเข้ามาได้เลย
+              </p>
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="mt-4 h-12 rounded-xl px-6 text-sm font-extrabold"
+                style={{ background: '#2F7FE0' }}
+              >
+                อัปไฟล์
+              </button>
+            </div>
+          )}
+
+          {rows.length > 0 && shown.length === 0 && (
+            <p className="py-10 text-center text-sm" style={{ color: DIM }}>
+              ไม่เจอคันที่ตรงกับ “{q}”
+            </p>
+          )}
+
+          <div className="space-y-2">
+            {shown.map(({ r, sec }) => (
+              <TruckRow
+                key={r.id}
+                r={r}
+                sec={sec}
+                busy={busy === r.id}
+                flash={flashing.has(r.id)}
+                onDone={() => void act(r.id, () => doneWaitTruck(r.id))}
+                onPhone={() => setPhone(r)}
+                onCancel={() => setCancelling(r)}
+              />
+            ))}
           </div>
 
-          <div className="flex gap-2">
-            <Chip label="เกินเวลา" n={count.over} color="#E5484D" />
-            <Chip label="เฝ้าระวัง" n={count.warn} color="#E8B931" />
-            <Chip label="กำลังรอ" n={count.wait} color="#2F7FE0" />
-            <Chip label="พัสดุยังไม่ลง" n={nf(count.pcs)} color="#1C2430" sub="ชิ้น" />
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto w-full max-w-5xl px-3">
-        {err && (
-          <div
-            className="mb-3 rounded-xl p-3 text-sm font-bold"
-            style={{ background: '#3A1416', border: '1px solid #E5484D', color: '#FFD9DA' }}
+          <button
+            onClick={() => setShowDone(true)}
+            className="mt-5 h-12 w-full rounded-xl text-sm font-bold"
+            style={{ background: CARD, border: `1px solid ${LINE}`, color: DIM }}
           >
-            {err}
-          </div>
-        )}
+            ดูคันที่ลงงานเสร็จแล้ว
+            {counts.data ? ` · รอบนี้ ${counts.data.done} คัน` : ''}
+          </button>
+        </main>
 
-        {board.loading && rows.length === 0 && (
-          <p className="py-16 text-center text-sm" style={{ color: DIM }}>
-            กำลังโหลดกระดาน…
-          </p>
-        )}
-
-        {board.error && (
-          <div className="rounded-2xl p-4 text-center" style={{ background: CARD }}>
-            <p className="text-sm font-bold" style={{ color: '#FFB4B6' }}>
-              {board.error}
-            </p>
-            <button
-              onClick={board.reload}
-              className="mt-3 h-11 rounded-xl px-5 text-sm font-bold"
-              style={{ background: INSET, border: `1px solid ${LINE}` }}
-            >
-              ลองใหม่
-            </button>
-          </div>
-        )}
-
-        {!board.loading && !board.error && rows.length === 0 && (
-          <div className="rounded-2xl p-8 text-center" style={{ background: CARD }}>
-            <p className="text-base font-bold">ยังไม่มีรถรอลงงาน</p>
-            <p className="mt-1 text-sm" style={{ color: DIM }}>
-              โหลดไฟล์รายงานจากระบบบริษัทแล้วโยนเข้ามาได้เลย
-            </p>
-            <button
-              onClick={() => nav('/wait/upload')}
-              className="mt-4 h-12 rounded-xl px-6 text-sm font-extrabold"
-              style={{ background: '#2F7FE0' }}
-            >
-              อัปไฟล์
-            </button>
-          </div>
-        )}
-
-        <div className="space-y-3">
-          {live.map(({ r, sec }) => (
-            <TruckCard
-              key={r.id}
-              r={r}
-              sec={sec}
-              busy={busy === r.id}
-              flash={flashing.has(r.id)}
-              onDone={() => void act(r.id, () => doneWaitTruck(r.id))}
-              onPhone={() => setPhone(r)}
-              onCancel={() => setCancelling(r)}
-            />
-          ))}
-        </div>
-
-        <button
-          onClick={() => setShowDone(true)}
-          className="mt-6 h-12 w-full rounded-xl text-sm font-bold"
-          style={{ background: CARD, border: `1px solid ${LINE}`, color: DIM }}
-        >
-          ดูคันที่ลงงานเสร็จแล้ว
-        </button>
-      </main>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            e.target.value = ''
+            if (f) setPicked(f)
+          }}
+        />
       </div>
 
       {/*
         กล่องเด้งอยู่นอก div ที่ตั้ง text-white ไว้ โดยตั้งใจ
-        Modal ใช้พื้นขาวของแอพปกติ ถ้าอยู่ข้างในจะสืบสีขาวลงไปด้วย
-        แล้วชื่อกับเบอร์คนขับจะกลายเป็นตัวขาวบนพื้นขาว ซึ่งมองไม่เห็นเลย
+        Modal ใช้พื้นขาวของแอพ ถ้าอยู่ข้างในจะสืบสีขาวลงไปด้วย
+        แล้วตัวหนังสือจะกลายเป็นขาวบนขาว ซึ่งมองไม่เห็นเลย
       */}
+      {picked && (
+        <UploadBox
+          file={picked}
+          kpi={kpi.data ?? []}
+          onBoard={onBoardCodes}
+          onClose={() => setPicked(null)}
+          onImported={reloadAll}
+        />
+      )}
+
       {phone && <PhoneCard r={phone} onClose={() => setPhone(null)} />}
 
       {cancelling && (
@@ -250,9 +345,7 @@ export default function WaitBoard() {
         />
       )}
 
-      {showDone && (
-        <DoneList onClose={() => setShowDone(false)} onChanged={board.reload} />
-      )}
+      {showDone && <DoneList onClose={() => setShowDone(false)} onChanged={reloadAll} />}
     </>
   )
 }
@@ -282,16 +375,16 @@ function HeadBtn({
 }
 
 /**
- * การ์ดหนึ่งคัน
+ * หนึ่งคัน · บีบเป็นแถวเดียวบนจอกว้าง ตกบรรทัดเองบนมือถือ
  *
- * ลำดับความเด่นที่เจ้าของระบบเคาะไว้ · เวลารถถึงจริง แล้วสถานีก่อนหน้ากับจำนวนพัสดุ
- * แล้วทะเบียนกับบาร์โค้ดกับประเภทรถ แล้วชื่อกับเบอร์คนขับ
- * ข้อมูลครบทั้งแปดช่องบนทุกการ์ด ชื่อสถานีขึ้นเต็มไม่ตัดคำ
+ * ปุ่มลงงานเสร็จย้ายมาอยู่ขวาคู่กับยกเลิกตามที่เจ้าของระบบสั่ง
+ * ของเดิมเป็นแถบเขียวเต็มความกว้าง ซึ่งกินที่เท่ากับข้อมูลอีกหนึ่งบรรทัด
+ * และทำให้เห็นรถน้อยลงหนึ่งคันต่อจอโดยไม่ได้อะไรกลับมา
  *
- * ชื่อคนขับกับเบอร์อยู่หลังปุ่มรูปโทรศัพท์ ไม่ได้อยู่บนการ์ด
- * เพราะมันเป็นข้อมูลที่ใช้ตอนต้องโทรเท่านั้น ซึ่งไม่ใช่ตอนที่กำลังกวาดสายตาหากระดาน
+ * ข้อมูลยังครบเหมือนเดิม แค่เรียงใหม่ให้กวาดตาจากซ้ายไปขวาได้รวดเดียว
+ * เวลาที่ต้องเสร็จก่อนเป็นสีเหลือง เพราะเป็นตัวเลขที่คนเอาไปเทียบกับนาฬิกาบนผนัง
  */
-function TruckCard({
+function TruckRow({
   r,
   sec,
   busy,
@@ -303,87 +396,79 @@ function TruckCard({
   r: WaitTruckRow
   sec: number
   busy: boolean
-  /** เพิ่งมีเสียงเตือนเพราะคันนี้ · ขึ้นกระดิ่งกระพริบให้รู้ว่าคันไหน */
   flash: boolean
   onDone: () => void
   onPhone: () => void
   onCancel: () => void
 }) {
   const st = liveState(r, sec)
-  const color = STATE_COLOR[st]
 
   return (
     <article
-      className="relative overflow-hidden rounded-2xl"
+      className="relative overflow-hidden rounded-xl"
       style={{ background: CARD, border: `1px solid ${LINE}` }}
     >
-      <Strip color={color} />
+      <span className="absolute inset-y-0 left-0 w-[5px]" style={{ background: STATE_COLOR[st] }} />
 
-      <div className="py-3 pl-5 pr-3">
-        <div className="mb-2 flex items-start gap-2">
-          <h2 className="min-w-0 flex-1 text-[17px] font-extrabold leading-tight">
-            {r.from_station ?? 'ไม่ระบุสถานีก่อนหน้า'}
-          </h2>
-          {flash && <FlashBell size={18} />}
-          <Pill state={st} />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <Inset className="shrink-0">
-            <div className="flex gap-4">
-              <Field label="รถถึงจริง" value={clock(r.arrived_at)} size={22} />
-              <Field
-                label="ต้องเสร็จก่อน"
-                value={clock(r.due_at)}
-                size={22}
-                color={sec < 0 ? '#FF8A8A' : '#EAF0F7'}
-              />
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2 pl-4 pr-2">
+        <div className="flex shrink-0 items-center gap-3">
+          <Timer sec={sec} size={30} />
+          <div className="leading-tight">
+            <div className="text-[10px] font-bold" style={{ color: DIM }}>
+              ถึง · เสร็จก่อน
             </div>
-          </Inset>
-
-          <div className="flex min-w-0 flex-1 justify-end">
-            <Timer sec={sec} size={44} />
+            <div className="font-mono text-[14px] font-extrabold">
+              {clock(r.arrived_at)}
+              <span style={{ color: DIM }}> · </span>
+              <span style={{ color: sec < 0 ? '#FF8A8A' : '#FFD479' }}>{clock(r.due_at)}</span>
+            </div>
           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-          <span
-            className="rounded-md px-2 py-[3px] text-[12px] font-extrabold"
-            style={{ background: '#1C2430', color: '#9FB4CC' }}
-          >
-            {r.vehicle_type ?? '—'}
-          </span>
-          <span className="text-[13px] font-bold">ทะเบียน {r.plate ?? '—'}</span>
-          <span className="text-[12px]" style={{ color: DIM }}>
-            {r.truck_barcode}
-          </span>
-          <span className="text-[13px] font-extrabold" style={{ color: '#FFD479' }}>
-            {nf(r.parcels)} ชิ้น
-          </span>
+        <div className="min-w-[170px] flex-1">
+          <div className="flex items-center gap-2">
+            {flash && <FlashBell size={14} />}
+            <h2 className="min-w-0 flex-1 truncate text-[15px] font-extrabold">
+              {r.from_station ?? 'ไม่ระบุสถานีก่อนหน้า'}
+            </h2>
+            <Pill state={st} size={11} />
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span
+              className="rounded-md px-[6px] py-[2px] text-[13px] font-extrabold"
+              style={{ background: '#1C2430', color: '#9FB4CC' }}
+            >
+              {r.vehicle_type ?? '—'}
+            </span>
+            <span className="text-[13px] font-extrabold">{r.plate ?? '—'}</span>
+            <span className="text-[11px]" style={{ color: DIM }}>
+              {r.truck_barcode}
+            </span>
+            <Parcels all={r.parcels_all} doJob={r.parcels_do} nondo={r.parcels_nondo} size={12} />
+          </div>
+        </div>
 
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <button
             onClick={onPhone}
             aria-label="ดูชื่อและเบอร์พนักงานขับรถ"
-            className="ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+            className="flex h-11 w-11 items-center justify-center rounded-lg"
             style={{ background: INSET, border: `1px solid ${LINE}` }}
           >
-            <PhoneIcon />
+            <PhoneIcon size={17} />
           </button>
-        </div>
-
-        <div className="mt-3 flex gap-2">
           <button
             disabled={busy}
             onClick={onDone}
-            className="h-12 flex-1 rounded-xl text-[15px] font-extrabold disabled:opacity-50"
+            className="h-11 rounded-lg px-3 text-[13px] font-extrabold disabled:opacity-50"
             style={{ background: '#25A35A', color: '#fff' }}
           >
-            {busy ? 'กำลังบันทึก…' : 'ลงงานเสร็จ'}
+            {busy ? '…' : 'ลงงานเสร็จ'}
           </button>
           <button
             disabled={busy}
             onClick={onCancel}
-            className="h-12 shrink-0 rounded-xl px-4 text-[13px] font-bold disabled:opacity-50"
+            className="h-11 rounded-lg px-3 text-[12px] font-bold disabled:opacity-50"
             style={{ background: INSET, border: `1px solid ${LINE}`, color: '#FFB4B6' }}
           >
             ยกเลิก
@@ -394,7 +479,6 @@ function TruckCard({
   )
 }
 
-/** ชื่อและเบอร์คนขับ · เปิดเมื่อต้องโทรเท่านั้น */
 function PhoneCard({ r, onClose }: { r: WaitTruckRow; onClose: () => void }) {
   const [copied, setCopied] = useState(false)
   const tel = (r.driver_phone ?? '').replace(/[^0-9+]/g, '')
@@ -410,6 +494,9 @@ function PhoneCard({ r, onClose }: { r: WaitTruckRow; onClose: () => void }) {
           <Line k="ทะเบียน" v={r.plate} />
           <Line k="บาร์โค้ดรถ" v={r.truck_barcode} />
           <Line k="เส้นทาง" v={r.route_name} />
+          <Line k="พัสดุทั้งหมด" v={nf(r.parcels_all)} />
+          <Line k="งาน DO" v={nf(r.parcels_do)} />
+          <Line k="ไม่ใช่งาน DO" v={nf(r.parcels_nondo)} />
         </div>
 
         {tel !== '' && (
@@ -446,12 +533,6 @@ function Line({ k, v }: { k: string; v: string | null }) {
   )
 }
 
-/**
- * ยกเลิกพร้อมเหตุผล
- *
- * บังคับใส่เหตุผลเหมือนตารางปล่อยรถ เพราะปุ่มที่กดแล้วของหายโดยไม่ต้องอธิบาย
- * คือปุ่มที่วันหนึ่งจะถูกใช้ลบสิ่งที่ไม่อยากให้ใครเห็น · แถวไม่ถูกลบจริง
- */
 function CancelBox({
   r,
   onClose,
@@ -506,12 +587,6 @@ function CancelBox({
   )
 }
 
-/**
- * คันที่จบไปแล้วในรอบนี้
- *
- * มีไว้เพื่ออย่างเดียวคือกดเสร็จผิดคันแล้วเอากลับขึ้นกระดาน
- * ไม่ได้ทำเป็นหน้าประวัติ เพราะประวัติจริงอยู่ที่หน้าสถิติหลังบ้าน
- */
 function DoneList({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
   const since = useMemo(() => new Date(Date.now() - 24 * 3600_000).toISOString(), [])
   const done = useAsync(() => listWaitDone(since), [since])
@@ -519,10 +594,6 @@ function DoneList({ onClose, onChanged }: { onClose: () => void; onChanged: () =
   const [busy, setBusy] = useState<number | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
-  /**
-   * เอากลับขึ้นกระดานแล้วโหลดรายการนี้ใหม่ด้วย ไม่ใช่โหลดแค่กระดานข้างหลัง
-   * ไม่งั้นคันที่เพิ่งเอากลับไปแล้วยังค้างอยู่ในรายการนี้ แล้วคนจะกดซ้ำ
-   */
   async function undo(id: number) {
     setBusy(id)
     setErr(null)

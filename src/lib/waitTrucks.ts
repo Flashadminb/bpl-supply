@@ -33,6 +33,12 @@ export interface WaitTruckRow {
   driver_name: string | null
   driver_phone: string | null
   parcels: number | null
+  /** พัสดุทั้งหมดในคัน · ของเก่าที่ไม่มีช่องนี้จะถอยไปใช้ยอดที่ต้องขนถ่าย */
+  parcels_all: number | null
+  /** งาน DO คือพัสดุจัดส่งโดยตรง */
+  parcels_do: number | null
+  /** ไม่ใช่งาน DO = ทั้งหมด ลบ DO · ว่างแปลว่าไฟล์ไม่ได้บอก DO มา */
+  parcels_nondo: number | null
   kpi_minutes: number
   due_at: string
   done_at: string | null
@@ -41,6 +47,7 @@ export interface WaitTruckRow {
   cancelled_by_name: string | null
   cancel_reason: string | null
   imported_at: string
+  imported_by_name: string | null
   /** บวก = เหลือเท่านี้ · ลบ = เกินมาแล้วเท่านี้ · ของที่จบแล้วหยุดนับตอนกดเสร็จ */
   left_sec: number
   waited_sec: number
@@ -114,6 +121,8 @@ export interface ParsedTruck {
   driver_name: string | null
   driver_phone: string | null
   parcels: number | null
+  parcels_total: number | null
+  parcels_do: number | null
 }
 
 export interface ParsedFile {
@@ -141,6 +150,9 @@ const FIELDS = {
   driver: ['司机姓名', 'ชื่อพนักงานขับรถ'],
   route: ['车线名称', 'ชื่อเส้นทาง'],
   parcels: ['待卸车包裹量', 'ที่ต้องขนถ่าย'],
+  total:   ['包裹总量', 'จำนวนพัสดุทั้งหมด'],
+  // งาน DO · ไฟล์เรียกว่าพัสดุจัดส่งโดยตรง
+  dolocal: ['本地件', 'จัดส่งโดยตรง'],
   hub: ['hub名称', 'ชื่อhub'],
 } as const
 
@@ -243,7 +255,10 @@ export async function parseWaitTruckFile(file: File): Promise<ParsedFile> {
       continue
     }
 
-    const parcels = Number(cell(row, col.parcels).replace(/[^0-9.]/g, ''))
+    const num = (i: number | undefined): number | null => {
+      const v = Number(cell(row, i).replace(/[^0-9.]/g, ''))
+      return Number.isFinite(v) && v > 0 ? Math.round(v) : null
+    }
     const route = orNull(cell(row, col.route))
 
     rows.push({
@@ -258,7 +273,9 @@ export async function parseWaitTruckFile(file: File): Promise<ParsedFile> {
       carrier: orNull(cell(row, col.carrier)),
       driver_name: orNull(cell(row, col.driver)),
       driver_phone: orNull(cell(row, col.phone)),
-      parcels: Number.isFinite(parcels) && parcels > 0 ? Math.round(parcels) : null,
+      parcels: num(col.parcels),
+      parcels_total: num(col.total),
+      parcels_do: num(col.dolocal),
     })
   }
 
@@ -341,6 +358,8 @@ export async function importWaitTrucks(rows: ParsedTruck[]): Promise<ImportResul
     driver_name: r.driver_name,
     driver_phone: r.driver_phone,
     parcels: r.parcels,
+    parcels_total: r.parcels_total,
+    parcels_do: r.parcels_do,
   }))
 
   const { data, error } = await supabase.rpc('wait_truck_import', { p_rows: payload })
@@ -375,10 +394,19 @@ export interface WaitCounts {
   waiting: number
   overdue: number
   warn: number
-  parcels: number
   carried: number
+  wait_parcels: number
+  wait_do: number
+  wait_nondo: number
   done: number
+  done_late: number
   on_time: number
+  done_parcels: number
+  done_do: number
+  done_nondo: number
+  all_trucks: number
+  /** เวลาอัปไฟล์ล่าสุด · ว่างแปลว่ายังไม่เคยอัปเลย */
+  last_import: string | null
   cycle_start: string
 }
 
@@ -395,17 +423,36 @@ export interface WaitStats {
   on_time: number
   cancelled: number
   parcels: number
+  parcels_do: number
+  parcels_nondo: number
   avg_wait: number
   worst: number
-  by_day: { day: string; total: number; on_time: number; avg_wait: number }[]
+  by_day: {
+    day: string
+    total: number
+    on_time: number
+    avg_wait: number
+    parcels: number
+    parcels_do: number
+    parcels_nondo: number
+  }[]
   by_type: {
     vehicle_type: string
     total: number
     on_time: number
     avg_wait: number
     worst: number
+    parcels: number
+    parcels_do: number
+    parcels_nondo: number
   }[]
-  by_station: { from_station: string; total: number; on_time: number; avg_wait: number }[]
+  by_station: {
+    from_station: string
+    total: number
+    on_time: number
+    avg_wait: number
+    parcels: number
+  }[]
 }
 
 /** ช่วงวันเป็นวันไทยแบบ YYYY-MM-DD รวมปลายทั้งสองข้าง · ตรงกับปฏิทินเลือกช่วงที่หน้าอื่นใช้ */
@@ -413,4 +460,62 @@ export async function waitTruckStats(from: string, to: string): Promise<WaitStat
   const { data, error } = await supabase.rpc('wait_truck_stats', { p_from: from, p_to: to })
   if (error) throw new Error(readableError(error))
   return (data ?? null) as WaitStats | null
+}
+
+/**
+ * เทียบสองช่วงวัน
+ *
+ * ฐานข้อมูลห่อ wait_truck_stats ไว้สองครั้ง ไม่ได้นับใหม่
+ * ตัวเลขช่วง ก กับช่วง ข จึงมาจากนิยามเดียวกันเสมอ
+ */
+export async function waitTruckCompare(
+  a: [string, string],
+  b: [string, string],
+): Promise<{ a: WaitStats; b: WaitStats } | null> {
+  const { data, error } = await supabase.rpc('wait_truck_compare', {
+    p_a_from: a[0], p_a_to: a[1], p_b_from: b[0], p_b_to: b[1],
+  })
+  if (error) throw new Error(readableError(error))
+  return (data ?? null) as { a: WaitStats; b: WaitStats } | null
+}
+
+export type WaitLogEvent = 'import' | 'done' | 'cancel'
+
+export const LOG_EVENT_TH: Record<WaitLogEvent, string> = {
+  import: 'อัปไฟล์เข้ามา',
+  done: 'กดลงงานเสร็จ',
+  cancel: 'ยกเลิก',
+}
+
+export interface WaitLogRow {
+  truck_id: number
+  event: WaitLogEvent
+  at: string
+  truck_barcode: string
+  from_station: string | null
+  plate: string | null
+  vehicle_type: string | null
+  arrived_at: string
+  due_at: string
+  reason: string | null
+  late_min: number | null
+  who: string | null
+}
+
+/**
+ * ประวัติว่าใครทำอะไร · ช่วงวันไทย รวมปลายทั้งสองข้าง
+ *
+ * เหตุการณ์ของรถคันเดียวกันแตกเป็นหลายบรรทัดในวิวฝั่งฐานข้อมูลแล้ว
+ * ที่นี่แค่กรองช่วงวันกับเรียงใหม่ให้ล่าสุดอยู่บน
+ */
+export async function listWaitLog(from: string, to: string): Promise<WaitLogRow[]> {
+  const { data, error } = await supabase
+    .from('wait_truck_log_rows')
+    .select('*')
+    .gte('at', from + 'T00:00:00+07:00')
+    .lte('at', to + 'T23:59:59+07:00')
+    .order('at', { ascending: false })
+    .limit(1000)
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as WaitLogRow[]
 }

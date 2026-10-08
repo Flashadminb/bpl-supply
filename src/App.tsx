@@ -70,8 +70,8 @@ const TruckStats = lazy(() => import('./pages/trucks/TruckStats'))
 const TruckLog = lazy(() => import('./pages/trucks/TruckLog'))
 // รถรอลงงาน — คนละงานกับปล่อยรถ ใช้ร่วมกันแค่นาฬิกากับเสียงเตือน
 const WaitBoard = lazy(() => import('./pages/wait/WaitBoard'))
-const WaitUpload = lazy(() => import('./pages/wait/WaitUpload'))
 const WaitTv = lazy(() => import('./pages/wait/WaitTv'))
+const WaitLog = lazy(() => import('./pages/wait/WaitLog'))
 const TruckAdmin = lazy(() => import('./pages/admin/TruckAdmin'))
 const WaitAdmin = lazy(() => import('./pages/admin/WaitAdmin'))
 
@@ -267,8 +267,10 @@ export default function App() {
         วันเปิดให้หน้างานจริง แก้ฟังก์ชันตัวนั้นกับสามบรรทัดนี้
       */}
       <Route path="/wait" element={<Guard roles={['admin']} allowDispatch><WaitBoard /></Guard>} />
-      <Route path="/wait/upload" element={<Guard roles={['admin']} allowDispatch><WaitUpload /></Guard>} />
+      {/* เส้นทางเดิมของหน้าอัปไฟล์ · ตอนนี้เป็นป็อปอัพบนกระดานแล้ว พาไปที่กระดานพร้อมเปิดช่องเลือกไฟล์ */}
+      <Route path="/wait/upload" element={<Navigate to="/wait?upload=1" replace />} />
       <Route path="/wait/tv" element={<Guard roles={['admin']} allowDispatch><WaitTv /></Guard>} />
+      <Route path="/wait/history" element={<Guard roles={['admin']} allowDispatch><WaitLog /></Guard>} />
       <Route path="/assets" element={<Guard><AssetBasket /></Guard>} />
       <Route path="/assets/done/:refNo" element={<Guard><AssetDone /></Guard>} />
       <Route path="/assets/:typeCode" element={<Guard><AssetPick /></Guard>} />
