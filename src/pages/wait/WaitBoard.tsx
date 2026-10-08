@@ -18,6 +18,7 @@ import { useAlarmPref, useTruckAlarm } from '../trucks/alarm'
 import { AlarmGate, EdgeGlow, worstStage } from '../trucks/alert-ui'
 import { playWaitAlarm, WAIT_ALARM_PREF } from './waitAlarm'
 import { UploadBox } from './UploadBox'
+import { SoundPicker } from './SoundPicker'
 import {
   BG,
   CARD,
@@ -67,6 +68,7 @@ export default function WaitBoard() {
   const [phone, setPhone] = useState<WaitTruckRow | null>(null)
   const [cancelling, setCancelling] = useState<WaitTruckRow | null>(null)
   const [showDone, setShowDone] = useState(false)
+  const [pickSound, setPickSound] = useState(false)
   const [picked, setPicked] = useState<File | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const alarm = useAlarmPref(WAIT_ALARM_PREF)
@@ -99,7 +101,8 @@ export default function WaitBoard() {
    * และขึ้นนับถอยหลังห้าวินาทีสุดท้ายให้เห็นก่อน · จอที่เปลี่ยนเองโดยไม่บอก
    * คือจอที่คนคิดว่าเสีย แล้วก็จะเลิกใช้
    */
-  const paused = picked !== null || phone !== null || cancelling !== null || showDone || q !== ''
+  const paused =
+    picked !== null || phone !== null || cancelling !== null || showDone || pickSound || q !== ''
 
   useEffect(() => {
     if (paused) {
@@ -247,7 +250,12 @@ export default function WaitBoard() {
               <span className="min-w-0 flex-1 truncate">
                 <WaitLogo size={19} />
               </span>
-              <WaitAlarmChip on={alarm.on} onTurnOn={() => void alarm.turnOn()} compact />
+              <WaitAlarmChip
+                on={alarm.on}
+                onTurnOn={() => void alarm.turnOn()}
+                onPick={() => setPickSound(true)}
+                compact
+              />
               <HeadBtn onClick={() => fileRef.current?.click()} tone="go">
                 อัปไฟล์
               </HeadBtn>
@@ -433,6 +441,8 @@ export default function WaitBoard() {
       )}
 
       {showDone && <DoneList onClose={() => setShowDone(false)} onChanged={reloadAll} />}
+
+      {pickSound && <SoundPicker onClose={() => setPickSound(false)} />}
     </>
   )
 }

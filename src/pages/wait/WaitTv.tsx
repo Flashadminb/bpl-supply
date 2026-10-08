@@ -15,6 +15,7 @@ import { readableError } from '../../lib/supabase'
 import { useAlarmPref, useTruckAlarm } from '../trucks/alarm'
 import { AlarmGate, EdgeGlow, worstStage } from '../trucks/alert-ui'
 import { playWaitAlarm, WAIT_ALARM_PREF } from './waitAlarm'
+import { SoundPicker } from './SoundPicker'
 import { DAY_TH, dmy, p2 } from '../trucks/parts'
 import {
   BG,
@@ -86,6 +87,7 @@ export default function WaitTv() {
    * แตะที่การ์ดแล้วกดได้เลยเหมือนจอปล่อยรถ
    */
   const [ask, setAsk] = useState<number | null>(null)
+  const [pickSound, setPickSound] = useState(false)
   const alarm = useAlarmPref(WAIT_ALARM_PREF)
 
   useEffect(() => {
@@ -172,6 +174,7 @@ export default function WaitTv() {
         }}
         alarmOn={alarm.on}
         onAlarmOn={() => void alarm.turnOn()}
+        onPickSound={() => setPickSound(true)}
         onGo={nav}
       />
 
@@ -187,6 +190,8 @@ export default function WaitTv() {
       ) : (
         <StatsPage live={live} counts={counts.data} done={done.data ?? []} />
       )}
+
+      {pickSound && <SoundPicker onClose={() => setPickSound(false)} />}
 
       {askRow && (
         <ActSheet
@@ -224,6 +229,7 @@ function TvHead({
   onAuto,
   alarmOn,
   onAlarmOn,
+  onPickSound,
   onGo,
 }: {
   now: number
@@ -235,6 +241,7 @@ function TvHead({
   onAuto: (v: boolean) => void
   alarmOn: boolean
   onAlarmOn: () => void
+  onPickSound: () => void
   onGo: (to: string) => void
 }) {
   const d = new Date(now)
@@ -324,7 +331,7 @@ function TvHead({
               />
             ))}
           </span>
-          <WaitAlarmChip on={alarmOn} onTurnOn={onAlarmOn} compact />
+          <WaitAlarmChip on={alarmOn} onTurnOn={onAlarmOn} onPick={onPickSound} compact />
         </span>
       </div>
     </header>

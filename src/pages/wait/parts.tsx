@@ -215,16 +215,19 @@ export function pct(part: number, total: number): string {
 export function WaitAlarmChip({
   on,
   onTurnOn,
+  onPick,
   compact = false,
 }: {
   on: boolean
   onTurnOn: () => void
+  /** กดตอนเสียงเปิดอยู่แล้ว · เปิดหน้าต่างเลือกชุดเสียง */
+  onPick?: () => void
   compact?: boolean
 }) {
   return (
     <button
       type="button"
-      onClick={() => (on ? previewWaitAll() : onTurnOn())}
+      onClick={() => (on ? (onPick ? onPick() : previewWaitAll()) : onTurnOn())}
       className="flex h-11 shrink-0 items-center gap-2 rounded-xl px-3 font-bold"
       style={{
         background: on ? '#1B2430' : '#3A2A14',
@@ -233,7 +236,7 @@ export function WaitAlarmChip({
       }}
     >
       <Bell size={16} color={on ? '#35D98A' : '#FFC400'} ring={!on} />
-      {compact ? (on ? 'เสียงเปิด' : 'เสียงปิด') : on ? 'เสียงเตือนเปิดอยู่ · กดฟังตัวอย่าง' : 'เสียงเตือนปิดอยู่ · กดเปิด'}
+      {compact ? (on ? 'เสียง' : 'เสียงปิด') : on ? 'เสียงเตือนเปิดอยู่ · กดเลือกเสียง' : 'เสียงเตือนปิดอยู่ · กดเปิด'}
     </button>
   )
 }
