@@ -8,10 +8,10 @@ import { audioCtx, type Stage } from '../trucks/alarm'
  * พอโดนหลอกสองสามครั้ง ทั้งคลังจะเลิกสนใจเสียงทั้งสองชุด
  *
  * วิธีแยกที่ได้ผลจริงคือแยกด้วย "ตระกูลเสียง" ไม่ใช่แค่เปลี่ยนความถี่
- *   ปล่อยรถ    เสียงเคาะ · โน้ตนิ่ง ๆ ตัดเป็นห้วง ๆ แบบกระดิ่ง
+ *   ปล่อยรถ    เสียงเคาะ · โน้ตสูงสั้นตัดเป็นห้วง ๆ แบบกระดิ่ง
  *   รถรอลงงาน  เสียงกวาด · โน้ตไถลขึ้นลงต่อเนื่องแบบไซเรน
  *
- * หูแยกเสียงเคาะออกจากเสียงกวาดได้ทันทีโดยไม่ต้องจำว่าเสียงไหนของใคร
+ * หูแยกเสียงกระดิ่งสูงออกจากเสียงแตรต่ำได้ทันที โดยไม่ต้องจำว่าเสียงไหนของใคร
  * ต่อให้อยู่คนละมุมคลังและมีเสียงสายพานกลบ
  *
  * ใช้ AudioContext ตัวเดียวกับของปล่อยรถ ผ่าน audioCtx()
@@ -20,52 +20,38 @@ import { audioCtx, type Stage } from '../trucks/alarm'
  */
 
 /**
- * โน้ตหนึ่งตัวที่ไถลจากความถี่หนึ่งไปอีกความถี่
+ * แตรหนึ่งครั้ง
  *
- * การไถลคือสิ่งที่ทำให้ชุดนี้ต่างจากของปล่อยรถทั้งหมด
- * เสียงที่ความถี่ขยับตลอดจะถูกหูจับได้ว่า "ไม่ใช่เสียงเดิม" ก่อนที่สมองจะทันแปลด้วยซ้ำ
- */
-function sweep(
-  ctx: AudioContext,
-  at: number,
-  from: number,
-  to: number,
-  dur: number,
-  vol: number,
-  type: OscillatorType = 'sawtooth',
-) {
-  const o = ctx.createOscillator()
-  const g = ctx.createGain()
-  o.type = type
-  o.frequency.setValueAtTime(from, at)
-  o.frequency.exponentialRampToValueAtTime(Math.max(40, to), at + dur)
-
-  // ไต่ขึ้นลงสั้น ๆ กันเสียงแตกตอนตัดดิบ ๆ เหมือนชุดของปล่อยรถ
-  g.gain.setValueAtTime(0.0001, at)
-  g.gain.exponentialRampToValueAtTime(vol, at + 0.02)
-  g.gain.setValueAtTime(vol, at + Math.max(0.03, dur - 0.05))
-  g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
-
-  o.connect(g)
-  g.connect(ctx.destination)
-  o.start(at)
-  o.stop(at + dur + 0.05)
-}
-
-/**
- * ไซเรนสองจังหวะแบบรถฉุกเฉิน · ใช้กับคันที่เลยเวลาแล้ว
+ * ซ้อนสามเสียงที่สัมพันธ์กันทางดนตรี — เสียงหลัก เสียงคู่ห้า และเสียงต่ำหนึ่งช่วงคู่แปด
+ * ซึ่งเป็นโครงเดียวกับแตรลมของรถใหญ่กับเรือ หูจึงได้ยินเป็น "แตร" ไม่ใช่ "บี๊บ"
  *
- * กวาดขึ้นแล้วกวาดลงสลับกันสามรอบ ไม่ใช่รัวเป็นห้วงแบบนาฬิกาปลุกของปล่อยรถ
- * ยาวกว่าของปล่อยรถเล็กน้อยโดยตั้งใจ เพราะงานลงของอยู่ลึกเข้าไปในคลัง
- * เสียงสั้นเกินจะโดนเสียงสายพานกินหมดก่อนถึงคนที่ต้องได้ยิน
+ * ใช้คลื่นไซน์ล้วน ไม่ใช่ฟันเลื่อยหรือสี่เหลี่ยม เพราะสองอย่างนั้นมีฮาร์โมนิกสูงเยอะ
+ * ซึ่งเป็นต้นเหตุที่ทำให้เสียงฟังเป็นการ์ตูน
+ *
+ * ขึ้นและลงช้ากว่าเสียงบี๊บ ทำให้ฟังเป็นเสียงหนัก ๆ ไม่ใช่เสียงจิ้ม
  */
-function siren(ctx: AudioContext, t0: number) {
-  let t = t0
-  for (let i = 0; i < 3; i++) {
-    sweep(ctx, t, 420, 900, 0.34, 0.3)
-    t += 0.34
-    sweep(ctx, t, 900, 420, 0.34, 0.3)
-    t += 0.34 + 0.1
+function horn(ctx: AudioContext, at: number, freq: number, dur: number, vol: number) {
+  const parts: [number, number][] = [
+    [freq, 1],
+    [freq * 1.5, 0.45],
+    [freq * 0.5, 0.35],
+  ]
+  for (const [f, w] of parts) {
+    const o = ctx.createOscillator()
+    const g = ctx.createGain()
+    o.type = 'sine'
+    o.frequency.setValueAtTime(f, at)
+
+    const peak = vol * w
+    g.gain.setValueAtTime(0.0001, at)
+    g.gain.exponentialRampToValueAtTime(peak, at + 0.05)
+    g.gain.setValueAtTime(peak, at + Math.max(0.08, dur - 0.12))
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
+
+    o.connect(g)
+    g.connect(ctx.destination)
+    o.start(at)
+    o.stop(at + dur + 0.05)
   }
 }
 
@@ -75,16 +61,18 @@ export function playWaitAlarm(stage: Stage) {
   const t = ctx.currentTime + 0.02
 
   if (stage === 'm20') {
-    // ไถลลงยาวหนึ่งที · บอกให้รู้ ไม่ได้บอกให้วิ่ง
-    // ของปล่อยรถตรงขั้นนี้เป็นเสียงนุ่มเคาะสองที จึงคนละทิศกันชัดเจน
-    sweep(ctx, t, 700, 380, 0.5, 0.24, 'triangle')
+    // แตรเดียวต่ำ ๆ ยาว · บอกให้รู้ ไม่ได้บอกให้วิ่ง
+    horn(ctx, t, 196, 0.62, 0.26)
   } else if (stage === 'm10') {
-    // ไถลขึ้นสามที ถี่ขึ้นเรื่อย ๆ · ทิศขึ้นแปลว่ากำลังจะหมดเวลา
-    sweep(ctx, t, 460, 820, 0.18, 0.26)
-    sweep(ctx, t + 0.24, 520, 900, 0.18, 0.26)
-    sweep(ctx, t + 0.44, 580, 1000, 0.2, 0.28)
+    // สองครั้ง สูงขึ้นมาหน่อย · เริ่มต้องขยับแล้ว
+    horn(ctx, t, 247, 0.34, 0.28)
+    horn(ctx, t + 0.46, 247, 0.34, 0.28)
   } else {
-    siren(ctx, t)
+    // สามครั้งติด ๆ แล้วลงท้ายด้วยเสียงต่ำยาว · เลยเวลาแล้ว
+    horn(ctx, t, 294, 0.3, 0.3)
+    horn(ctx, t + 0.4, 294, 0.3, 0.3)
+    horn(ctx, t + 0.8, 294, 0.3, 0.3)
+    horn(ctx, t + 1.3, 165, 0.9, 0.3)
   }
 }
 
@@ -93,11 +81,13 @@ export function previewWaitAll() {
   const ctx = audioCtx()
   if (!ctx) return
   const t = ctx.currentTime + 0.02
-  sweep(ctx, t, 700, 380, 0.5, 0.24, 'triangle')
-  sweep(ctx, t + 1.1, 460, 820, 0.18, 0.26)
-  sweep(ctx, t + 1.34, 520, 900, 0.18, 0.26)
-  sweep(ctx, t + 1.54, 580, 1000, 0.2, 0.28)
-  siren(ctx, t + 2.5)
+  horn(ctx, t, 196, 0.62, 0.26)
+  horn(ctx, t + 1.3, 247, 0.34, 0.28)
+  horn(ctx, t + 1.76, 247, 0.34, 0.28)
+  horn(ctx, t + 2.7, 294, 0.3, 0.3)
+  horn(ctx, t + 3.1, 294, 0.3, 0.3)
+  horn(ctx, t + 3.5, 294, 0.3, 0.3)
+  horn(ctx, t + 4.0, 165, 0.9, 0.3)
 }
 
 /** คีย์เก็บคำตอบเรื่องเสียงของกระดานนี้ · แยกจากของปล่อยรถ จะได้ปิดทีละกระดานได้ */

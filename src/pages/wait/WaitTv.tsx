@@ -23,11 +23,13 @@ import {
   DIM,
   FLASH_MS,
   FlashBell,
+  RING_MS,
   INSET,
   UploadChip,
   LINE,
   liveState,
   nf,
+  BigStat,
   Parcels,
   pct,
   Pill,
@@ -69,6 +71,14 @@ export default function WaitTv() {
   const [page, setPage] = useState(0)
   const [auto, setAuto] = useState(() => localStorage.getItem(AUTO_PREF) !== 'off')
   /**
+   * หน้าของแถวล่างที่กำลังแสดงอยู่
+   *
+   * อยู่ระดับนี้ไม่ได้อยู่ใน BoardPage เพราะ BoardPage ถูกถอดออกตอนสลับไปหน้าสถิติ
+   * ถ้าเก็บไว้ข้างในมันจะเด้งกลับไปหน้าหนึ่งทุกครั้งที่วนกลับมา
+   * แล้วรถที่อยู่หน้าหลัง ๆ จะไม่มีวันถูกแสดงเลย
+   */
+  const [stripPage, setStripPage] = useState(0)
+  /**
    * คันที่เพิ่งถูกแตะบนจอ
    *
    * จอทีวีแขวนอยู่ตรงที่คนทำงานยืนอยู่แล้ว การบังคับให้เดินไปหยิบมือถือ
@@ -95,6 +105,20 @@ export default function WaitTv() {
     return () => clearTimeout(t)
   }, [auto, page])
 
+  /**
+   * แถวล่างหมุนเวียนทุก 10 วินาที
+   *
+   * ไม่ได้เปลืองอะไรเลย · ไม่มีการถามเซิร์ฟเวอร์เพิ่มสักครั้ง
+   * ข้อมูลทุกคันถูกโหลดมาพร้อมกันอยู่แล้วตั้งแต่ตอนเปิดหน้า
+   * ที่หมุนคือการตัดสินใจว่าจะวาดใบไหนบนจอ ซึ่งเกิดในเครื่องล้วน ๆ
+   *
+   * เดินตลอดเวลาแม้ตอนอยู่หน้าสถิติ จะได้ไม่ค้างอยู่หน้าเดิมทุกครั้งที่วนกลับมา
+   */
+  useEffect(() => {
+    const t = setInterval(() => setStripPage((n) => n + 1), 10_000)
+    return () => clearInterval(t)
+  }, [])
+
   useEffect(() => {
     const t = setInterval(() => {
       if (document.visibilityState === 'visible') {
@@ -117,6 +141,12 @@ export default function WaitTv() {
     alarm.on,
     playWaitAlarm,
   )
+  /** คันที่กำลังเตือนอยู่ตอนนี้ · ขึ้นกระดิ่งสั่น */
+  const ringing = useMemo(
+    () => new Set(now - fired.at < RING_MS ? fired.ids : []),
+    [fired, now],
+  )
+  /** คันที่เพิ่งเตือนไปเมื่อครู่ · ขึ้นจุดกระพริบเฉย ๆ */
   const flashing = useMemo(
     () => new Set(now - fired.at < FLASH_MS ? fired.ids : []),
     [fired, now],
@@ -150,6 +180,8 @@ export default function WaitTv() {
           live={live}
           loading={board.loading}
           flashing={flashing}
+          ringing={ringing}
+          stripPage={stripPage}
           onTap={(id) => setAsk(id)}
         />
       ) : (
@@ -249,6 +281,7 @@ function TvHead({
         <TvBtn onClick={() => onGo('/wait?upload=1')}>อัปไฟล์</TvBtn>
         <TvBtn onClick={() => onGo('/wait/stats')}>แดชบอร์ด</TvBtn>
         <TvBtn onClick={() => onGo('/wait/history')}>ประวัติ</TvBtn>
+        <FullBtn />
 
         <span className="mx-1 h-6 w-px" style={{ background: LINE }} />
 
@@ -338,15 +371,22 @@ function TvBtn({
 
 /* ------------------------------------------------------------- หน้าที่หนึ่ง */
 
+/** แถวล่างแสดงได้กี่บรรทัดต่อหนึ่งหน้า · เกินกว่านี้หมุนเวียน */
+const STRIP_PER_PAGE = 6
+
 function BoardPage({
   live,
   loading,
   flashing,
+  ringing,
+  stripPage,
   onTap,
 }: {
   live: { r: WaitTruckRow; sec: number }[]
   loading: boolean
   flashing: Set<number>
+  ringing: Set<number>
+  stripPage: number
   onTap: (id: number) => void
 }) {
   if (loading && live.length === 0) {
@@ -374,6 +414,11 @@ function BoardPage({
   const second = live.slice(1, 3)
   const rest = live.slice(3)
 
+  // เกินหนึ่งหน้าแล้วหมุนเวียน · ไม่ตัดคันไหนทิ้ง ทุกคันได้ขึ้นจอครบ
+  const pages = Math.max(1, Math.ceil(rest.length / STRIP_PER_PAGE))
+  const pageNo = stripPage % pages
+  const shownRest = rest.slice(pageNo * STRIP_PER_PAGE, (pageNo + 1) * STRIP_PER_PAGE)
+
   return (
     <div className="space-y-3">
       <TvCard
@@ -381,6 +426,7 @@ function BoardPage({
         sec={hero.sec}
         scale={1}
         flash={flashing.has(hero.r.id)}
+        ringing={ringing.has(hero.r.id)}
         onTap={() => onTap(hero.r.id)}
       />
 
@@ -396,6 +442,7 @@ function BoardPage({
               sec={sec}
               scale={0.82}
               flash={flashing.has(r.id)}
+              ringing={ringing.has(r.id)}
               onTap={() => onTap(r.id)}
             />
           ))}
@@ -404,15 +451,34 @@ function BoardPage({
 
       {rest.length > 0 && (
         <div className="space-y-2">
-          {rest.map(({ r, sec }) => (
+          {shownRest.map(({ r, sec }) => (
             <TvStrip
               key={r.id}
               r={r}
               sec={sec}
               flash={flashing.has(r.id)}
+              ringing={ringing.has(r.id)}
               onTap={() => onTap(r.id)}
             />
           ))}
+
+          {pages > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-1">
+              <span className="text-[13px] font-bold" style={{ color: DIM }}>
+                รถที่เหลือ {rest.length} คัน · กำลังแสดงชุดที่ {pageNo + 1} จาก {pages}
+              </span>
+              {Array.from({ length: pages }).map((_, i) => (
+                <span
+                  key={i}
+                  className="block h-[6px] rounded-full transition-all"
+                  style={{
+                    width: i === pageNo ? 22 : 8,
+                    background: i === pageNo ? '#EAF0F7' : '#39434F',
+                  }}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -429,11 +495,14 @@ function TvStrip({
   r,
   sec,
   flash,
+  ringing,
   onTap,
 }: {
   r: WaitTruckRow
   sec: number
   flash: boolean
+  /** กำลังเตือนอยู่จริง ๆ ตอนนี้ · กระดิ่งสั่นเฉพาะตอนนี้เท่านั้น */
+  ringing: boolean
   onTap: () => void
 }) {
   const st = liveState(r, sec)
@@ -450,31 +519,66 @@ function TvStrip({
     >
       <span className="absolute inset-y-0 left-0 w-[6px]" style={{ background: STATE_COLOR[st] }} />
 
-      {flash && <FlashBell size={15} />}
+      {flash && <FlashBell size={15} ringing={ringing} />}
 
-      <h3 className="min-w-[230px] max-w-[330px] flex-1 truncate text-[20px] font-extrabold">
+      <h3 className="min-w-[200px] max-w-[280px] flex-1 truncate text-[19px] font-extrabold">
         {r.from_station ?? 'ไม่ระบุสถานี'}
       </h3>
 
-      <Badge text={r.vehicle_type ?? '—'} size={17} bg="#1C2430" fg="#9FB4CC" />
-      <Badge text={r.plate ?? '—'} size={17} bg="#1B2430" fg="#EAF0F7" />
-      <Parcels all={r.parcels_all} doJob={r.parcels_do} nondo={r.parcels_nondo} size={15} />
+      {/*
+        แถวยาวมีที่เหลือเยอะ จึงใส่ได้ครบเท่าการ์ดใหญ่ รวมถึงชื่อคนขับ
+        ทุกช่องมีหัวข้อกำกับ · ป้ายที่ขึ้นมาเฉย ๆ ไม่มีใครรู้ว่าเลขนั้นคืออะไร
+      */}
+      <StripCell label="ประเภท" value={r.vehicle_type ?? '—'} w={64} />
+      <StripCell label="ทะเบียน" value={r.plate ?? '—'} w={86} mono />
+      <StripCell label="คนขับ" value={r.driver_name ?? '—'} w={150} />
+      <StripCell label="บาร์โค้ด" value={r.truck_barcode} w={112} mono dim />
 
-      <span className="font-mono text-[13px]" style={{ color: DIM }}>{r.truck_barcode}</span>
+      <Parcels all={r.parcels_all} doJob={r.parcels_do} nondo={r.parcels_nondo} size={14} />
 
       <span className="ml-auto flex shrink-0 items-center gap-3">
-        <span className="text-right leading-tight">
-          <span className="block text-[10px] font-bold" style={{ color: DIM }}>ถึง · เสร็จก่อน</span>
-          <span className="block font-mono text-[16px] font-extrabold">
-            {clock(r.arrived_at)}
-            <span style={{ color: DIM }}> · </span>
-            <span style={{ color: sec < 0 ? '#FF8A8A' : '#FFD479' }}>{clock(r.due_at)}</span>
-          </span>
-        </span>
+        <StripCell label="รถถึง" value={clock(r.arrived_at)} w={60} mono />
+        <StripCell
+          label="เสร็จก่อน"
+          value={clock(r.due_at)}
+          w={68}
+          mono
+          color={sec < 0 ? '#FF8A8A' : '#FFD479'}
+        />
         <Timer sec={sec} size={30} />
         <Pill state={st} size={12} />
       </span>
     </article>
+  )
+}
+
+function StripCell({
+  label,
+  value,
+  w,
+  mono,
+  dim,
+  color,
+}: {
+  label: string
+  value: string
+  w: number
+  mono?: boolean
+  dim?: boolean
+  color?: string
+}) {
+  return (
+    <span className="shrink-0 leading-tight" style={{ width: w }}>
+      <span className="block text-[10px] font-bold" style={{ color: DIM }}>
+        {label}
+      </span>
+      <span
+        className={'block truncate font-extrabold ' + (mono ? 'font-mono text-[14px]' : 'text-[15px]')}
+        style={{ color: color ?? (dim ? '#9FB4CC' : '#EAF0F7') }}
+      >
+        {value}
+      </span>
+    </span>
   )
 }
 
@@ -493,12 +597,15 @@ function TvCard({
   sec,
   scale,
   flash,
+  ringing,
   onTap,
 }: {
   r: WaitTruckRow
   sec: number
   scale: number
   flash: boolean
+  /** กำลังเตือนอยู่จริง ๆ ตอนนี้ · กระดิ่งสั่นเฉพาะตอนนี้เท่านั้น */
+  ringing: boolean
   onTap: () => void
 }) {
   const st = liveState(r, sec)
@@ -521,81 +628,100 @@ function TvCard({
     >
       <Strip color={STATE_COLOR[st]} />
 
-      <div className="flex h-full flex-col gap-3 py-4 pl-6 pr-4">
-        {/* ① แถวบน · ชื่อสถานี แล้วป้ายประจำคัน แล้วสถานะ */}
+      <div className="flex h-full flex-col justify-between gap-3 py-4 pl-6 pr-4">
+        {/* ① แถวบน · ชื่อสถานี แล้วจำนวนพัสดุ แล้วสถานะ */}
         <div className="flex items-start gap-3">
-          {flash && <FlashBell size={px(20)} />}
-          <h2
-            className="min-w-0 flex-1 font-extrabold leading-tight"
-            style={{ fontSize: px(27) }}
-          >
+          {flash && <FlashBell size={px(20)} ringing={ringing} />}
+          <h2 className="min-w-0 flex-1 font-extrabold leading-tight" style={{ fontSize: px(27) }}>
             {r.from_station ?? 'ไม่ระบุสถานี'}
           </h2>
-
-          <div className="flex shrink-0 items-center" style={{ gap: px(8) }}>
-            <Badge text={r.vehicle_type ?? '—'} size={px(22)} bg="#1C2430" fg="#9FB4CC" />
-            <Badge text={r.plate ?? '—'} size={px(22)} bg="#1B2430" fg="#EAF0F7" />
-            {/*
-              สามตัวเลขพัสดุอยู่ติดกันเพราะเป็นสมการเดียวกัน ทั้งหมด − DO = ไม่ใช่ DO
-              ของเดิมเลขทั้งหมดอยู่บนสุด ส่วน DO ไปอยู่ล่างสุดคนละมุมการ์ด
-              คนจึงไม่เห็นว่ามันเกี่ยวกัน แล้วก็ไม่เคยเอาสองตัวหลังไปใช้เลย
-            */}
-            <Parcels
-              all={r.parcels_all}
-              doJob={r.parcels_do}
-              nondo={r.parcels_nondo}
-              size={px(20)}
-            />
-          </div>
-
+          <Parcels
+            all={r.parcels_all}
+            doJob={r.parcels_do}
+            nondo={r.parcels_nondo}
+            size={px(20)}
+          />
           <Pill state={st} size={px(15)} />
         </div>
 
-        {/* ② แถวกลาง · เวลา กับ นาฬิกา */}
-        <div className="flex flex-1 items-center justify-between gap-3">
-          <div className="shrink-0">
-            <div className="text-[11px] font-bold" style={{ color: DIM }}>รถถึงจริง</div>
-            <div className="font-mono font-extrabold" style={{ fontSize: px(24) }}>
-              {clock(r.arrived_at)}
-            </div>
-            {/*
-              เวลาที่ต้องเสร็จก่อนเป็นตัวเลขที่คนเอาไปเทียบกับนาฬิกาบนผนัง
-              จึงทำเป็นป้ายสีแยกออกมา ไม่ใช่ตัวหนังสือจาง ๆ ต่อท้ายเวลารถถึง
-            */}
-            <div
-              className="mt-1 inline-flex items-baseline gap-1 rounded-lg px-2 py-[3px]"
-              style={{ background: sec < 0 ? '#3A1416' : '#2A2206' }}
-            >
-              <span
-                className="text-[11px] font-bold"
-                style={{ color: sec < 0 ? '#FFB4B6' : '#D9C78A' }}
-              >
-                เสร็จก่อน
-              </span>
-              <span
-                className="font-mono font-extrabold"
-                style={{ fontSize: px(21), color: sec < 0 ? '#FF8A8A' : '#FFD479' }}
-              >
-                {clock(r.due_at)}
-              </span>
-            </div>
-          </div>
-          <Timer sec={sec} size={px(48)} />
+        {/*
+          ② แถวกลาง · สี่ช่องเรียงกันแล้วนาฬิกาปิดท้าย
+          ของเดิมตรงนี้เป็นที่ว่างเปล่ากลางการ์ด เพราะข้อมูลไปกองอยู่ขอบซ้ายกับขอบขวา
+          ประเภทรถกับทะเบียนย้ายมาอยู่หน้าสุดและตัวใหญ่ เพราะเป็นสองอย่างที่ใช้ชี้ตัวรถ
+          ทุกช่องมีหัวข้อกำกับ · ป้ายที่ขึ้นมาเฉย ๆ ไม่มีใครรู้ว่าเลขนั้นคืออะไร
+        */}
+        <div className="flex flex-1 items-center gap-6">
+          <Cell label="ประเภทรถ" value={r.vehicle_type ?? '—'} size={px(38)} />
+          <Cell label="ทะเบียนรถ" value={r.plate ?? '—'} size={px(38)} mono />
+          <Cell label="รถถึงจริง" value={clock(r.arrived_at)} size={px(32)} mono />
+          <Cell
+            label="ต้องเสร็จก่อน"
+            value={clock(r.due_at)}
+            size={px(32)}
+            mono
+            color={sec < 0 ? '#FF8A8A' : '#FFD479'}
+          />
+          <span className="ml-auto shrink-0">
+            <Timer sec={sec} size={px(50)} />
+          </span>
         </div>
 
-        {/* ③ แถวล่าง · บาร์โค้ดอยู่ที่เดิม ต่อด้วยงาน DO */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="font-mono" style={{ color: DIM, fontSize: px(14) }}>
-            {r.truck_barcode}
+        {/* ③ แถวล่าง · คนขับกับบาร์โค้ด มีหัวข้อกำกับเหมือนกัน */}
+        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1" style={{ fontSize: px(15) }}>
+          <span>
+            <span style={{ color: DIM }}>คนขับ </span>
+            <span className="font-bold">{r.driver_name ?? '—'}</span>
+            {r.driver_phone && (
+              <span className="font-mono" style={{ color: DIM }}> · {r.driver_phone}</span>
+            )}
           </span>
-          {r.driver_name && (
-            <span className="ml-auto truncate" style={{ color: DIM, fontSize: px(14) }}>
-              {r.driver_name}
-            </span>
+          <span>
+            <span style={{ color: DIM }}>บาร์โค้ดรถ </span>
+            <span className="font-mono font-bold">{r.truck_barcode}</span>
+          </span>
+          {r.carrier && (
+            <span className="ml-auto truncate" style={{ color: DIM }}>{r.carrier}</span>
           )}
         </div>
       </div>
     </article>
+  )
+}
+
+/**
+ * ช่องข้อมูลหนึ่งช่อง · หัวข้อเล็กอยู่บน ค่าใหญ่อยู่ล่าง
+ *
+ * ทุกตัวเลขบนการ์ดต้องมีหัวข้อ · เลข 256037 ที่ขึ้นมาลอย ๆ
+ * คนที่เพิ่งเข้ากะไม่มีทางรู้ว่าเป็นทะเบียน เลขพัสดุ หรือรหัสอะไรสักอย่าง
+ */
+function Cell({
+  label,
+  value,
+  size,
+  mono,
+  color,
+}: {
+  label: string
+  value: string
+  size: number
+  mono?: boolean
+  color?: string
+}) {
+  return (
+    <span className="shrink-0">
+      <span
+        className="block font-bold leading-none"
+        style={{ fontSize: Math.max(11, Math.round(size * 0.34)), color: DIM }}
+      >
+        {label}
+      </span>
+      <span
+        className={'block font-extrabold leading-none ' + (mono ? 'font-mono' : '')}
+        style={{ fontSize: size, color: color ?? '#EAF0F7', marginTop: Math.round(size * 0.14) }}
+      >
+        {value}
+      </span>
+    </span>
   )
 }
 
@@ -680,20 +806,22 @@ function StatsPage({
     <div className="flex flex-col gap-4" style={{ minHeight: 'calc(100dvh - 210px)' }}>
       {/* ① ยอดรวมของรอบ */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Big label="รถทั้งหมดในรอบนี้" n={total} sub="รอ + ลงแล้ว" color="#EAF0F7" />
-        <Big label="ยังรอลงงาน" n={live.length} color="#2F7FE0" />
-        <Big label="ลงงานแล้ว" n={doneN} color="#25A35A" />
-        <Big
+        <BigStat label="รถทั้งหมดในรอบนี้" value={total} sub="รอ + ลงแล้ว" icon="🚚" color="#334155" />
+        <BigStat label="ยังรอลงงาน" value={live.length} sub="บนกระดานตอนนี้" icon="⏳" color="#2563EB" />
+        <BigStat label="ลงงานแล้ว" value={doneN} sub="นับตั้งแต่ตีสาม" icon="✅" color="#0E9F6E" />
+        <BigStat
           label="ลงแล้วแต่เกินเวลา"
-          n={late}
-          sub={doneN > 0 ? `${pct(late, doneN)} ของที่ลงแล้ว` : undefined}
-          color="#E5484D"
+          value={late}
+          sub={doneN > 0 ? `${pct(late, doneN)} ของที่ลงแล้ว` : 'ยังไม่มีคันที่ลงเสร็จ'}
+          icon="⚠"
+          color="#DC2626"
         />
-        <Big
-          label="ทันเวลา"
-          n={pct(onTime, doneN)}
+        <BigStat
+          label="ลงงานทันเวลา"
+          value={pct(onTime, doneN)}
           sub={`${onTime} จาก ${doneN} คัน`}
-          color="#35D98A"
+          icon="🎯"
+          color="#0891A5"
         />
       </div>
 
@@ -796,25 +924,6 @@ function StatsPage({
   )
 }
 
-function Big({
-  label,
-  n,
-  sub,
-  color,
-}: {
-  label: string
-  n: number | string
-  sub?: string
-  color: string
-}) {
-  return (
-    <div className="rounded-2xl p-4" style={{ background: CARD, border: `1px solid ${LINE}` }}>
-      <div className="text-[14px] font-bold" style={{ color: DIM }}>{label}</div>
-      <div className="mt-1 text-[44px] font-extrabold leading-none" style={{ color }}>{n}</div>
-      {sub && <div className="mt-1 text-[12px]" style={{ color: DIM }}>{sub}</div>}
-    </div>
-  )
-}
 
 /**
  * วงแหวนร้อยละ
@@ -1131,5 +1240,32 @@ function ActSheet({
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * ปุ่มเต็มจอ
+ *
+ * จอทีวีที่แขวนไว้ควรไม่มีแถบที่อยู่เว็บกับแถบงานของเครื่องมาเบียด
+ * แต่เบราว์เซอร์บังคับว่าต้องมีคนกดเองหนึ่งครั้ง จะสั่งเองตอนเปิดหน้าไม่ได้
+ */
+function FullBtn() {
+  const [on, setOn] = useState(() => !!document.fullscreenElement)
+
+  useEffect(() => {
+    const sync = () => setOn(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', sync)
+    return () => document.removeEventListener('fullscreenchange', sync)
+  }, [])
+
+  return (
+    <TvBtn
+      onClick={() => {
+        if (document.fullscreenElement) void document.exitFullscreen()
+        else void document.documentElement.requestFullscreen().catch(() => undefined)
+      }}
+    >
+      {on ? 'ออกจากเต็มจอ' : 'เต็มจอ'}
+    </TvBtn>
   )
 }

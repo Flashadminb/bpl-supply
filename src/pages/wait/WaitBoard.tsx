@@ -26,6 +26,7 @@ import {
   DIM,
   FLASH_MS,
   FlashBell,
+  RING_MS,
   INSET,
   UploadChip,
   LINE,
@@ -69,6 +70,8 @@ export default function WaitBoard() {
   const [picked, setPicked] = useState<File | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const alarm = useAlarmPref(WAIT_ALARM_PREF)
+  /** เหลือกี่วินาทีก่อนเด้งไปจอทีวี · null = ยังไม่นับถอยหลัง */
+  const [idleLeft, setIdleLeft] = useState<number | null>(null)
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000)
@@ -85,6 +88,47 @@ export default function WaitBoard() {
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  /**
+   * ไม่แตะอะไรเกิน 20 วินาที แล้วเด้งไปจอทีวีเอง
+   *
+   * กระดานนี้ถูกเปิดค้างบนจอที่ตั้งไว้เฉย ๆ บ่อยกว่าถูกใช้กด
+   * ปล่อยไว้เฉย ๆ มันควรกลายเป็นจอทีวี ซึ่งอ่านจากไกลได้
+   *
+   * หยุดนับเมื่อมีกล่องเปิดอยู่ หรือกำลังพิมพ์ค้นหา เพราะนั่นคือกำลังใช้งานจริง
+   * และขึ้นนับถอยหลังห้าวินาทีสุดท้ายให้เห็นก่อน · จอที่เปลี่ยนเองโดยไม่บอก
+   * คือจอที่คนคิดว่าเสีย แล้วก็จะเลิกใช้
+   */
+  const paused = picked !== null || phone !== null || cancelling !== null || showDone || q !== ''
+
+  useEffect(() => {
+    if (paused) {
+      setIdleLeft(null)
+      return
+    }
+    let left = 20
+    setIdleLeft(null)
+    const bump = () => {
+      left = 20
+      setIdleLeft(null)
+    }
+    const evs: (keyof DocumentEventMap)[] = ['pointerdown', 'keydown', 'wheel', 'touchstart']
+    evs.forEach((e) => document.addEventListener(e, bump, { passive: true }))
+
+    const t = setInterval(() => {
+      left -= 1
+      if (left <= 0) {
+        nav('/wait/tv')
+        return
+      }
+      setIdleLeft(left <= 5 ? left : null)
+    }, 1000)
+
+    return () => {
+      clearInterval(t)
+      evs.forEach((e) => document.removeEventListener(e, bump))
+    }
+  }, [paused, nav])
 
   // มาจากปุ่มอัปไฟล์บนจอทีวี · เปิดช่องเลือกไฟล์ให้เลย ไม่ต้องกดซ้ำ
   useEffect(() => {
@@ -107,6 +151,12 @@ export default function WaitBoard() {
     alarm.on,
     playWaitAlarm,
   )
+  /** คันที่กำลังเตือนอยู่ตอนนี้ · ขึ้นกระดิ่งสั่น */
+  const ringing = useMemo(
+    () => new Set(now - fired.at < RING_MS ? fired.ids : []),
+    [fired, now],
+  )
+  /** คันที่เพิ่งเตือนไปเมื่อครู่ · ขึ้นจุดกระพริบเฉย ๆ */
   const flashing = useMemo(
     () => new Set(now - fired.at < FLASH_MS ? fired.ids : []),
     [fired, now],
@@ -186,6 +236,14 @@ export default function WaitBoard() {
         <header className="sticky top-0 z-20 px-3 pb-2 pt-3" style={{ background: BG }}>
           <div className="mx-auto w-full max-w-5xl">
             <div className="mb-2 flex items-center gap-2">
+              <button
+                onClick={() => nav('/')}
+                aria-label="กลับหน้าแรกของแอพ"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-[18px] font-extrabold"
+                style={{ background: CARD, border: `1px solid ${LINE}`, color: '#EAF0F7' }}
+              >
+                ←
+              </button>
               <span className="min-w-0 flex-1 truncate">
                 <WaitLogo size={19} />
               </span>
@@ -304,6 +362,7 @@ export default function WaitBoard() {
                 sec={sec}
                 busy={busy === r.id}
                 flash={flashing.has(r.id)}
+            ringing={ringing.has(r.id)}
                 onDone={() => void act(r.id, () => doneWaitTruck(r.id))}
                 onPhone={() => setPhone(r)}
                 onCancel={() => setCancelling(r)}
@@ -320,6 +379,16 @@ export default function WaitBoard() {
             {counts.data ? ` · รอบนี้ ${counts.data.done} คัน` : ''}
           </button>
         </main>
+
+        {idleLeft !== null && (
+          <button
+            onClick={() => setIdleLeft(null)}
+            className="fixed inset-x-0 bottom-0 z-30 flex h-12 items-center justify-center gap-2 text-[14px] font-extrabold"
+            style={{ background: '#2F7FE0', color: '#fff' }}
+          >
+            จะไปจอทีวีในอีก {idleLeft} วินาที · แตะตรงไหนก็ได้เพื่ออยู่ต่อ
+          </button>
+        )}
 
         <input
           ref={fileRef}
@@ -407,6 +476,7 @@ function TruckRow({
   sec,
   busy,
   flash,
+  ringing,
   onDone,
   onPhone,
   onCancel,
@@ -415,6 +485,8 @@ function TruckRow({
   sec: number
   busy: boolean
   flash: boolean
+  /** กำลังเตือนอยู่จริง ๆ ตอนนี้ · กระดิ่งสั่นเฉพาะตอนนี้เท่านั้น */
+  ringing: boolean
   onDone: () => void
   onPhone: () => void
   onCancel: () => void
@@ -436,7 +508,7 @@ function TruckRow({
       <div className="flex flex-col gap-2 py-2 pl-4 pr-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
         {/* ① ชื่อสถานี กับ สถานะ */}
         <div className="order-1 flex items-center gap-2 sm:order-2 sm:min-w-[170px] sm:flex-1">
-          {flash && <FlashBell size={14} />}
+          {flash && <FlashBell size={14} ringing={ringing} />}
           <h2 className="min-w-0 flex-1 truncate text-[16px] font-extrabold sm:text-[15px]">
             {r.from_station ?? 'ไม่ระบุสถานีก่อนหน้า'}
           </h2>

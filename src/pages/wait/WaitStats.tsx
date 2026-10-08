@@ -1,24 +1,37 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
-import {
-  waitTruckCompare,
-  waitTruckStats,
-  type WaitStats,
-} from '../../lib/waitTrucks'
+import { waitTruckCompare, waitTruckStats, type WaitStats as Stats } from '../../lib/waitTrucks'
 import { DateRangePicker } from '../../components/DateRangePicker'
-import { BarsH, Columns, DataTable, Kpi, PanelHead } from '../../components/charts'
-import { ErrorBox, Loading } from '../../components/ui'
+import { BG, CARD, DIM, LINE, nf, WaitLogo } from './parts'
+import {
+  BAD,
+  BLUE,
+  Delta,
+  DO_C,
+  Donut,
+  Empty,
+  HBars,
+  Kpi,
+  LinePct,
+  NONDO_C,
+  OK,
+  Panel,
+  StackBars,
+} from './dash'
 
 /**
  * แดชบอร์ดรถรอลงงาน · อยู่ฝั่งหน้างาน ไม่ใช่หลังบ้าน
  *
  * หัวหน้าหน้างานคือคนที่ต้องตอบว่าสัปดาห์นี้ดีขึ้นหรือแย่ลง และตอบตอนอยู่ในคลัง
  * ถ้าต้องเดินกลับไปเปิดหน้าแอดมินก่อน เขาจะไม่เปิดเลย แล้วก็จะเดาเอาแทน
- * หลังบ้านเหลือไว้แค่ที่ตั้งเกณฑ์เวลา ซึ่งเป็นงานที่ทำปีละไม่กี่ครั้ง
  *
- * หน้านี้ใช้พื้นสว่างแบบหน้าอื่นของแอพ ไม่ใช่พื้นดำแบบกระดาน
- * เพราะมันคือหน้าที่นั่งอ่าน ไม่ใช่หน้าที่กวาดตาจากกลางคลัง
+ * ทุกตัวเลขในหน้านี้ตอบคำถามที่ถูกถามจริงในที่ประชุมเช้า
+ *   ทันเวลากี่เปอร์เซ็นต์ · แย่ลงหรือดีขึ้นจากช่วงก่อน
+ *   เสียเวลาไปกับประเภทรถไหน · สถานีไหนเป็นต้นเหตุ
+ *   ของที่ลงไปเป็นงานส่งตรงกี่ชิ้น ที่เหลือกี่ชิ้น
+ *
+ * ตัวที่ไม่ได้ตอบคำถามไหนเลย ไม่ได้ถูกใส่ลงมา ถึงจะวาดสวยก็ตาม
  */
 
 const p2 = (n: number) => String(n).padStart(2, '0')
@@ -39,31 +52,28 @@ const dayShort = (iso: string) => {
   return `${Number(d)}/${Number(m)}`
 }
 
-const nf = (n: number) => n.toLocaleString('th-TH')
+const pctNum = (part: number, total: number) => (total > 0 ? Math.round((part / total) * 100) : 0)
 
 export default function WaitStats() {
+  const nav = useNavigate()
   const [tab, setTab] = useState<'one' | 'two'>('one')
 
   return (
-    <div className="min-h-dvh bg-canvas px-3 pb-20 pt-4">
-      <div className="mx-auto w-full max-w-5xl space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="font-display text-xl">แดชบอร์ดรถรอลงงาน</h1>
-            <p className="text-sm text-ink-500">
-              นับเฉพาะคันที่กดลงงานเสร็จแล้ว · คันที่ยังค้างยังไม่มีผลแพ้ชนะ
-            </p>
-          </div>
+    <div className="min-h-dvh px-4 pb-16 pt-4 text-white" style={{ background: BG }}>
+      <div className="mx-auto w-full max-w-[1400px] space-y-4">
+        {/* แถบหัว · ชื่อจออยู่บรรทัดของตัวเอง เหมือนจอทีวี */}
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl px-5 py-4"
+          style={{
+            background: 'linear-gradient(90deg,#15306B 0%,#101A33 60%,#0B0F16 100%)',
+            border: `1px solid ${LINE}`,
+          }}
+        >
+          <WaitLogo size={28} title="แดชบอร์ดรถรอลงงาน" />
           <div className="flex flex-wrap gap-2">
-            <Link to="/wait" className="flex h-tap items-center rounded-btn bg-ink px-4 text-sm text-white">
-              ← กระดาน
-            </Link>
-            <Link to="/wait/history" className="flex h-tap items-center rounded-btn border bg-surface px-4 text-sm">
-              ประวัติ
-            </Link>
-            <Link to="/wait/tv" className="flex h-tap items-center rounded-btn border bg-surface px-4 text-sm">
-              จอทีวี
-            </Link>
+            <NavBtn onClick={() => nav('/wait')}>← กระดาน</NavBtn>
+            <NavBtn onClick={() => nav('/wait/history')}>ประวัติ</NavBtn>
+            <NavBtn onClick={() => nav('/wait/tv')}>จอทีวี</NavBtn>
           </div>
         </div>
 
@@ -75,6 +85,18 @@ export default function WaitStats() {
         {tab === 'one' ? <OneRange /> : <TwoRanges />}
       </div>
     </div>
+  )
+}
+
+function NavBtn({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="h-11 rounded-xl px-4 text-[13px] font-bold"
+      style={{ background: '#16202F', border: `1px solid ${LINE}`, color: '#EAF0F7' }}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -90,12 +112,39 @@ function TabBtn({
   return (
     <button
       onClick={onClick}
-      className={`h-tap rounded-btn px-4 text-sm font-bold ${
-        on ? 'bg-ink text-white' : 'border bg-surface text-ink-600'
-      }`}
+      className="h-11 rounded-xl px-5 text-[14px] font-extrabold"
+      style={
+        on
+          ? { background: '#EAF0F7', color: '#101316' }
+          : { background: CARD, border: `1px solid ${LINE}`, color: '#AFC0D4' }
+      }
     >
       {children}
     </button>
+  )
+}
+
+/** ปฏิทินของแอพเป็นธีมสว่าง · ครอบไว้ในกล่องสว่างจะได้ไม่ใช่ตัวขาวบนขาว */
+function RangeBox({
+  label,
+  from,
+  to,
+  onChange,
+  tone,
+}: {
+  label: string
+  from: string
+  to: string
+  onChange: (a: string, b: string) => void
+  tone?: string
+}) {
+  return (
+    <span className="flex items-center gap-2 rounded-xl bg-white px-3 py-2">
+      <span className="text-[12px] font-extrabold" style={{ color: tone ?? '#4B5563' }}>
+        {label}
+      </span>
+      <DateRangePicker from={from} to={to} onChange={onChange} />
+    </span>
   )
 }
 
@@ -104,179 +153,195 @@ function TabBtn({
 function OneRange() {
   const [from, setFrom] = useState(() => addDays(todayKey(), -6))
   const [to, setTo] = useState(todayKey)
-  const stats = useAsync(() => waitTruckStats(from, to), [from, to])
-  const s = stats.data
-
-  return (
-    <section className="rounded-panel bg-surface p-4 shadow-card">
-      <PanelHead
-        title="ผลงานตามช่วงวัน"
-        hint="แบ่งวันตามเวลาไทย กะดึกจึงไม่ถูกนับไปเป็นของวันถัดไป"
-        right={
-          <DateRangePicker
-            from={from}
-            to={to}
-            onChange={(a, b) => {
-              setFrom(a)
-              setTo(b)
-            }}
-          />
-        }
-      />
-
-      {stats.loading && <Loading />}
-      {stats.error && <ErrorBox message={stats.error} onRetry={stats.reload} />}
-      {!stats.loading && !stats.error && !s && (
-        <p className="py-8 text-center text-sm text-ink-400">บัญชีนี้ยังไม่มีสิทธิ์ดูรถรอลงงาน</p>
-      )}
-
-      {s && (
-        <>
-          <Cards s={s} />
-
-          <div className="mt-5">
-            <h3 className="mb-2 text-sm font-semibold">รถเข้าแต่ละวัน</h3>
-            <Columns
-              data={s.by_day.map((d) => ({ label: dayShort(d.day), value: d.total }))}
-              unit="คัน"
-              emptyText="ช่วงนี้ยังไม่มีรถที่ลงงานเสร็จ"
-            />
-          </div>
-
-          <div className="mt-5">
-            <h3 className="mb-2 text-sm font-semibold">พัสดุแต่ละวัน · งาน DO เทียบกับที่ไม่ใช่ DO</h3>
-            <StackedDays rows={s.by_day} />
-          </div>
-
-          <div className="mt-5 grid gap-5 lg:grid-cols-2">
-            <div>
-              <h3 className="mb-2 text-sm font-semibold">ลงงานทันเวลา แยกตามประเภทรถ</h3>
-              <BarsH
-                data={s.by_type.map((t) => ({
-                  label: `${t.vehicle_type} · ${t.on_time}/${t.total} คัน`,
-                  value: t.total > 0 ? Math.round((t.on_time / t.total) * 100) : 0,
-                }))}
-                unit="%"
-                max={100}
-                emptyText="ยังไม่มีข้อมูล"
-              />
-              <DataTable
-                head={['ประเภทรถ', 'พัสดุงาน DO']}
-                rows={s.by_type.map((t) => ({ label: t.vehicle_type, value: t.parcels_do }))}
-                unit="ชิ้น"
-              />
-            </div>
-
-            <div>
-              <h3 className="mb-2 text-sm font-semibold">สถานีต้นทางที่ส่งมามากที่สุด</h3>
-              <BarsH
-                data={s.by_station.slice(0, 10).map((x) => ({
-                  label: x.from_station,
-                  value: x.total,
-                }))}
-                unit="คัน"
-                emptyText="ยังไม่มีข้อมูล"
-              />
-              <DataTable
-                head={['สถานีต้นทาง', 'รอเฉลี่ย (นาที)']}
-                rows={s.by_station.map((x) => ({ label: x.from_station, value: x.avg_wait }))}
-                unit="นาที"
-              />
-            </div>
-          </div>
-        </>
-      )}
-    </section>
-  )
-}
-
-function Cards({ s }: { s: WaitStats }) {
-  const okPct = s.total > 0 ? Math.round((s.on_time / s.total) * 100) : null
-  return (
-    <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
-      <Kpi icon="🚚" label="รถที่ลงงานเสร็จ" value={s.total} hue={0} />
-      <Kpi
-        icon="✅"
-        label="ลงงานทันเวลา"
-        value={okPct == null ? '—' : okPct + '%'}
-        sub={`${s.on_time} จาก ${s.total} คัน`}
-        tone={okPct == null ? 'plain' : okPct >= 90 ? 'ok' : okPct >= 70 ? 'warn' : 'danger'}
-        hue={1}
-      />
-      <Kpi
-        icon="⏱"
-        label="รอเฉลี่ยต่อคัน"
-        value={s.avg_wait + ' นาที'}
-        sub={`นานสุดเกินเกณฑ์ ${s.worst} นาที`}
-        hue={2}
-      />
-      <Kpi
-        icon="📦"
-        label="พัสดุงาน DO"
-        value={nf(s.parcels_do)}
-        sub={`จากทั้งหมด ${nf(s.parcels)} ชิ้น`}
-        hue={3}
-      />
-      <Kpi
-        icon="🧱"
-        label="พัสดุที่ไม่ใช่ DO"
-        value={nf(s.parcels_nondo)}
-        sub={s.cancelled > 0 ? `ยกเลิก ${s.cancelled} คัน` : undefined}
-        hue={0}
-      />
-    </div>
-  )
-}
-
-/**
- * แท่งซ้อนรายวัน · DO กับไม่ใช่ DO
- *
- * ใช้แท่งซ้อนไม่ใช่สองแท่งคู่ เพราะคำถามคือ "วันนั้นสัดส่วน DO เป็นเท่าไหร่"
- * ไม่ใช่ "วันไหน DO เยอะกว่ากัน" · แท่งซ้อนตอบคำถามแรกได้โดยไม่ต้องคิดเลข
- */
-function StackedDays({
-  rows,
-}: {
-  rows: { day: string; parcels: number; parcels_do: number; parcels_nondo: number }[]
-}) {
-  if (rows.length === 0) {
-    return <p className="py-6 text-center text-sm text-ink-400">ยังไม่มีข้อมูล</p>
-  }
-  const top = Math.max(...rows.map((r) => r.parcels), 1)
+  const q = useAsync(() => waitTruckStats(from, to), [from, to])
+  const s = q.data
 
   return (
     <>
-      <div className="flex items-end gap-2 overflow-x-auto pb-1" style={{ height: 180 }}>
-        {rows.map((r) => {
-          const h = Math.round((r.parcels / top) * 150)
-          const doH = r.parcels > 0 ? Math.round((r.parcels_do / r.parcels) * h) : 0
-          return (
-            <div key={r.day} className="flex min-w-[42px] flex-1 flex-col items-center justify-end">
-              <span className="mb-1 text-[11px] font-bold text-ink-500">{nf(r.parcels)}</span>
-              <div
-                className="flex w-full max-w-[46px] flex-col-reverse overflow-hidden rounded-t-md"
-                style={{ height: Math.max(h, 2) }}
-                title={`DO ${nf(r.parcels_do)} · ไม่ใช่ DO ${nf(r.parcels_nondo)}`}
-              >
-                <div style={{ height: doH, background: '#2BA7D8' }} />
-                <div style={{ height: h - doH, background: '#8B5CF6' }} />
-              </div>
-              <span className="mt-1 text-[11px] text-ink-400">{dayShort(r.day)}</span>
-            </div>
-          )
-        })}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[13px]" style={{ color: DIM }}>
+          นับเฉพาะคันที่กดลงงานเสร็จแล้ว · คันที่ยังค้างยังไม่มีผลแพ้ชนะ · แบ่งวันตามเวลาไทย
+        </p>
+        <RangeBox label="ช่วงวันที่" from={from} to={to} onChange={(a, b) => { setFrom(a); setTo(b) }} />
       </div>
-      <div className="mt-1 flex gap-4 text-xs font-bold">
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-3 w-3 rounded-sm" style={{ background: '#2BA7D8' }} />
-          งาน DO
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-3 w-3 rounded-sm" style={{ background: '#8B5CF6' }} />
-          ไม่ใช่งาน DO
-        </span>
-      </div>
+
+      {q.loading && <Empty text="กำลังโหลด…" />}
+      {q.error && <Empty text={q.error} />}
+      {!q.loading && !q.error && !s && <Empty text="บัญชีนี้ยังไม่มีสิทธิ์ดูรถรอลงงาน" />}
+
+      {s && <OneBody s={s} />}
     </>
+  )
+}
+
+function OneBody({ s }: { s: Stats }) {
+  const ok = pctNum(s.on_time, s.total)
+  const avgPcs = s.total > 0 ? Math.round(s.parcels / s.total) : 0
+  const doN = s.parcels_do ?? 0
+  const ndN = s.parcels_nondo ?? 0
+  const knownParcels = doN + ndN
+
+  const days = useMemo(
+    () =>
+      s.by_day.map((d) => ({
+        label: dayShort(d.day),
+        a: d.on_time,
+        b: Math.max(0, d.total - d.on_time),
+        note: `${d.day} · ทัน ${d.on_time} จาก ${d.total} คัน`,
+      })),
+    [s.by_day],
+  )
+
+  return (
+    <div className="space-y-4">
+      {/* ① แถวตัวเลขหลัก */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <Kpi
+          icon="🎯"
+          label="ลงงานทันเวลา"
+          value={s.total > 0 ? ok + '%' : '—'}
+          tone={s.total === 0 ? DIM : ok >= 90 ? OK : ok >= 70 ? '#E8B931' : BAD}
+          foot={`${s.on_time} จาก ${s.total} คัน`}
+        />
+        <Kpi icon="🚚" label="รถที่ลงงานเสร็จ" value={nf(s.total)} tone={BLUE}
+             foot={s.cancelled > 0 ? `ยกเลิกอีก ${s.cancelled} คัน` : 'ไม่มีคันที่ถูกยกเลิก'} />
+        <Kpi icon="⏱" label="รอเฉลี่ยต่อคัน" value={`${nf(s.avg_wait)} น.`} tone="#38BDF8"
+             foot={`นานสุดเกินเกณฑ์ ${nf(s.worst)} นาที`} />
+        <Kpi icon="⚠" label="ลงไม่ทันเกณฑ์" value={nf(s.total - s.on_time)} tone={BAD}
+             foot={s.total > 0 ? `${100 - ok}% ของที่ลงไปแล้ว` : '—'} />
+        <Kpi icon="📦" label="พัสดุที่ลงไปแล้ว" value={nf(s.parcels)} tone="#FBBF24"
+             foot={`เฉลี่ย ${nf(avgPcs)} ชิ้นต่อคัน`} />
+        <Kpi icon="🎁" label="งานส่งตรง DO" value={s.parcels_do == null ? '—' : nf(doN)} tone={DO_C}
+             foot={knownParcels > 0 ? `${pctNum(doN, knownParcels)}% ของที่ลงไปแล้ว` : 'ไฟล์ยังไม่ได้บอก DO'} />
+      </div>
+
+      {/* ② แนวโน้มรายวัน กับ สัดส่วน */}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <Panel
+          title="ลงงานทันเวลารายวัน"
+          right={<span className="text-[12px] font-bold" style={{ color: DIM }}>เส้นยิ่งสูงยิ่งดี · แกนตรึง 0–100%</span>}
+        >
+          <LinePct
+            labels={s.by_day.map((d) => dayShort(d.day))}
+            series={[
+              {
+                name: 'ทันเวลา (%)',
+                color: OK,
+                points: s.by_day.map((d) => pctNum(d.on_time, d.total)),
+              },
+            ]}
+          />
+        </Panel>
+
+        <Panel title="ทันเวลา เทียบกับ ไม่ทัน">
+          <Donut
+            center={s.total > 0 ? ok + '%' : '—'}
+            centerSub="ทันเวลา"
+            parts={[
+              { label: 'ทันเวลา', value: s.on_time, color: OK },
+              { label: 'ไม่ทันเกณฑ์', value: Math.max(0, s.total - s.on_time), color: BAD },
+            ]}
+          />
+        </Panel>
+      </div>
+
+      {/* ③ รายวัน กับ สัดส่วนงาน DO */}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <Panel title="รถเข้าแต่ละวัน แยกทันเวลากับไม่ทัน">
+          <StackBars rows={days} />
+        </Panel>
+
+        <Panel title="พัสดุที่ลงไปแล้ว แยกงานส่งตรง">
+          {knownParcels === 0 ? (
+            <Empty text="ไฟล์ที่นำเข้าในช่วงนี้ยังไม่ได้บอกงาน DO" />
+          ) : (
+            <Donut
+              center={nf(knownParcels)}
+              centerSub="ชิ้น"
+              parts={[
+                { label: 'งานส่งตรง DO', value: doN, color: DO_C },
+                { label: 'ไม่ใช่งาน DO', value: ndN, color: NONDO_C },
+              ]}
+            />
+          )}
+        </Panel>
+      </div>
+
+      {/* ④ ประเภทรถ กับ สถานีต้นทาง */}
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Panel
+          title="ลงงานทันเวลา แยกตามประเภทรถ"
+          right={<span className="text-[12px] font-bold" style={{ color: DIM }}>แท่งยาว = ทันเยอะ</span>}
+        >
+          <HBars
+            unit="%"
+            max={100}
+            rows={s.by_type.map((t) => ({
+              label: `${t.vehicle_type} · ${t.total} คัน`,
+              value: pctNum(t.on_time, t.total),
+              sub: `รอเฉลี่ย ${t.avg_wait} น.`,
+              color: pctNum(t.on_time, t.total) >= 90 ? OK : pctNum(t.on_time, t.total) >= 70 ? '#E8B931' : BAD,
+            }))}
+          />
+        </Panel>
+
+        <Panel
+          title="สถานีต้นทางที่เสียเวลามากที่สุด"
+          right={<span className="text-[12px] font-bold" style={{ color: DIM }}>เรียงตามเวลารอเฉลี่ย</span>}
+        >
+          <HBars
+            unit="น."
+            rows={[...s.by_station]
+              .sort((a, b) => b.avg_wait - a.avg_wait)
+              .slice(0, 8)
+              .map((x) => ({
+                label: x.from_station,
+                value: x.avg_wait,
+                sub: `${x.total} คัน · ทัน ${pctNum(x.on_time, x.total)}%`,
+                color: BLUE,
+              }))}
+          />
+        </Panel>
+      </div>
+
+      {/* ⑤ ตารางเต็มของประเภทรถ */}
+      <Panel title="ตารางสรุปตามประเภทรถ">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-[14px]">
+            <thead>
+              <tr style={{ color: DIM }}>
+                {['ประเภทรถ', 'คัน', 'ทันเวลา', 'ไม่ทัน', 'ทันเวลา %', 'รอเฉลี่ย', 'เกินนานสุด', 'พัสดุ', 'งาน DO', 'ไม่ใช่ DO'].map((h) => (
+                  <th key={h} className="whitespace-nowrap px-3 py-2 text-left font-bold">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {s.by_type.map((t) => {
+                const p = pctNum(t.on_time, t.total)
+                return (
+                  <tr key={t.vehicle_type} className="border-t" style={{ borderColor: LINE }}>
+                    <td className="whitespace-nowrap px-3 py-2 font-extrabold">{t.vehicle_type}</td>
+                    <td className="px-3 py-2 font-bold">{nf(t.total)}</td>
+                    <td className="px-3 py-2 font-bold" style={{ color: OK }}>{nf(t.on_time)}</td>
+                    <td className="px-3 py-2 font-bold" style={{ color: BAD }}>{nf(t.total - t.on_time)}</td>
+                    <td className="px-3 py-2 font-extrabold"
+                        style={{ color: p >= 90 ? OK : p >= 70 ? '#E8B931' : BAD }}>{p}%</td>
+                    <td className="px-3 py-2">{nf(t.avg_wait)} น.</td>
+                    <td className="px-3 py-2">{nf(t.worst)} น.</td>
+                    <td className="px-3 py-2 font-bold" style={{ color: '#FFD479' }}>{nf(t.parcels)}</td>
+                    <td className="px-3 py-2 font-bold" style={{ color: DO_C }}>{nf(t.parcels_do)}</td>
+                    <td className="px-3 py-2 font-bold" style={{ color: NONDO_C }}>{nf(t.parcels_nondo)}</td>
+                  </tr>
+                )
+              })}
+              {s.by_type.length === 0 && (
+                <tr><td colSpan={10}><Empty /></td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+    </div>
   )
 }
 
@@ -285,8 +350,11 @@ function StackedDays({
 /**
  * เทียบสองช่วงวัน
  *
- * เลือกช่วงไหนก็ได้ทั้งคู่ · วันเดียวเทียบวันเดียว หรือสัปดาห์เทียบสัปดาห์
- * ฐานข้อมูลเรียกตัวนับเดียวกันสองครั้ง จึงไม่มีทางที่สองฝั่งจะใช้นิยามคนละแบบ
+ * ฐานข้อมูลเรียกตัวนับเดียวกันสองครั้ง ไม่ได้เขียนตรรกะนับใหม่
+ * ตัวเลขช่วง ก กับช่วง ข จึงมาจากนิยามเดียวกันเสมอ
+ *
+ * เส้นแนวโน้มวางซ้อนกันโดยนับเป็น "วันที่เท่าไหร่ของช่วง" ไม่ใช่วันที่จริง
+ * เพราะสองช่วงอาจยาวไม่เท่ากันและไม่ได้อยู่ติดกัน การวางตามวันที่จริงจะอ่านไม่ได้เลย
  */
 function TwoRanges() {
   const [aFrom, setAFrom] = useState(() => addDays(todayKey(), -6))
@@ -294,116 +362,229 @@ function TwoRanges() {
   const [bFrom, setBFrom] = useState(() => addDays(todayKey(), -13))
   const [bTo, setBTo] = useState(() => addDays(todayKey(), -7))
 
-  const cmp = useAsync(
+  const q = useAsync(
     () => waitTruckCompare([aFrom, aTo], [bFrom, bTo]),
     [aFrom, aTo, bFrom, bTo],
   )
 
   return (
-    <section className="rounded-panel bg-surface p-4 shadow-card">
-      <PanelHead
-        title="เทียบสองช่วงเวลา"
-        hint="เลือกจากปฏิทินทั้งสองฝั่ง · ตัวเลขทั้งสองช่วงมาจากตัวนับเดียวกัน"
-        hue={1}
-      />
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border p-3">
-          <p className="mb-2 text-sm font-bold" style={{ color: '#1F5FA8' }}>ช่วง ก</p>
-          <DateRangePicker
-            from={aFrom}
-            to={aTo}
-            onChange={(x, y) => {
-              setAFrom(x)
-              setATo(y)
-            }}
-          />
-        </div>
-        <div className="rounded-xl border p-3">
-          <p className="mb-2 text-sm font-bold" style={{ color: '#6B21A8' }}>ช่วง ข</p>
-          <DateRangePicker
-            from={bFrom}
-            to={bTo}
-            onChange={(x, y) => {
-              setBFrom(x)
-              setBTo(y)
-            }}
-          />
-        </div>
+    <>
+      <div className="flex flex-wrap items-center gap-3">
+        <RangeBox label="ช่วง ก" tone="#1D4ED8" from={aFrom} to={aTo}
+                  onChange={(x, y) => { setAFrom(x); setATo(y) }} />
+        <RangeBox label="ช่วง ข" tone="#7C3AED" from={bFrom} to={bTo}
+                  onChange={(x, y) => { setBFrom(x); setBTo(y) }} />
+        <span className="text-[13px]" style={{ color: DIM }}>
+          ป้ายส่วนต่างคิดจาก ช่วง ก ลบ ช่วง ข · เขียวคือดีขึ้น แดงคือแย่ลง
+        </span>
       </div>
 
-      {cmp.loading && <Loading />}
-      {cmp.error && <ErrorBox message={cmp.error} onRetry={cmp.reload} />}
-
-      {cmp.data && (
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[520px] text-sm">
-            <thead>
-              <tr className="border-b text-left text-ink-500">
-                <th className="py-2">ตัวเลข</th>
-                <th className="py-2 text-right" style={{ color: '#1F5FA8' }}>ช่วง ก</th>
-                <th className="py-2 text-right" style={{ color: '#6B21A8' }}>ช่วง ข</th>
-                <th className="py-2 text-right">ต่างกัน</th>
-              </tr>
-            </thead>
-            <tbody>
-              <Row k="รถที่ลงงานเสร็จ" a={cmp.data.a.total} b={cmp.data.b.total} unit="คัน" />
-              <Row
-                k="ลงงานทันเวลา"
-                a={pctNum(cmp.data.a.on_time, cmp.data.a.total)}
-                b={pctNum(cmp.data.b.on_time, cmp.data.b.total)}
-                unit="%"
-              />
-              <Row k="รอเฉลี่ยต่อคัน" a={cmp.data.a.avg_wait} b={cmp.data.b.avg_wait} unit="นาที" lowerIsBetter />
-              <Row k="นานสุดเกินเกณฑ์" a={cmp.data.a.worst} b={cmp.data.b.worst} unit="นาที" lowerIsBetter />
-              <Row k="พัสดุทั้งหมด" a={cmp.data.a.parcels} b={cmp.data.b.parcels} unit="ชิ้น" />
-              <Row k="พัสดุงาน DO" a={cmp.data.a.parcels_do} b={cmp.data.b.parcels_do} unit="ชิ้น" />
-              <Row
-                k="พัสดุที่ไม่ใช่ DO"
-                a={cmp.data.a.parcels_nondo}
-                b={cmp.data.b.parcels_nondo}
-                unit="ชิ้น"
-              />
-              <Row k="ยกเลิก" a={cmp.data.a.cancelled} b={cmp.data.b.cancelled} unit="คัน" lowerIsBetter />
-            </tbody>
-          </table>
-
-          <p className="mt-3 text-xs text-ink-400">
-            ช่อง “ต่างกัน” คือช่วง ก ลบช่วง ข · สีเขียวคือดีขึ้น แดงคือแย่ลง
-            ซึ่งแปลกลับทิศให้เองในแถวที่ยิ่งน้อยยิ่งดี
-          </p>
-        </div>
-      )}
-    </section>
+      {q.loading && <Empty text="กำลังโหลด…" />}
+      {q.error && <Empty text={q.error} />}
+      {q.data && <TwoBody a={q.data.a} b={q.data.b} />}
+    </>
   )
 }
 
-const pctNum = (part: number, total: number) => (total > 0 ? Math.round((part / total) * 100) : 0)
+function TwoBody({ a, b }: { a: Stats; b: Stats }) {
+  const okA = pctNum(a.on_time, a.total)
+  const okB = pctNum(b.on_time, b.total)
+  const lateA = a.total - a.on_time
+  const lateB = b.total - b.on_time
 
-function Row({
-  k,
+  const rows: {
+    k: string
+    a: number
+    b: number
+    unit: string
+    low?: boolean
+  }[] = [
+    { k: 'ลงงานทันเวลา', a: okA, b: okB, unit: '%' },
+    { k: 'รถที่ลงงานเสร็จ', a: a.total, b: b.total, unit: 'คัน' },
+    { k: 'ลงไม่ทันเกณฑ์', a: lateA, b: lateB, unit: 'คัน', low: true },
+    { k: 'รอเฉลี่ยต่อคัน', a: a.avg_wait, b: b.avg_wait, unit: 'นาที', low: true },
+    { k: 'เกินเกณฑ์นานสุด', a: a.worst, b: b.worst, unit: 'นาที', low: true },
+    { k: 'พัสดุที่ลงไปแล้ว', a: a.parcels, b: b.parcels, unit: 'ชิ้น' },
+    { k: 'งานส่งตรง DO', a: a.parcels_do ?? 0, b: b.parcels_do ?? 0, unit: 'ชิ้น' },
+    { k: 'ไม่ใช่งาน DO', a: a.parcels_nondo ?? 0, b: b.parcels_nondo ?? 0, unit: 'ชิ้น' },
+    { k: 'ถูกยกเลิก', a: a.cancelled, b: b.cancelled, unit: 'คัน', low: true },
+  ]
+
+  const span = Math.max(a.by_day.length, b.by_day.length)
+  const labels = Array.from({ length: span }, (_, i) => `วันที่ ${i + 1}`)
+
+  // ประเภทรถที่โผล่ในช่วงใดช่วงหนึ่ง · เทียบเป็นคู่
+  const types = useMemo(() => {
+    const keys = new Set([...a.by_type, ...b.by_type].map((t) => t.vehicle_type))
+    return [...keys].map((k) => {
+      const ta = a.by_type.find((t) => t.vehicle_type === k)
+      const tb = b.by_type.find((t) => t.vehicle_type === k)
+      return {
+        k,
+        aPct: ta ? pctNum(ta.on_time, ta.total) : 0,
+        bPct: tb ? pctNum(tb.on_time, tb.total) : 0,
+        aN: ta?.total ?? 0,
+        bN: tb?.total ?? 0,
+      }
+    }).sort((x, y) => y.aN + y.bN - (x.aN + x.bN))
+  }, [a.by_type, b.by_type])
+
+  return (
+    <div className="space-y-4">
+      {/* ① สี่ตัวเลขที่ถูกถามบ่อยที่สุด · ใหญ่คือช่วง ก เล็กคือช่วง ข */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <CmpCard icon="🎯" label="ลงงานทันเวลา" a={okA} b={okB} unit="%" tone={okA >= okB ? OK : BAD} />
+        <CmpCard icon="⚠" label="ลงไม่ทันเกณฑ์" a={lateA} b={lateB} unit="คัน" low tone={lateA <= lateB ? OK : BAD} />
+        <CmpCard icon="⏱" label="รอเฉลี่ยต่อคัน" a={a.avg_wait} b={b.avg_wait} unit="นาที" low tone={a.avg_wait <= b.avg_wait ? OK : BAD} />
+        <CmpCard icon="📦" label="พัสดุที่ลงไปแล้ว" a={a.parcels} b={b.parcels} unit="ชิ้น" tone={BLUE} />
+      </div>
+
+      {/* ② เส้นสองเส้นวางซ้อนกัน */}
+      <Panel
+        title="ลงงานทันเวลารายวัน · วางซ้อนสองช่วง"
+        right={
+          <span className="text-[12px] font-bold" style={{ color: DIM }}>
+            นับเป็นวันที่เท่าไหร่ของช่วง เพราะสองช่วงยาวไม่เท่ากันได้
+          </span>
+        }
+      >
+        <LinePct
+          labels={labels}
+          series={[
+            {
+              name: `ช่วง ก · ${a.from} ถึง ${a.to}`,
+              color: '#3B82F6',
+              points: Array.from({ length: span }, (_, i) =>
+                a.by_day[i] ? pctNum(a.by_day[i].on_time, a.by_day[i].total) : null,
+              ),
+            },
+            {
+              name: `ช่วง ข · ${b.from} ถึง ${b.to}`,
+              color: '#A78BFA',
+              points: Array.from({ length: span }, (_, i) =>
+                b.by_day[i] ? pctNum(b.by_day[i].on_time, b.by_day[i].total) : null,
+              ),
+            },
+          ]}
+        />
+      </Panel>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        {/* ③ ตารางส่วนต่างทุกตัวเลข */}
+        <Panel title="ส่วนต่างทุกตัวเลข">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[460px] text-[14px]">
+              <thead>
+                <tr style={{ color: DIM }}>
+                  <th className="px-3 py-2 text-left font-bold">ตัวเลข</th>
+                  <th className="px-3 py-2 text-right font-bold" style={{ color: '#7FA8FF' }}>ช่วง ก</th>
+                  <th className="px-3 py-2 text-right font-bold" style={{ color: '#C4A2FF' }}>ช่วง ข</th>
+                  <th className="px-3 py-2 text-right font-bold">ต่างกัน</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.k} className="border-t" style={{ borderColor: LINE }}>
+                    <td className="px-3 py-2">{r.k}</td>
+                    <td className="px-3 py-2 text-right font-extrabold">{nf(r.a)} {r.unit}</td>
+                    <td className="px-3 py-2 text-right font-bold" style={{ color: DIM }}>{nf(r.b)} {r.unit}</td>
+                    <td className="px-3 py-2 text-right">
+                      <Delta diff={r.a - r.b} unit={r.unit} lowerIsBetter={r.low} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+
+        {/* ④ ประเภทรถเทียบคู่ */}
+        <Panel title="ทันเวลาแยกตามประเภทรถ · เทียบคู่">
+          {types.length === 0 ? (
+            <Empty />
+          ) : (
+            <div className="space-y-3">
+              {types.map((t) => (
+                <div key={t.k}>
+                  <div className="mb-1 flex items-baseline justify-between text-[13px]">
+                    <span className="font-extrabold">{t.k}</span>
+                    <span style={{ color: DIM }}>
+                      ก {t.aN} คัน · ข {t.bN} คัน
+                    </span>
+                    <Delta diff={t.aPct - t.bPct} unit="%" />
+                  </div>
+                  <TwinBar a={t.aPct} b={t.bPct} />
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      </div>
+    </div>
+  )
+}
+
+function CmpCard({
+  icon,
+  label,
   a,
   b,
   unit,
-  lowerIsBetter,
+  low,
+  tone,
 }: {
-  k: string
+  icon: string
+  label: string
   a: number
   b: number
   unit: string
-  lowerIsBetter?: boolean
+  low?: boolean
+  tone: string
 }) {
-  const diff = a - b
-  const better = lowerIsBetter ? diff < 0 : diff > 0
-  const color = diff === 0 ? '#6B7280' : better ? '#167C45' : '#C32F34'
   return (
-    <tr className="border-b last:border-b-0">
-      <td className="py-2">{k}</td>
-      <td className="py-2 text-right font-bold">{nf(a)} {unit}</td>
-      <td className="py-2 text-right font-bold">{nf(b)} {unit}</td>
-      <td className="py-2 text-right font-extrabold" style={{ color }}>
-        {diff > 0 ? '+' : ''}{nf(diff)} {unit}
-      </td>
-    </tr>
+    <div className="rounded-2xl px-4 py-3" style={{ background: CARD, border: `1px solid ${LINE}` }}>
+      <div className="flex items-center gap-3">
+        <span
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[19px]"
+          style={{ background: tone + '26', border: `1px solid ${tone}55` }}
+          aria-hidden
+        >
+          {icon}
+        </span>
+        <span className="min-w-0 truncate text-[15px] font-extrabold">{label}</span>
+      </div>
+      <div className="mt-2 flex items-baseline gap-2">
+        <span className="text-[34px] font-extrabold leading-none" style={{ color: tone }}>
+          {nf(a)}
+        </span>
+        <span className="text-[13px] font-bold" style={{ color: DIM }}>{unit}</span>
+        <span className="ml-auto">
+          <Delta diff={a - b} unit={unit} lowerIsBetter={low} />
+        </span>
+      </div>
+      <div className="mt-2 text-[12px] font-bold" style={{ color: DIM }}>
+        ช่วง ข อยู่ที่ {nf(b)} {unit}
+      </div>
+    </div>
+  )
+}
+
+/** สองแท่งซ้อนบนล่าง · ช่วง ก อยู่บน ช่วง ข อยู่ล่าง เทียบความยาวได้ทันที */
+function TwinBar({ a, b }: { a: number; b: number }) {
+  return (
+    <div className="space-y-1">
+      {[
+        { v: a, c: '#3B82F6', t: 'ก' },
+        { v: b, c: '#A78BFA', t: 'ข' },
+      ].map((x) => (
+        <div key={x.t} className="flex items-center gap-2">
+          <span className="w-4 shrink-0 text-[11px] font-bold" style={{ color: DIM }}>{x.t}</span>
+          <div className="h-4 min-w-0 flex-1 overflow-hidden rounded" style={{ background: '#161B22' }}>
+            <div className="h-full rounded" style={{ width: `${Math.max(2, x.v)}%`, background: x.c }} />
+          </div>
+          <span className="w-10 shrink-0 text-right text-[12px] font-extrabold">{x.v}%</span>
+        </div>
+      ))}
+    </div>
   )
 }

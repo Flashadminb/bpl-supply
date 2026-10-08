@@ -238,31 +238,52 @@ export function WaitAlarmChip({
   )
 }
 
-/** กระดิ่งค้างบนการ์ดกี่วินาทีหลังเตือน · นานพอให้คนที่เพิ่งเงยหน้ายังเห็นทัน */
+/** กระดิ่งสั่นอยู่กี่วินาที · เท่ากับช่วงที่เสียงยังดังอยู่พอดี */
+export const RING_MS = 8_000
+
+/** จุดกระพริบค้างบนการ์ดกี่วินาทีหลังเตือน · นานพอให้คนที่เพิ่งเงยหน้ายังเห็นทัน */
 export const FLASH_MS = 30_000
 
 /**
- * กระดิ่งกระพริบบนคันที่เพิ่งเตือน
+ * เครื่องหมายบนคันที่เพิ่งเตือน · มีสองระดับ
  *
- * เสียงบอกว่ามีอะไรเกิดขึ้น แต่ไม่ได้บอกว่าคันไหน
- * บนกระดานสิบคันที่แดงอยู่แล้วห้าคัน คนได้ยินเสียงแล้วหาไม่เจอว่าคันไหนเพิ่งเปลี่ยน
- * จุดกระพริบจุดเดียวตอบคำถามนั้นได้ทันทีโดยไม่ต้องอ่านอะไรเลย
+ *   กำลังเตือนอยู่   กระดิ่งสั่น — คันนี้คือต้นเสียงที่เพิ่งได้ยิน
+ *   เตือนไปเมื่อครู่  จุดกระพริบเฉย ๆ ไม่มีกระดิ่ง
  *
- * กระพริบแค่ช่วงสั้น ๆ แล้วหายไปเอง · ถ้าค้างไว้ตลอด
- * เดี๋ยวทั้งกระดานก็กระพริบหมด ซึ่งเท่ากับไม่มีอะไรกระพริบ
+ * แยกสองระดับเพราะถ้าทุกคันที่เตือนในสามสิบวินาทีที่ผ่านมาขึ้นกระดิ่งหมด
+ * พอได้ยินเสียงแล้วเงยหน้ามา จะเจอกระดิ่งสามสี่ใบ แล้วก็ยังไม่รู้อยู่ดีว่าใบไหนคือต้นเสียง
+ * กระดิ่งจึงมีได้เฉพาะช่วงที่เสียงยังดังอยู่ ที่เหลือลดเหลือจุดกระพริบ
  */
-export function FlashBell({ size = 22 }: { size?: number }) {
+export function FlashBell({ size = 22, ringing = true }: { size?: number; ringing?: boolean }) {
+  if (!ringing) {
+    return (
+      <span
+        className="inline-block shrink-0 animate-pulse rounded-full"
+        style={{
+          width: Math.round(size * 0.55),
+          height: Math.round(size * 0.55),
+          background: '#E5484D',
+          boxShadow: '0 0 0 3px rgba(229,72,77,.25)',
+        }}
+        aria-label="คันนี้เพิ่งมีเสียงเตือนเมื่อครู่"
+        title="คันนี้เพิ่งมีเสียงเตือนเมื่อครู่"
+      />
+    )
+  }
+
   return (
     <span
-      className="inline-flex shrink-0 animate-pulse items-center justify-center rounded-full"
+      className="inline-flex shrink-0 items-center justify-center rounded-full"
       style={{
         width: size + 10,
         height: size + 10,
         background: '#E5484D',
-        boxShadow: '0 0 0 4px rgba(229,72,77,.28)',
+        boxShadow: '0 0 0 4px rgba(229,72,77,.32)',
+        animation: 'bplBell 1.1s ease-in-out infinite',
+        transformOrigin: 'top center',
       }}
-      aria-label="คันนี้เพิ่งมีเสียงเตือน"
-      title="คันนี้เพิ่งมีเสียงเตือน"
+      aria-label="คันนี้กำลังเตือนอยู่"
+      title="คันนี้กำลังเตือนอยู่"
     >
       <Bell size={size} color="#fff" ring={false} />
     </span>
@@ -426,6 +447,64 @@ export function UploadChip({
         style={{ fontSize: big ? 30 : 22 }}
       >
         {d ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }) : '—'}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * การ์ดตัวเลขใหญ่ · ใช้บนหน้าสถิติและแดชบอร์ด ไม่ใช่บนกระดาน
+ *
+ * ทรงตามแบบที่เจ้าของระบบเลือกมา — พื้นสีทึบ หัวข้อเล็กอยู่บน
+ * ตัวเลขใหญ่มากอยู่กลาง คำอธิบายเล็กอยู่ล่าง และไอคอนในกรอบจาง ๆ มุมขวา
+ *
+ * ใหญ่ได้เพราะสองหน้านั้นเป็นหน้าที่นั่งอ่านทีละตัวเลข
+ * ส่วนกระดานกับจอทีวีหน้าแรกยังใช้ป้ายเตี้ยเหมือนเดิม
+ * เพราะพื้นที่ทุกบรรทัดตรงนั้นต้องเก็บไว้ให้เห็นรถให้ได้มากที่สุด
+ */
+export function BigStat({
+  label,
+  value,
+  sub,
+  icon,
+  color,
+  dark = true,
+}: {
+  label: string
+  value: string | number
+  sub?: string
+  icon: string
+  /** สีพื้นของการ์ด · ตัวหนังสือเป็นขาวเสมอ จึงต้องเป็นสีเข้มพอ */
+  color: string
+  /** อยู่บนพื้นดำหรือพื้นสว่าง · มีผลกับเงาเท่านั้น */
+  dark?: boolean
+}) {
+  return (
+    <div
+      className="flex items-start justify-between gap-3 rounded-2xl px-5 py-4"
+      style={{
+        background: color,
+        color: '#fff',
+        boxShadow: dark ? 'none' : '0 6px 18px rgba(16,24,40,.10)',
+      }}
+    >
+      <div className="min-w-0">
+        <div className="truncate text-[13px] font-bold" style={{ opacity: 0.88 }}>
+          {label}
+        </div>
+        <div className="mt-2 text-[40px] font-extrabold leading-none">{value}</div>
+        {sub && (
+          <div className="mt-2 truncate text-[12px] font-bold" style={{ opacity: 0.8 }}>
+            {sub}
+          </div>
+        )}
+      </div>
+      <span
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-[20px]"
+        style={{ background: 'rgba(255,255,255,.2)' }}
+        aria-hidden
+      >
+        {icon}
       </span>
     </div>
   )
