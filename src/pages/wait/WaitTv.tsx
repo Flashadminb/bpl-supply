@@ -15,7 +15,7 @@ import { readableError } from '../../lib/supabase'
 import { useAlarmPref, useTruckAlarm } from '../trucks/alarm'
 import { AlarmGate, EdgeGlow, worstStage } from '../trucks/alert-ui'
 import { playWaitAlarm, WAIT_ALARM_PREF } from './waitAlarm'
-import { p2 } from '../trucks/parts'
+import { DAY_TH, dmy, p2 } from '../trucks/parts'
 import {
   BG,
   CARD,
@@ -218,8 +218,18 @@ function TvHead({
     <header className="mb-4">
       <div className="mb-3 flex items-center justify-between gap-4">
         <WaitLogo size={34} />
-        <span className="font-mono text-[40px] font-extrabold leading-none">
-          {p2(d.getHours())}:{p2(d.getMinutes())}
+        {/*
+          วันที่อยู่คู่กับเวลาเสมอ · จอนี้แขวนค้างข้ามคืน และรอบตัดวันคือตีสาม
+          เห็นแต่เวลาอย่างเดียวตอนตีสองครึ่ง จะแยกไม่ออกว่ายังเป็นของเมื่อวาน
+          หรือข้ามมาเป็นของวันใหม่แล้ว
+        */}
+        <span className="flex items-baseline gap-4">
+          <span className="text-[22px] font-bold" style={{ color: DIM }}>
+            {DAY_TH[d.getDay()]} {dmy(d)}
+          </span>
+          <span className="font-mono text-[40px] font-extrabold leading-none">
+            {p2(d.getHours())}:{p2(d.getMinutes())}
+          </span>
         </span>
       </div>
 
