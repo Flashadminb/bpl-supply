@@ -236,10 +236,7 @@ export default function WaitBoard() {
       )}
 
       {showDone && (
-        <DoneList
-          onClose={() => setShowDone(false)}
-          onUndo={(id) => void act(id, () => undoneWaitTruck(id))}
-        />
+        <DoneList onClose={() => setShowDone(false)} onChanged={board.reload} />
       )}
     </>
   )
@@ -496,15 +493,36 @@ function CancelBox({
  * มีไว้เพื่ออย่างเดียวคือกดเสร็จผิดคันแล้วเอากลับขึ้นกระดาน
  * ไม่ได้ทำเป็นหน้าประวัติ เพราะประวัติจริงอยู่ที่หน้าสถิติหลังบ้าน
  */
-function DoneList({ onClose, onUndo }: { onClose: () => void; onUndo: (id: number) => void }) {
+function DoneList({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
   const since = useMemo(() => new Date(Date.now() - 24 * 3600_000).toISOString(), [])
   const done = useAsync(() => listWaitDone(since), [since])
   const rows = done.data ?? []
+  const [busy, setBusy] = useState<number | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  /**
+   * เอากลับขึ้นกระดานแล้วโหลดรายการนี้ใหม่ด้วย ไม่ใช่โหลดแค่กระดานข้างหลัง
+   * ไม่งั้นคันที่เพิ่งเอากลับไปแล้วยังค้างอยู่ในรายการนี้ แล้วคนจะกดซ้ำ
+   */
+  async function undo(id: number) {
+    setBusy(id)
+    setErr(null)
+    try {
+      await undoneWaitTruck(id)
+      done.reload()
+      onChanged()
+    } catch (e) {
+      setErr(readableError(e))
+    } finally {
+      setBusy(null)
+    }
+  }
 
   return (
     <Modal open onClose={onClose} title="ลงงานเสร็จแล้ว 24 ชั่วโมงที่ผ่านมา">
       {done.loading && <p className="py-6 text-center text-sm text-ink-500">กำลังโหลด…</p>}
       {done.error && <p className="py-6 text-center text-sm text-danger">{done.error}</p>}
+      {err && <p className="py-2 text-center text-sm text-danger">{err}</p>}
       {!done.loading && rows.length === 0 && (
         <p className="py-6 text-center text-sm text-ink-500">ยังไม่มีคันที่กดเสร็จ</p>
       )}
@@ -526,11 +544,12 @@ function DoneList({ onClose, onUndo }: { onClose: () => void; onUndo: (id: numbe
               </p>
             </div>
             <button
-              onClick={() => onUndo(r.id)}
-              className="h-11 shrink-0 rounded-lg px-3 text-[12px] font-bold"
+              disabled={busy === r.id}
+              onClick={() => void undo(r.id)}
+              className="h-11 shrink-0 rounded-lg px-3 text-[12px] font-bold disabled:opacity-50"
               style={{ background: '#EEF1F5' }}
             >
-              เอากลับขึ้นกระดาน
+              {busy === r.id ? 'กำลังเอากลับ…' : 'เอากลับขึ้นกระดาน'}
             </button>
           </div>
         ))}
