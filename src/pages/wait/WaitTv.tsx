@@ -24,7 +24,7 @@ import {
   FLASH_MS,
   FlashBell,
   INSET,
-  LastUpdate,
+  UploadChip,
   LINE,
   liveState,
   nf,
@@ -231,6 +231,7 @@ function TvHead({
         <TvChip label="รถรอลงงานทั้งหมด" n={live.length} color="#2F7FE0" />
         <TvChip label="DO" n={nf(counts?.wait_do)} color="#17566E" />
         <TvChip label="ไม่ใช่ DO" n={nf(counts?.wait_nondo)} color="#3D2C66" />
+        <UploadChip at={counts?.last_import} now={now} />
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -268,10 +269,6 @@ function TvHead({
           </span>
           สลับหน้าเองทุก 20 วิ
         </button>
-
-        <span className="ml-3">
-          <LastUpdate at={counts?.last_import} now={now} size={13} />
-        </span>
 
         <span className="ml-auto flex items-center gap-3">
           <span className="flex gap-1">
@@ -352,38 +349,121 @@ function BoardPage({
     )
   }
 
-  const n = live.length
-  const cols = n <= 2 ? 1 : n <= 4 ? 2 : 3
-
   /**
-   * เฉพาะสองคันที่หนักที่สุดเท่านั้นที่กินสองช่อง
+   * ใหญ่ไล่ลงมาตามความด่วน แล้วที่เหลือเป็นแถวตารางยาว
    *
-   * ของเดิมให้ทุกคันที่เกินเวลากินสองช่อง ซึ่งดูดีตอนมีรถเกินสองสามคัน
-   * แต่วันที่เกินเวลาทั้งกระดาน ทุกใบใหญ่เท่ากันหมด แปลว่าไม่มีอะไรเด่น
-   * และเห็นรถได้น้อยลงครึ่งหนึ่งโดยไม่ได้อะไรกลับมาเลย
+   * คันที่ด่วนที่สุดได้เต็มความกว้างหนึ่งใบ รองลงมาอีกสองใบวางคู่กัน
+   * ที่เหลือเป็นแถวยาวบรรทัดละคัน ซึ่งใส่ข้อมูลครบเท่าการ์ดทุกช่อง
    *
-   * live เรียงตามเวลาที่เหลือจากน้อยไปมากอยู่แล้ว สองตัวแรกคือสองคันที่หนักสุด
+   * ทำแบบนี้เพราะวันที่รถเยอะ การ์ดใหญ่เท่ากันหมดคือกระดานที่หาคันที่ต้องรีบไม่เจอ
+   * ต้องเลื่อนจอทั้งหน้าเพื่อดูว่ามีอะไรบ้าง ซึ่งจอทีวีเลื่อนไม่ได้
+   * แถวยาวกินที่น้อยกว่าการ์ดสามเท่า แต่ยังอ่านออกจากกลางคลัง
    */
-  const HERO = 2
+  const hero = live[0]
+  const second = live.slice(1, 3)
+  const rest = live.slice(3)
 
   return (
-    <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-      {live.map(({ r, sec }, i) => {
-        const st = liveState(r, sec)
-        const hero = i < HERO && st === 'overdue'
-        return (
-          <TvCard
-            key={r.id}
-            r={r}
-            sec={sec}
-            span={hero && cols > 1 ? 2 : 1}
-            scale={hero ? 1 : st === 'overdue' ? 0.88 : st === 'warn' ? 0.82 : 0.74}
-            flash={flashing.has(r.id)}
-            onTap={() => onTap(r.id)}
-          />
-        )
-      })}
+    <div className="space-y-3">
+      <TvCard
+        r={hero.r}
+        sec={hero.sec}
+        scale={1}
+        flash={flashing.has(hero.r.id)}
+        onTap={() => onTap(hero.r.id)}
+      />
+
+      {second.length > 0 && (
+        <div
+          className="grid gap-3"
+          style={{ gridTemplateColumns: `repeat(${second.length}, minmax(0, 1fr))` }}
+        >
+          {second.map(({ r, sec }) => (
+            <TvCard
+              key={r.id}
+              r={r}
+              sec={sec}
+              scale={0.82}
+              flash={flashing.has(r.id)}
+              onTap={() => onTap(r.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      {rest.length > 0 && (
+        <div className="space-y-2">
+          {rest.map(({ r, sec }) => (
+            <TvStrip
+              key={r.id}
+              r={r}
+              sec={sec}
+              flash={flashing.has(r.id)}
+              onTap={() => onTap(r.id)}
+            />
+          ))}
+        </div>
+      )}
     </div>
+  )
+}
+
+/**
+ * แถวตารางยาว · หนึ่งบรรทัดต่อหนึ่งคัน
+ *
+ * ข้อมูลครบเท่าการ์ดใหญ่ทุกช่อง แค่เรียงเป็นคอลัมน์แทนการวางซ้อนกัน
+ * ตากวาดลงเป็นแนวตั้งได้ ซึ่งเป็นวิธีหาของในรายการยาวที่เร็วที่สุด
+ */
+function TvStrip({
+  r,
+  sec,
+  flash,
+  onTap,
+}: {
+  r: WaitTruckRow
+  sec: number
+  flash: boolean
+  onTap: () => void
+}) {
+  const st = liveState(r, sec)
+  return (
+    <article
+      onClick={onTap}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') onTap()
+      }}
+      className="relative flex cursor-pointer items-center gap-3 overflow-hidden rounded-xl py-2 pl-5 pr-3 transition-transform active:scale-[.99]"
+      style={{ background: CARD, border: `1px solid ${LINE}` }}
+    >
+      <span className="absolute inset-y-0 left-0 w-[6px]" style={{ background: STATE_COLOR[st] }} />
+
+      {flash && <FlashBell size={15} />}
+
+      <h3 className="min-w-[230px] max-w-[330px] flex-1 truncate text-[20px] font-extrabold">
+        {r.from_station ?? 'ไม่ระบุสถานี'}
+      </h3>
+
+      <Badge text={r.vehicle_type ?? '—'} size={17} bg="#1C2430" fg="#9FB4CC" />
+      <Badge text={r.plate ?? '—'} size={17} bg="#1B2430" fg="#EAF0F7" />
+      <Parcels all={r.parcels_all} doJob={r.parcels_do} nondo={r.parcels_nondo} size={15} />
+
+      <span className="font-mono text-[13px]" style={{ color: DIM }}>{r.truck_barcode}</span>
+
+      <span className="ml-auto flex shrink-0 items-center gap-3">
+        <span className="text-right leading-tight">
+          <span className="block text-[10px] font-bold" style={{ color: DIM }}>ถึง · เสร็จก่อน</span>
+          <span className="block font-mono text-[16px] font-extrabold">
+            {clock(r.arrived_at)}
+            <span style={{ color: DIM }}> · </span>
+            <span style={{ color: sec < 0 ? '#FF8A8A' : '#FFD479' }}>{clock(r.due_at)}</span>
+          </span>
+        </span>
+        <Timer sec={sec} size={30} />
+        <Pill state={st} size={12} />
+      </span>
+    </article>
   )
 }
 
@@ -400,14 +480,12 @@ function BoardPage({
 function TvCard({
   r,
   sec,
-  span,
   scale,
   flash,
   onTap,
 }: {
   r: WaitTruckRow
   sec: number
-  span: number
   scale: number
   flash: boolean
   onTap: () => void
@@ -427,8 +505,7 @@ function TvCard({
       style={{
         background: CARD,
         border: `1px solid ${LINE}`,
-        gridColumn: `span ${span}`,
-        minHeight: Math.round(196 * scale),
+        minHeight: Math.round(230 * scale),
       }}
     >
       <Strip color={STATE_COLOR[st]} />
@@ -530,7 +607,7 @@ function Badge({
         background: bg,
         color: fg,
         fontSize: size,
-        padding: `${Math.round(size * 0.3)}px ${Math.round(size * 0.5)}px`,
+        padding: `${Math.round(size * 0.16)}px ${Math.round(size * 0.36)}px`,
         border: `1px solid ${LINE}`,
       }}
     >

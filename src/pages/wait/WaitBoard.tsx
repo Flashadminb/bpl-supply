@@ -27,7 +27,7 @@ import {
   FLASH_MS,
   FlashBell,
   INSET,
-  LastUpdate,
+  UploadChip,
   LINE,
   liveState,
   nf,
@@ -197,16 +197,13 @@ export default function WaitBoard() {
               <HeadBtn onClick={() => nav('/wait/tv')}>ทีวี</HeadBtn>
             </div>
 
-            <div className="mb-2">
-              <LastUpdate at={counts.data?.last_import} now={now} />
-            </div>
-
             <div className="mb-2 flex gap-2">
               <Chip label="เกินเวลา" n={tally.over} color="#E5484D" />
               <Chip label="เฝ้าระวัง" n={tally.warn} color="#E8B931" />
               <Chip label="กำลังรอ" n={tally.wait} color="#2F7FE0" />
               <Chip label="DO" n={nf(tally.doJob)} color="#17566E" sub="ชิ้น" />
               <Chip label="ไม่ใช่ DO" n={nf(tally.nondo)} color="#3D2C66" sub="ชิ้น" />
+              <UploadChip at={counts.data?.last_import} now={now} size="board" />
             </div>
 
             <div className="relative">

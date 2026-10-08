@@ -291,59 +291,6 @@ export function WaitLogo({ title = 'รถรอลงงาน 21BPL', size = 3
 }
 
 /**
- * บอกว่าไฟล์ถูกอัปล่าสุดเมื่อไหร่ · เป็นภาษาอังกฤษตามที่เจ้าของระบบขอ
- *
- * จอที่ไม่บอกว่าข้อมูลเก่าแค่ไหน คือจอที่คนจะยืนเชื่อตัวเลขค้างของเมื่อสามชั่วโมงก่อน
- * แล้วไปบอกหัวหน้าว่าไม่มีรถค้าง ทั้งที่ลานจอดเต็ม
- *
- * โชว์ทั้งเวลาจริงและ "เมื่อกี่นาทีที่แล้ว" เพราะสองอย่างตอบคนละคำถาม
- * เวลาจริงไว้จดลงรายงาน · กี่นาทีที่แล้วไว้ตัดสินว่าต้องไปอัปใหม่หรือยัง
- */
-export function LastUpdate({
-  at,
-  now,
-  size = 12,
-}: {
-  at: string | null | undefined
-  now: number
-  size?: number
-}) {
-  if (!at) {
-    return (
-      <span style={{ color: DIM, fontSize: size }} className="font-bold">
-        NO FILE UPLOADED YET
-      </span>
-    )
-  }
-
-  const d = new Date(at)
-  const mins = Math.max(0, Math.floor((now - d.getTime()) / 60000))
-  const ago =
-    mins < 1 ? 'just now'
-    : mins < 60 ? `${mins} min ago`
-    : mins < 1440 ? `${Math.floor(mins / 60)} hr ${mins % 60} min ago`
-    : `${Math.floor(mins / 1440)} day ago`
-
-  // เกินหนึ่งชั่วโมงถือว่าเก่าแล้ว เพราะหน้างานอัปทุกชั่วโมงอยู่แล้ว
-  const stale = mins >= 60
-
-  return (
-    <span
-      className="inline-flex items-baseline gap-2 font-bold"
-      style={{ fontSize: size, color: stale ? '#FFB4B6' : DIM }}
-    >
-      <span style={{ letterSpacing: 0.5 }}>LAST UPLOAD</span>
-      <span style={{ color: stale ? '#FFB4B6' : '#EAF0F7' }}>
-        {d.toLocaleString('en-GB', {
-          day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
-        })}
-      </span>
-      <span>· {ago}</span>
-    </span>
-  )
-}
-
-/**
  * พัสดุสามตัวเลขในแถวเดียว · ทั้งหมด / DO / ไม่ใช่ DO
  *
  * งาน DO กับงานที่ไม่ใช่ DO ไปคนละสายพานและใช้คนไม่เท่ากัน
@@ -380,7 +327,7 @@ export function Parcels({
   size?: number
 }) {
   return (
-    <span className="inline-flex items-center" style={{ gap: Math.round(size * 0.34) }}>
+    <span className="inline-flex items-center" style={{ gap: Math.round(size * 0.26) }}>
       <ParcelTag label="ชิ้น" v={all} tone={PARCEL_TONE.all} size={size} />
       <ParcelTag label="DO" v={doJob} tone={PARCEL_TONE.do} size={size} />
       <ParcelTag label="ไม่ใช่ DO" v={nondo} tone={PARCEL_TONE.nondo} size={size} />
@@ -403,16 +350,82 @@ export function ParcelTag({
     <span
       className="inline-flex items-baseline rounded-lg font-extrabold leading-none"
       style={{
-        gap: Math.round(size * 0.26),
+        gap: Math.round(size * 0.22),
         background: tone.bg,
         border: `1px solid ${tone.line}`,
-        padding: `${Math.round(size * 0.3)}px ${Math.round(size * 0.5)}px`,
+        // กรอบบางที่สุดเท่าที่ยังเห็นว่าเป็นป้าย · รถเยอะแล้วพื้นที่มีค่ากว่าความโปร่ง
+        padding: `${Math.round(size * 0.16)}px ${Math.round(size * 0.34)}px`,
       }}
     >
-      <span style={{ fontSize: size * 1.12, color: tone.n }}>{nf(v)}</span>
-      <span className="font-bold" style={{ fontSize: size * 0.64, color: tone.label }}>
+      <span style={{ fontSize: size * 1.08, color: tone.n }}>{nf(v)}</span>
+      <span className="font-bold" style={{ fontSize: size * 0.62, color: tone.label }}>
         {label}
       </span>
     </span>
+  )
+}
+
+/**
+ * การ์ดบอกว่าไฟล์ถูกอัปล่าสุดเมื่อไหร่
+ *
+ * อยู่ในแถวเดียวกับ เกินเวลา เฝ้าระวัง เพราะมันสำคัญเท่ากัน
+ * ตัวเลขบนกระดานจะถูกแค่ไหน ขึ้นกับว่าไฟล์ที่อยู่ข้างใต้มันสดแค่ไหน
+ * ถ้าอันนี้เป็นตัวหนังสือจาง ๆ อยู่มุมจอ วันหนึ่งจะมีคนรายงานหัวหน้าว่า
+ * ไม่มีรถค้าง โดยอ่านจากไฟล์ของเมื่อสามชั่วโมงก่อน ทั้งที่ลานจอดเต็ม
+ *
+ * หน้างานอัปทุกชั่วโมงอยู่แล้ว เกินหนึ่งชั่วโมงจึงเปลี่ยนเป็นแดง
+ */
+export function UploadChip({
+  at,
+  now,
+  size = 'tv',
+}: {
+  at: string | null | undefined
+  now: number
+  size?: 'tv' | 'board'
+}) {
+  const big = size === 'tv'
+  const d = at ? new Date(at) : null
+  const mins = d ? Math.max(0, Math.floor((now - d.getTime()) / 60000)) : -1
+  const stale = mins < 0 || mins >= 60
+
+  const ago =
+    mins < 0 ? 'ยังไม่เคยอัป'
+    : mins < 1 ? 'just now'
+    : mins < 60 ? `${mins} min ago`
+    : mins < 1440 ? `${Math.floor(mins / 60)} hr ${mins % 60} min ago`
+    : `${Math.floor(mins / 1440)} day ago`
+
+  return (
+    <div
+      className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-xl"
+      style={{
+        background: stale ? '#5A1A1D' : '#14323A',
+        color: '#fff',
+        border: `1px solid ${stale ? '#E5484D' : '#1D6072'}`,
+        padding: big ? '8px 16px' : '6px 12px',
+      }}
+    >
+      <span className="min-w-0">
+        <span
+          className="block font-bold"
+          style={{ fontSize: big ? 13 : 11, letterSpacing: 0.6, opacity: 0.85 }}
+        >
+          LAST UPLOAD
+        </span>
+        <span className="block font-bold" style={{ fontSize: big ? 13 : 10, opacity: 0.8 }}>
+          {d
+            ? d.toLocaleString('en-GB', { day: '2-digit', month: 'short' })
+            : 'NO FILE YET'}{' '}
+          · {ago}
+        </span>
+      </span>
+      <span
+        className="shrink-0 font-mono font-extrabold leading-none"
+        style={{ fontSize: big ? 30 : 22 }}
+      >
+        {d ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }) : '—'}
+      </span>
+    </div>
   )
 }
