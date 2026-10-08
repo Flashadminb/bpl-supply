@@ -136,15 +136,26 @@ export default function WaitBoard() {
     let wait = 0
     let doJob = 0
     let nondo = 0
+    /**
+     * นับเฉพาะคันที่ไฟล์บอก DO มาจริง
+     *
+     * ถ้าไม่มีคันไหนบอกเลย หัวกระดานขึ้นขีด ไม่ใช่เลขศูนย์
+     * ศูนย์คือคำตอบ ส่วนไม่รู้คือยังไม่มีคำตอบ · ตอบศูนย์แทนไฟล์เมื่อไหร่
+     * วันหนึ่งจะมีคนวางกำลังคนตามตัวเลขที่เราแต่งขึ้นเอง
+     */
+    let known = 0
     for (const { r, sec } of live) {
       const st = liveState(r, sec)
       if (st === 'overdue') over++
       else if (st === 'warn') warn++
       else wait++
-      doJob += r.parcels_do ?? 0
-      nondo += r.parcels_nondo ?? 0
+      if (r.parcels_do != null) {
+        doJob += r.parcels_do
+        nondo += r.parcels_nondo ?? 0
+        known++
+      }
     }
-    return { over, warn, wait, doJob, nondo }
+    return { over, warn, wait, doJob: known ? doJob : null, nondo: known ? nondo : null }
   }, [live])
 
   async function act(id: number, fn: () => Promise<unknown>) {
