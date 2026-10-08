@@ -16,9 +16,9 @@ import {
 import { Modal } from '../../components/ui'
 import { useAlarmPref, useTruckAlarm } from '../trucks/alarm'
 import { AlarmGate, EdgeGlow, worstStage } from '../trucks/alert-ui'
-import { playWaitAlarm, WAIT_ALARM_PREF } from './waitAlarm'
+import { playWaitAlarm, WAIT_ALARM_PREF, waitKit } from './waitAlarm'
 import { UploadBox } from './UploadBox'
-import { SoundPicker } from './SoundPicker'
+import { SoundPicker } from '../../components/SoundPicker'
 import {
   BG,
   CARD,
@@ -86,7 +86,11 @@ export default function WaitBoard() {
         board.reload()
         counts.reload()
       }
-    }, 60_000)
+      // สองนาที ไม่ใช่หนึ่ง · นาฬิกานับถอยหลังเดินในเครื่องอยู่แล้ว
+      // สิ่งเดียวที่ช้าลงคือการเห็นว่าคนอื่นเพิ่งกดลงงานเสร็จ ซึ่งรอสองนาทีได้
+      // และนี่คือตัวที่กินแบนด์วิดท์มากที่สุดเมื่อเปิดให้คนทั้งฮับใช้
+      // จอทีวียังคง 60 วินาทีเหมือนเดิม เพราะมีเครื่องเดียวและต้องสดที่สุด
+    }, 120_000)
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -442,7 +446,7 @@ export default function WaitBoard() {
 
       {showDone && <DoneList onClose={() => setShowDone(false)} onChanged={reloadAll} />}
 
-      {pickSound && <SoundPicker onClose={() => setPickSound(false)} />}
+      {pickSound && <SoundPicker kit={waitKit} title="เลือกเสียงเตือนรถรอลงงาน" onClose={() => setPickSound(false)} />}
     </>
   )
 }

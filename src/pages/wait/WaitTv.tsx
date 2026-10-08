@@ -14,8 +14,8 @@ import {
 import { readableError } from '../../lib/supabase'
 import { useAlarmPref, useTruckAlarm } from '../trucks/alarm'
 import { AlarmGate, EdgeGlow, worstStage } from '../trucks/alert-ui'
-import { playWaitAlarm, WAIT_ALARM_PREF } from './waitAlarm'
-import { SoundPicker } from './SoundPicker'
+import { playWaitAlarm, WAIT_ALARM_PREF, waitKit } from './waitAlarm'
+import { SoundPicker } from '../../components/SoundPicker'
 import { DAY_TH, dmy, p2 } from '../trucks/parts'
 import {
   BG,
@@ -191,7 +191,7 @@ export default function WaitTv() {
         <StatsPage live={live} counts={counts.data} done={done.data ?? []} />
       )}
 
-      {pickSound && <SoundPicker onClose={() => setPickSound(false)} />}
+      {pickSound && <SoundPicker kit={waitKit} title="เลือกเสียงเตือนรถรอลงงาน" onClose={() => setPickSound(false)} />}
 
       {askRow && (
         <ActSheet

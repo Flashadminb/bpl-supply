@@ -1,4 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
+import { audioOn, unlockAudio } from '../../lib/alarmKit'
+import { truckKit } from './truckAlarm'
+import type { Stage } from '../../lib/alarmKit'
+export type { Stage }
 
 /**
  * เสียงเตือนรถ — สังเคราะห์ในเครื่อง ไม่มีไฟล์เสียงสักไฟล์
@@ -12,8 +16,6 @@ import { useEffect, useRef, useState } from 'react'
  *   10 นาที  เสียงแหลม ถี่ สี่ที          = ต้องขยับแล้ว
  *   เลยเวลา  นาฬิกาปลุกสองลูกสลับกันรัว  = ผิดแล้ว ไปจัดการเดี๋ยวนี้
  */
-
-export type Stage = 'm20' | 'm10' | 'late'
 
 /** เหลือกี่วินาทีแล้วอยู่ขั้นไหน · null = ยังไม่ต้องเตือน */
 export function stageOf(sec: number): Stage | null {
@@ -45,102 +47,25 @@ const RANK: Record<Stage, number> = { m20: 1, m10: 2, late: 3 }
 
 /* --------------------------------------------------------------- เสียง */
 
-let ctx: AudioContext | null = null
-
-export function audioOn(): boolean {
-  return !!ctx && ctx.state === 'running'
-}
-
 /**
- * ให้ชุดเสียงอื่นยืมเครื่องเสียงตัวเดียวกันไปใช้
+ * เครื่องเสียงย้ายไปอยู่ที่ lib/alarmKit แล้ว ใช้ร่วมกับกระดานรถรอลงงาน
  *
- * เบราว์เซอร์จำกัดจำนวน AudioContext ต่อหน้า และแต่ละตัวต้องถูกปลดล็อกแยกกัน
- * สร้างคนละตัวแปลว่าคนต้องกดเปิดเสียงสองครั้งโดยไม่รู้ว่าทำไม
+ * เหตุผลคือทั้งแอพต้องมี AudioContext ตัวเดียว · สร้างคนละตัวแปลว่า
+ * คนต้องกดเปิดเสียงสองครั้งโดยไม่รู้ว่าทำไม
  *
- * คืน null เมื่อยังไม่ได้ปลดล็อก · คนเรียกต้องเช็คเองทุกครั้ง
+ * ส่วนรายการชุดเสียงของกระดานนี้อยู่ที่ truckAlarm.ts
+ * เพราะประโยคที่พูดต้องเป็นเรื่องปล่อยรถ ไม่ใช่เรื่องลงงาน
  */
-export function audioCtx(): AudioContext | null {
-  return ctx && ctx.state === 'running' ? ctx : null
-}
+export { audioOn, audioCtx, unlockAudio } from '../../lib/alarmKit'
 
-/**
- * ปลดล็อกเสียง
- *
- * เบราว์เซอร์ห้ามเล่นเสียงจนกว่าคนจะแตะหน้าจอนั้นสักครั้ง
- * จอทีวีที่แขวนไว้เฉย ๆ จึงเงียบตลอดกาลถ้าไม่มีใครกด
- * นี่คือเหตุผลเดียวที่หน้านี้ต้องมีกล่องถามตอนเข้า ไม่ใช่เพราะอยากถาม
- */
-export async function unlockAudio(): Promise<boolean> {
-  try {
-    const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-    ctx = ctx ?? new Ctor()
-    await ctx.resume()
-    return ctx.state === 'running'
-  } catch {
-    return false
-  }
-}
-
-function beep(at: number, freq: number, dur: number, vol: number, type: OscillatorType) {
-  if (!ctx) return
-  const o = ctx.createOscillator()
-  const g = ctx.createGain()
-  o.type = type
-  o.frequency.setValueAtTime(freq, at)
-  // ไต่ขึ้นลงสั้น ๆ กันเสียงแตกตอนตัดดิบ ๆ
-  g.gain.setValueAtTime(0.0001, at)
-  g.gain.exponentialRampToValueAtTime(vol, at + 0.006)
-  g.gain.setValueAtTime(vol, at + Math.max(0.01, dur - 0.02))
-  g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
-  o.connect(g)
-  g.connect(ctx.destination)
-  o.start(at)
-  o.stop(at + dur + 0.03)
-}
-
-/**
- * เสียงนาฬิกาปลุกแบบสองลูก
- *
- * นาฬิกาปลุกจริงคือค้อนเคาะกระดิ่งสองใบสลับกันเร็ว ๆ
- * จึงทำเป็นสองความถี่สลับกันทุกห้าสิบมิลลิวินาที แล้วพักเป็นช่วง ๆ
- * เสียงบี๊บยาวตัวเดียวดังเท่ากันแต่ไม่มีใครรู้สึกว่าต้องรีบ
- */
-function alarmClock(t0: number) {
-  const ON = 0.055
-  const GAP = 0.045
-  let t = t0
-  for (let burst = 0; burst < 3; burst++) {
-    for (let i = 0; i < 11; i++) {
-      beep(t, i % 2 === 0 ? 1180 : 860, ON, 0.3, 'square')
-      t += ON + GAP
-    }
-    t += 0.22
-  }
-}
-
+/** เล่นเสียงตามชุดที่ตั้งไว้ของกระดานปล่อยรถ */
 export function playAlarm(stage: Stage) {
-  if (!ctx || ctx.state !== 'running') return
-  const t = ctx.currentTime + 0.02
-  if (stage === 'm20') {
-    // นุ่มและต่ำ · บอกให้รู้ ไม่ได้บอกให้วิ่ง
-    beep(t, 620, 0.16, 0.22, 'triangle')
-    beep(t + 0.26, 620, 0.16, 0.22, 'triangle')
-  } else if (stage === 'm10') {
-    // แหลมและถี่ขึ้น · คนละเสียงกับอันบนชัดเจนแม้ฟังจากไกล
-    for (let i = 0; i < 4; i++) beep(t + i * 0.15, 1040, 0.085, 0.26, 'square')
-  } else {
-    alarmClock(t)
-  }
+  truckKit.play(stage)
 }
 
-/** ให้คนกดฟังตอนตั้งค่า จะได้รู้ว่าเสียงไหนคืออะไร */
+/** ให้คนกดฟังตอนตั้งค่า · ฟังทั้งสามขั้นของชุดที่เลือกอยู่ */
 export function previewAll() {
-  if (!ctx || ctx.state !== 'running') return
-  const t = ctx.currentTime + 0.02
-  beep(t, 620, 0.16, 0.22, 'triangle')
-  beep(t + 0.26, 620, 0.16, 0.22, 'triangle')
-  for (let i = 0; i < 4; i++) beep(t + 0.9 + i * 0.15, 1040, 0.085, 0.26, 'square')
-  alarmClock(t + 1.9)
+  truckKit.previewAll()
 }
 
 /* ---------------------------------------------------------------- ฮุก */

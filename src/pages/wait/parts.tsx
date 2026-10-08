@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 import { Countdown, p2 } from '../trucks/parts'
 import { Bell } from '../trucks/alert-ui'
-import { previewWaitAll } from './waitAlarm'
 import type { WaitState, WaitTruckRow } from '../../lib/waitTrucks'
 
 /**
@@ -227,7 +226,7 @@ export function WaitAlarmChip({
   return (
     <button
       type="button"
-      onClick={() => (on ? (onPick ? onPick() : previewWaitAll()) : onTurnOn())}
+      onClick={() => (on ? onPick?.() : onTurnOn())}
       className="flex h-11 shrink-0 items-center gap-2 rounded-xl px-3 font-bold"
       style={{
         background: on ? '#1B2430' : '#3A2A14',

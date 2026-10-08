@@ -1,21 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Modal } from '../../components/ui'
-import {
-  getPackKey,
-  hasThaiVoice,
-  onVoicesReady,
-  previewStage,
-  previewWaitAll,
-  setPackKey,
-  WAIT_PACKS,
-} from './waitAlarm'
-import type { Stage } from '../trucks/alarm'
+import { Modal } from './ui'
+import { hasThaiVoice, onVoicesReady, type AlarmKit, type Stage } from '../lib/alarmKit'
 
 /**
- * เลือกชุดเสียงเตือน
+ * เลือกชุดเสียงเตือน · ใช้ได้ทั้งตารางปล่อยรถและรถรอลงงาน
  *
  * เสียงที่ตัดผ่านเสียงสายพานได้ กับเสียงที่ฟังทั้งกะแล้วไม่รำคาญ
- * เป็นคนละเรื่องกัน และขึ้นกับคลังจริงที่ไม่มีทางรู้จากฝั่งโค้ด
+ * เป็นคนละเรื่องกัน และขึ้นกับคลังจริงซึ่งไม่มีทางรู้จากฝั่งโค้ด
  * จึงให้คนที่ยืนอยู่ตรงนั้นเลือกเอง
  *
  * ฟังได้ทีละขั้น ไม่ใช่ฟังรวดเดียว เพราะเสียงที่ต้องแยกออกจากกันให้ได้
@@ -31,8 +22,16 @@ const STAGES: { k: Stage; label: string }[] = [
   { k: 'late', label: 'เลยเวลาแล้ว' },
 ]
 
-export function SoundPicker({ onClose }: { onClose: () => void }) {
-  const [pick, setPick] = useState(getPackKey)
+export function SoundPicker({
+  kit,
+  title,
+  onClose,
+}: {
+  kit: AlarmKit
+  title: string
+  onClose: () => void
+}) {
+  const [pick, setPick] = useState(kit.getKey)
   /**
    * รายชื่อเสียงของเครื่องมาแบบไม่พร้อมกับหน้า จึงต้องถามใหม่เมื่อมันพร้อม
    * ถ้าถามครั้งเดียวตอนเปิดหน้า เครื่องที่โหลดช้าจะขึ้นว่าพูดไทยไม่ได้ทั้งที่ได้
@@ -42,16 +41,16 @@ export function SoundPicker({ onClose }: { onClose: () => void }) {
 
   function choose(k: string) {
     setPick(k)
-    setPackKey(k)
-    previewStage(k, 'late')
+    kit.setKey(k)
+    kit.previewStage(k, 'late')
   }
 
   return (
-    <Modal open onClose={onClose} title="เลือกเสียงเตือนรถรอลงงาน">
+    <Modal open onClose={onClose} title={title}>
       <p className="mb-3 text-sm text-ink-500">
-        กดที่ชื่อชุดเพื่อเลือกและฟังเสียงเลยกำหนด · กดปุ่มขั้นเพื่อฟังทีละขั้น
+        กดที่ชื่อชุดเพื่อเลือกและฟังเสียงขั้นสุดท้าย · กดปุ่มขั้นเพื่อฟังทีละขั้น
         <br />
-        เสียงชุดนี้ใช้เฉพาะรถรอลงงาน ไม่เกี่ยวกับเสียงของตารางปล่อยรถ
+        เสียงชุดนี้ใช้เฉพาะกระดานนี้ อีกกระดานตั้งแยกของตัวเอง
       </p>
 
       {!thai && (
@@ -63,7 +62,7 @@ export function SoundPicker({ onClose }: { onClose: () => void }) {
       )}
 
       <div className="space-y-2">
-        {WAIT_PACKS.map((p) => {
+        {kit.packs.map((p) => {
           const on = p.key === pick
           const off = p.kind === 'voice' && !thai
           return (
@@ -105,14 +104,14 @@ export function SoundPicker({ onClose }: { onClose: () => void }) {
                 {STAGES.map((s) => (
                   <button
                     key={s.k}
-                    onClick={() => previewStage(p.key, s.k)}
+                    onClick={() => kit.previewStage(p.key, s.k)}
                     className="h-10 rounded-lg bg-canvas px-3 text-xs font-bold"
                   >
                     ▶ {s.label}
                   </button>
                 ))}
                 <button
-                  onClick={() => previewWaitAll(p.key)}
+                  onClick={() => kit.previewAll(p.key)}
                   className="h-10 rounded-lg border px-3 text-xs font-bold"
                 >
                   ▶ ฟังทั้งสามขั้น
@@ -127,7 +126,7 @@ export function SoundPicker({ onClose }: { onClose: () => void }) {
         onClick={onClose}
         className="mt-4 h-12 w-full rounded-xl bg-ink text-sm font-extrabold text-white"
       >
-        ใช้เสียง {WAIT_PACKS.find((p) => p.key === pick)?.name}
+        ใช้เสียง {kit.packs.find((p) => p.key === pick)?.name}
       </button>
     </Modal>
   )

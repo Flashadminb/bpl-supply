@@ -109,19 +109,29 @@ export function AlarmGate({
 }
 
 /** ปุ่มเล็กไว้ลองฟังทั้งสามเสียง · อยู่บนแถบควบคุม */
-export function AlarmChip({ on, onClick }: { on: boolean; onClick: () => void }) {
+export function AlarmChip({
+  on,
+  onClick,
+  onPick,
+}: {
+  on: boolean
+  onClick: () => void
+  /** กดตอนเสียงเปิดอยู่แล้ว · เปิดหน้าต่างเลือกชุดเสียง */
+  onPick?: () => void
+}) {
   return (
     <button
       type="button"
       className="h-tap flex items-center gap-2 rounded-lg px-4 text-base font-bold"
       style={{ background: on ? '#1B2430' : '#3A2A14', color: on ? '#AFC0D4' : '#FFC400' }}
       onClick={() => {
-        if (on) previewAll()
-        else onClick()
+        if (!on) onClick()
+        else if (onPick) onPick()
+        else previewAll()
       }}
     >
       <Bell size={18} color={on ? '#35D98A' : '#FFC400'} ring={!on} />
-      {on ? 'เสียงเตือนเปิดอยู่ · กดฟังตัวอย่าง' : 'เสียงเตือนปิดอยู่ · กดเปิด'}
+      {on ? 'เสียงเตือนเปิดอยู่ · กดเลือกเสียง' : 'เสียงเตือนปิดอยู่ · กดเปิด'}
     </button>
   )
 }

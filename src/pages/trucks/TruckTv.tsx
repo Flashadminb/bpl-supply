@@ -12,6 +12,8 @@ import {
 import { Countdown, DAY_TH, dmy, hm, KindTag, MiniGrid, p2, StatCard, tone, ZoneCards } from './parts'
 import { useAlarmPref, useTruckAlarm } from './alarm'
 import { AlarmChip, AlarmGate, EdgeGlow, UrgentRail, worstStage } from './alert-ui'
+import { SoundPicker } from '../../components/SoundPicker'
+import { truckKit } from './truckAlarm'
 
 /**
  * โหมดจอทีวี — เปิดค้างบนจอในคลัง
@@ -145,6 +147,7 @@ export default function TruckTv() {
 
   /* เสียงเตือน · จอนี้แขวนอยู่ในคลัง เสียงจึงสำคัญกว่าบนมือถือด้วยซ้ำ */
   const pref = useAlarmPref()
+  const [pickSound, setPickSound] = useState(false)
   const alarmItems = live.map((x) => ({ id: x.r.id, sec: x.sec }))
   useTruckAlarm(alarmItems, pref.on)
   const urgent = live.map((x) => ({
@@ -211,6 +214,13 @@ export default function TruckTv() {
     <div className="min-h-dvh px-7 py-6" style={{ background: '#0B0E11', color: '#F0F4F9' }}>
       <EdgeGlow stage={worstStage(live)} />
       <AlarmGate open={!pref.on && !pref.asked} onEnable={() => void pref.turnOn()} onSkip={pref.decline} />
+      {pickSound && (
+        <SoundPicker
+          kit={truckKit}
+          title="เลือกเสียงเตือนตารางปล่อยรถ"
+          onClose={() => setPickSound(false)}
+        />
+      )}
 
       <header className="mb-5 flex items-center gap-4">
         <span
@@ -449,7 +459,11 @@ export default function TruckTv() {
         >
           {full ? 'ออกจากเต็มจอ' : 'เต็มจอ'}
         </button>
-        <AlarmChip on={pref.on} onClick={() => void pref.turnOn()} />
+        <AlarmChip
+          on={pref.on}
+          onClick={() => void pref.turnOn()}
+          onPick={() => setPickSound(true)}
+        />
         <label
           className="h-tap flex cursor-pointer items-center gap-3 rounded-lg px-4 text-base"
           style={{ background: '#1B2430', color: '#AFC0D4' }}

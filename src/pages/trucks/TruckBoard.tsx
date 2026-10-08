@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import {
   addTruck,
@@ -19,6 +19,8 @@ import {
 import { Countdown, DAY_TH, Density, dmy, hm, KindTag, p2, tone } from './parts'
 import { useAlarmPref, useTruckAlarm } from './alarm'
 import { AlarmChip, AlarmGate, EdgeGlow, StageSummary, UrgentRail, worstStage } from './alert-ui'
+import { SoundPicker } from '../../components/SoundPicker'
+import { truckKit } from './truckAlarm'
 
 /**
  * ตารางปล่อยรถ — หน้าเต็มจอ พื้นดำ ไม่ใช้กรอบของแอพเบิกของ
@@ -92,8 +94,6 @@ const IDLE_SEC = 20
 
 export default function TruckBoard() {
   const nav = useNavigate()
-  const [qs] = useSearchParams()
-  const kiosk = qs.get('kiosk') === '1'
   const [tick, setTick] = useState(0)
   const board = useAsync(() => listTruckBoard(), [tick])
   const branches = useAsync(() => listTruckBranches(), [tick])
@@ -116,9 +116,12 @@ export default function TruckBoard() {
    * สิ่งเดียวที่ช้าลงคือการเห็นว่าคนอื่นเพิ่งกดปล่อยรถ ซึ่งรอหนึ่งนาทีได้
    */
   useEffect(() => {
+    // สองนาที ไม่ใช่หนึ่ง · นาฬิกานับถอยหลังเดินในเครื่องอยู่แล้ว
+    // สิ่งเดียวที่ช้าลงคือการเห็นว่าคนอื่นเพิ่งกดปล่อยรถ ซึ่งรอสองนาทีได้
+    // และนี่คือตัวที่กินแบนด์วิดท์มากที่สุดเมื่อเปิดให้คนทั้งฮับใช้
     const t = setInterval(() => {
       if (document.visibilityState === 'visible') setTick((n) => n + 1)
-    }, 60_000)
+    }, 120_000)
     // กลับมาดูอีกทีต้องเห็นของสดทันที ไม่ใช่รออีกหนึ่งนาที
     const wake = () => {
       if (document.visibilityState === 'visible') setTick((n) => n + 1)
@@ -131,27 +134,37 @@ export default function TruckBoard() {
   }, [])
 
   /**
-   * กลับจอทีวีเองเมื่อไม่มีใครแตะ
+   * กลับจอทีวีเองเมื่อไม่มีใครแตะเกิน 20 วินาที
    *
-   * เครื่องที่ต่อจอในคลังเป็นเครื่องเดียวกับที่ใช้กรอกรถเข้า
-   * ถ้าไม่เด้งกลับเอง จอจะค้างอยู่หน้ากรอกข้อมูลทั้งกะ แล้วไม่มีใครเห็นเวลาอีกเลย
-   * นับเฉพาะตอนเข้ามาจากจอทีวี · เปิดหน้านี้ตรง ๆ จากมือถือไม่โดนเด้ง
+   * เดิมนับเฉพาะตอนเข้ามาจากจอทีวี · ตอนนี้นับทุกกรณีเหมือนกระดานรถรอลงงาน
+   * เพราะหน้านี้ถูกเปิดค้างบนจอที่ตั้งไว้เฉย ๆ บ่อยกว่าถูกใช้กด
+   * ปล่อยไว้เฉย ๆ มันควรกลายเป็นจอทีวี ซึ่งอ่านจากไกลได้
+   *
+   * หยุดนับเมื่อมีคนคาเคอร์เซอร์อยู่ในช่องกรอก · คนที่กำลังพิมพ์ชื่อสาขา
+   * แล้วหยุดคิดยี่สิบวินาที ไม่ควรโดนเด้งทิ้งฟอร์มที่กรอกค้างไว้
    */
+  const [pickSound, setPickSound] = useState(false)
   const [idle, setIdle] = useState(IDLE_SEC)
   useEffect(() => {
-    if (!kiosk) return
     const wake = () => setIdle(IDLE_SEC)
     const evs: (keyof DocumentEventMap)[] = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'input']
     evs.forEach((e) => document.addEventListener(e, wake, { passive: true }))
-    const t = setInterval(() => setIdle((n) => n - 1), 1000)
+    const t = setInterval(() => {
+      const el = document.activeElement
+      const typing =
+        el instanceof HTMLInputElement ||
+        el instanceof HTMLTextAreaElement ||
+        el instanceof HTMLSelectElement
+      setIdle((n) => (typing ? IDLE_SEC : n - 1))
+    }, 1000)
     return () => {
       evs.forEach((e) => document.removeEventListener(e, wake))
       clearInterval(t)
     }
-  }, [kiosk])
+  }, [])
   useEffect(() => {
-    if (kiosk && idle <= 0) nav('/trucks/tv', { replace: true })
-  }, [kiosk, idle, nav])
+    if (idle <= 0) nav('/trucks/tv', { replace: true })
+  }, [idle, nav])
 
   /**
    * ตั้งต้นที่ทั้งหมด ไม่ใช่เฉพาะคันที่ต้องรีบ
@@ -328,6 +341,13 @@ export default function TruckBoard() {
     <div className="min-h-dvh" style={{ background: '#0B0E11', color: '#F0F4F9' }}>
       <EdgeGlow stage={worstStage(live)} />
       <AlarmGate open={!pref.on && !pref.asked} onEnable={() => void pref.turnOn()} onSkip={pref.decline} />
+      {pickSound && (
+        <SoundPicker
+          kit={truckKit}
+          title="เลือกเสียงเตือนตารางปล่อยรถ"
+          onClose={() => setPickSound(false)}
+        />
+      )}
       {/* ───────── หัว ───────── */}
       <header
         className="safe-t sticky top-0 z-20 flex flex-wrap items-center gap-3 px-4 py-3"
@@ -358,7 +378,7 @@ export default function TruckBoard() {
         </span>
       </header>
 
-      {kiosk && (
+      {idle <= 5 && (
         <div
           className="flex items-center gap-3 px-4 py-2 text-sm"
           style={{ background: '#1B2430', color: '#AFC0D4' }}
@@ -695,7 +715,11 @@ export default function TruckBoard() {
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
-          <AlarmChip on={pref.on} onClick={() => void pref.turnOn()} />
+          <AlarmChip
+            on={pref.on}
+            onClick={() => void pref.turnOn()}
+            onPick={() => setPickSound(true)}
+          />
           <a
             href="/trucks/history"
             className="h-tap rounded-lg px-4 text-sm font-bold leading-[44px]"
