@@ -197,13 +197,21 @@ export default function WaitBoard() {
               <HeadBtn onClick={() => nav('/wait/tv')}>ทีวี</HeadBtn>
             </div>
 
-            <div className="mb-2 flex gap-2">
+            {/*
+              บนมือถือเป็นตารางสามช่องสองแถว ไม่ใช่บีบหกใบลงแถวเดียว
+              ของเดิมใช้ flex-1 ทุกใบ พอจอกว้าง 390px ป้ายโดนบีบจนตัวหนังสือขาด
+              เหลือ "เ.. 0" กับ "กำ 0" และตัวเลขสองใบทับกัน
+            */}
+            <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
               <Chip label="เกินเวลา" n={tally.over} color="#E5484D" />
               <Chip label="เฝ้าระวัง" n={tally.warn} color="#E8B931" />
               <Chip label="กำลังรอ" n={tally.wait} color="#2F7FE0" />
               <Chip label="DO" n={nf(tally.doJob)} color="#17566E" sub="ชิ้น" />
               <Chip label="ไม่ใช่ DO" n={nf(tally.nondo)} color="#3D2C66" sub="ชิ้น" />
-              <UploadChip at={counts.data?.last_import} now={now} size="board" />
+              {/* กินเต็มแถวบนมือถือ เพราะข้างในมีทั้งวันที่ เวลา และนานแค่ไหนแล้ว */}
+              <span className="col-span-2 flex sm:col-span-3 lg:col-span-1">
+                <UploadChip at={counts.data?.last_import} now={now} size="board" />
+              </span>
             </div>
 
             <div className="relative">
@@ -419,8 +427,23 @@ function TruckRow({
     >
       <span className="absolute inset-y-0 left-0 w-[5px]" style={{ background: STATE_COLOR[st] }} />
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2 pl-4 pr-2">
-        <div className="flex shrink-0 items-center gap-3">
+      {/*
+        บนมือถือเรียงลงเป็นชั้น ชื่อสถานีอยู่บนสุดเพราะเป็นสิ่งที่คนหา
+        จอกว้างค่อยยุบเป็นแถวเดียว โดยสลับให้นาฬิกาไปอยู่ซ้ายสุด
+        ใช้ order สลับ แทนที่จะเขียนการ์ดสองชุด ซึ่งวันหนึ่งจะแก้ไม่ครบทั้งสองที่
+      */}
+      <div className="flex flex-col gap-2 py-2 pl-4 pr-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
+        {/* ① ชื่อสถานี กับ สถานะ */}
+        <div className="order-1 flex items-center gap-2 sm:order-2 sm:min-w-[170px] sm:flex-1">
+          {flash && <FlashBell size={14} />}
+          <h2 className="min-w-0 flex-1 truncate text-[16px] font-extrabold sm:text-[15px]">
+            {r.from_station ?? 'ไม่ระบุสถานีก่อนหน้า'}
+          </h2>
+          <Pill state={st} size={11} />
+        </div>
+
+        {/* ② นาฬิกา กับ เวลา */}
+        <div className="order-2 flex shrink-0 items-center gap-3 sm:order-1">
           <Timer sec={sec} size={30} />
           <div className="leading-tight">
             <div className="text-[10px] font-bold" style={{ color: DIM }}>
@@ -434,30 +457,23 @@ function TruckRow({
           </div>
         </div>
 
-        <div className="min-w-[170px] flex-1">
-          <div className="flex items-center gap-2">
-            {flash && <FlashBell size={14} />}
-            <h2 className="min-w-0 flex-1 truncate text-[15px] font-extrabold">
-              {r.from_station ?? 'ไม่ระบุสถานีก่อนหน้า'}
-            </h2>
-            <Pill state={st} size={11} />
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span
-              className="rounded-md px-[6px] py-[2px] text-[13px] font-extrabold"
-              style={{ background: '#1C2430', color: '#9FB4CC' }}
-            >
-              {r.vehicle_type ?? '—'}
-            </span>
-            <span className="text-[13px] font-extrabold">{r.plate ?? '—'}</span>
-            <span className="text-[11px]" style={{ color: DIM }}>
-              {r.truck_barcode}
-            </span>
-            <Parcels all={r.parcels_all} doJob={r.parcels_do} nondo={r.parcels_nondo} size={12} />
-          </div>
+        {/* ③ ป้ายประจำคัน */}
+        <div className="order-3 flex flex-wrap items-center gap-x-2 gap-y-1 sm:order-3 sm:w-full lg:w-auto">
+          <span
+            className="rounded-md px-[6px] py-[2px] text-[13px] font-extrabold"
+            style={{ background: '#1C2430', color: '#9FB4CC' }}
+          >
+            {r.vehicle_type ?? '—'}
+          </span>
+          <span className="text-[13px] font-extrabold">{r.plate ?? '—'}</span>
+          <span className="text-[11px]" style={{ color: DIM }}>
+            {r.truck_barcode}
+          </span>
+          <Parcels all={r.parcels_all} doJob={r.parcels_do} nondo={r.parcels_nondo} size={12} />
         </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        {/* ④ สามปุ่มที่หน้านี้มีไว้ทำ */}
+        <div className="order-4 flex shrink-0 items-center gap-2 sm:ml-auto">
           <button
             onClick={onPhone}
             aria-label="ดูชื่อและเบอร์พนักงานขับรถ"
@@ -469,7 +485,7 @@ function TruckRow({
           <button
             disabled={busy}
             onClick={onDone}
-            className="h-11 rounded-lg px-3 text-[13px] font-extrabold disabled:opacity-50"
+            className="h-11 flex-1 rounded-lg px-3 text-[13px] font-extrabold disabled:opacity-50 sm:flex-none"
             style={{ background: '#25A35A', color: '#fff' }}
           >
             {busy ? '…' : 'ลงงานเสร็จ'}

@@ -171,11 +171,12 @@ export function Chip({
   const dark = color === '#E8B931'
   return (
     <div
-      className="flex min-w-0 flex-1 items-baseline justify-between gap-2 rounded-xl px-3 py-2"
+      className="flex min-w-0 flex-1 items-baseline justify-between gap-1 rounded-xl px-3 py-2"
       style={{ background: color, color: dark ? '#1A1405' : '#fff' }}
     >
-      <span className="truncate text-[12px] font-bold opacity-90">{label}</span>
-      <span className="flex items-baseline gap-1">
+      {/* ป้ายย่อได้ ตัวเลขย่อไม่ได้ · ของที่ต้องอ่านคือตัวเลข */}
+      <span className="min-w-0 truncate text-[12px] font-bold opacity-90">{label}</span>
+      <span className="flex shrink-0 items-baseline gap-1">
         <span className="font-extrabold leading-none" style={{ fontSize: big ? 30 : 22 }}>
           {n}
         </span>
