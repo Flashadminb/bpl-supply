@@ -1,6 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Modal } from '../../components/ui'
-import { getPackKey, previewStage, previewWaitAll, setPackKey, WAIT_PACKS } from './waitAlarm'
+import {
+  getPackKey,
+  hasThaiVoice,
+  onVoicesReady,
+  previewStage,
+  previewWaitAll,
+  setPackKey,
+  WAIT_PACKS,
+} from './waitAlarm'
 import type { Stage } from '../trucks/alarm'
 
 /**
@@ -25,6 +33,12 @@ const STAGES: { k: Stage; label: string }[] = [
 
 export function SoundPicker({ onClose }: { onClose: () => void }) {
   const [pick, setPick] = useState(getPackKey)
+  /**
+   * รายชื่อเสียงของเครื่องมาแบบไม่พร้อมกับหน้า จึงต้องถามใหม่เมื่อมันพร้อม
+   * ถ้าถามครั้งเดียวตอนเปิดหน้า เครื่องที่โหลดช้าจะขึ้นว่าพูดไทยไม่ได้ทั้งที่ได้
+   */
+  const [thai, setThai] = useState(hasThaiVoice)
+  useEffect(() => onVoicesReady(() => setThai(hasThaiVoice())), [])
 
   function choose(k: string) {
     setPick(k)
@@ -40,13 +54,23 @@ export function SoundPicker({ onClose }: { onClose: () => void }) {
         เสียงชุดนี้ใช้เฉพาะรถรอลงงาน ไม่เกี่ยวกับเสียงของตารางปล่อยรถ
       </p>
 
+      {!thai && (
+        <p className="mb-3 rounded-xl bg-warn-bg p-3 text-sm font-bold text-warn-txt">
+          เครื่องนี้ยังไม่มีเสียงพูดภาษาไทย · ชุดที่มีคนพูดจะอ่านไทยไม่ออกหรือเงียบไปเลย
+          <br />
+          ถ้าจะใช้ ต้องลงเสียงภาษาไทยในเครื่องก่อน ไม่งั้นเลือกชุดที่เป็นเสียงล้วนแทน
+        </p>
+      )}
+
       <div className="space-y-2">
         {WAIT_PACKS.map((p) => {
           const on = p.key === pick
+          const off = p.kind === 'voice' && !thai
           return (
             <div
               key={p.key}
               className={`rounded-xl border p-3 ${on ? 'border-brand-500 bg-brand-50' : ''}`}
+              style={{ opacity: off ? 0.5 : 1 }}
             >
               <button
                 onClick={() => choose(p.key)}
@@ -60,8 +84,20 @@ export function SoundPicker({ onClose }: { onClose: () => void }) {
                   {on && <span className="block h-2 w-2 rounded-full bg-ink" />}
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-base font-extrabold">{p.name}</span>
+                  <span className="flex items-center gap-2 text-base font-extrabold">
+                    {p.name}
+                    {p.kind === 'voice' && (
+                      <span className="rounded-md bg-ink px-2 py-[1px] text-[11px] font-bold text-white">
+                        เสียงพูด
+                      </span>
+                    )}
+                  </span>
                   <span className="block text-sm text-ink-500">{p.hint}</span>
+                  {p.say && (
+                    <span className="mt-1 block text-[12px] text-ink-400">
+                      เลยเวลาพูดว่า “{p.say('late')}”
+                    </span>
+                  )}
                 </span>
               </button>
 

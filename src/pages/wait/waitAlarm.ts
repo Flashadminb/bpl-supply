@@ -142,7 +142,13 @@ export interface Pack {
   key: string
   name: string
   hint: string
+  /** tone = เสียงสังเคราะห์ล้วน · voice = มีคนพูด โดยมีเสียงนำสั้น ๆ ก่อน */
+  kind: 'tone' | 'voice'
+  /** เสียงสังเคราะห์ · ของชุดเสียงพูดคือเสียงนำให้คนเงยหน้าก่อนได้ยินประโยค */
   play: (ctx: AudioContext, at: number, stage: Stage) => void
+  /** ประโยคที่จะพูด · มีเฉพาะชุดเสียงพูด */
+  say?: (stage: Stage) => string
+  voice?: { rate: number; pitch: number }
 }
 
 /**
@@ -156,6 +162,7 @@ export const WAIT_PACKS: Pack[] = [
     key: 'horn',
     name: 'แตรลม',
     hint: 'เสียงต่ำยาวแบบแตรรถใหญ่ · ไม่แสบหู เหมาะกับคลังที่เสียงไม่ดังมาก',
+    kind: 'tone',
     play: (ctx, t, s) => {
       if (s === 'm20') horn(ctx, t, 196, 0.62, 0.26)
       else if (s === 'm10') {
@@ -173,6 +180,7 @@ export const WAIT_PACKS: Pack[] = [
     key: 'chime',
     name: 'ระฆังโลหะ',
     hint: 'เสียงใส ก้องยาว แบบระฆังสถานี · ตัดผ่านเสียงสายพานได้ดี',
+    kind: 'tone',
     play: (ctx, t, s) => {
       if (s === 'm20') chime(ctx, t, 523, 0.3)
       else if (s === 'm10') {
@@ -190,6 +198,7 @@ export const WAIT_PACKS: Pack[] = [
     key: 'buzz',
     name: 'ออดโรงงาน',
     hint: 'เสียงออดต่ำสั่น ๆ แบบประตูโรงงาน · ดุที่สุดในชุดทั้งหมด',
+    kind: 'tone',
     play: (ctx, t, s) => {
       if (s === 'm20') buzz(ctx, t, 150, 0.4, 0.2)
       else if (s === 'm10') {
@@ -206,6 +215,7 @@ export const WAIT_PACKS: Pack[] = [
     key: 'knock',
     name: 'เคาะเหล็ก',
     hint: 'เสียงเคาะสั้น แห้ง ไม่ก้อง · รบกวนน้อยที่สุดถ้าต้องฟังทั้งกะ',
+    kind: 'tone',
     play: (ctx, t, s) => {
       if (s === 'm20') hit(ctx, t, 820, 0.18, 0.5)
       else if (s === 'm10') {
@@ -221,6 +231,7 @@ export const WAIT_PACKS: Pack[] = [
     key: 'siren',
     name: 'ไซเรนกวาด',
     hint: 'เสียงไถลขึ้นลงแบบรถฉุกเฉิน · ต่างจากทุกเสียงในคลังมากที่สุด',
+    kind: 'tone',
     play: (ctx, t, s) => {
       if (s === 'm20') sweep(ctx, t, 700, 380, 0.5, 0.24)
       else if (s === 'm10') {
@@ -238,7 +249,109 @@ export const WAIT_PACKS: Pack[] = [
       }
     },
   },
+  {
+    key: 'voice_hard',
+    name: 'คนพูด · โทนดุ',
+    hint: 'สั่งตรง ๆ สั้น ๆ แบบหัวหน้าเร่งงาน · ใช้ตอนที่ต้องให้ขยับทันที',
+    kind: 'voice',
+    voice: { rate: 1.12, pitch: 0.8 },
+    // เสียงนำเป็นเคาะเหล็ก ให้คนเงยหน้าก่อนประโยคจะเริ่ม
+    play: (ctx, t, s) => {
+      if (s === 'late') {
+        hit(ctx, t, 1250, 0.12, 0.5)
+        hit(ctx, t + 0.15, 1250, 0.12, 0.5)
+      } else {
+        hit(ctx, t, 1050, 0.13, 0.42)
+      }
+    },
+    say: (s) =>
+      s === 'm20'
+        ? 'เหลือยี่สิบนาที เร่งลงงานหน่อย'
+        : s === 'm10'
+          ? 'สิบนาทีสุดท้ายแล้ว รีบหน่อย'
+          : 'เลยเวลาแล้ว ไปจัดการเดี๋ยวนี้',
+  },
+  {
+    key: 'voice_formal',
+    name: 'คนพูด · โทนทางการ',
+    hint: 'ประกาศสุภาพแบบเสียงตามสาย · เหมาะกับตอนมีคนนอกเดินผ่าน',
+    kind: 'voice',
+    voice: { rate: 0.96, pitch: 1 },
+    play: (ctx, t) => chime(ctx, t, 784, 0.22),
+    say: (s) =>
+      s === 'm20'
+        ? 'แจ้งเตือน เหลือเวลาอีกยี่สิบนาที กรุณาเตรียมลงงาน'
+        : s === 'm10'
+          ? 'แจ้งเตือน เหลือเวลาอีกสิบนาที กรุณาเร่งดำเนินการ'
+          : 'แจ้งเตือน มีรถเกินเวลาที่กำหนดแล้ว กรุณาตรวจสอบ',
+  },
+  {
+    key: 'voice_fun',
+    name: 'คนพูด · โทนตลก',
+    hint: 'หยอกเบา ๆ ไม่กดดัน · ฟังทั้งกะแล้วไม่เครียด',
+    kind: 'voice',
+    voice: { rate: 1.08, pitch: 1.35 },
+    play: (ctx, t) => {
+      chime(ctx, t, 1047, 0.18)
+      chime(ctx, t + 0.14, 1319, 0.18)
+    },
+    say: (s) =>
+      s === 'm20'
+        ? 'อีกยี่สิบนาทีนะจ๊ะ ขยับตัวกันหน่อย'
+        : s === 'm10'
+          ? 'สิบนาทีแล้วนะ จะไหวไหมเนี่ย'
+          : 'โอ๊ะโอ เลยเวลาแล้วจ้า รีบหน่อยน้า',
+  },
 ]
+
+/* -------------------------------------------------------------- เสียงพูด */
+
+/**
+ * ใช้เสียงสังเคราะห์ของเครื่อง ไม่ได้โหลดไฟล์เสียงมาเก็บ
+ *
+ * เหตุผลเดียวกับที่เสียงบี๊บสังเคราะห์เอาเอง — ไฟล์เสียงกินทั้งโควตา bandwidth
+ * และพื้นที่ แถมโหลดไม่สำเร็จได้ ส่วนตัวนี้อยู่ในเครื่องอยู่แล้วและใช้ฟรีตลอด
+ *
+ * ข้อแลกเปลี่ยนคือเสียงไทยไม่ได้มีทุกเครื่อง · เครื่องที่ไม่มีจะอ่านไทยไม่ออก
+ * จึงต้องเช็คก่อนเสมอ และบอกคนเลือกไปตรง ๆ ว่าเครื่องนี้ใช้ไม่ได้
+ */
+function thaiVoice(): SpeechSynthesisVoice | null {
+  if (typeof speechSynthesis === 'undefined') return null
+  const all = speechSynthesis.getVoices()
+  return all.find((v) => v.lang.toLowerCase().startsWith('th')) ?? null
+}
+
+/** เครื่องนี้พูดไทยได้ไหม · รายชื่อเสียงมาแบบไม่พร้อมกัน จึงต้องถามใหม่ได้เรื่อย ๆ */
+export function hasThaiVoice(): boolean {
+  return thaiVoice() !== null
+}
+
+/** แจ้งเมื่อรายชื่อเสียงโหลดเสร็จ · หน้าเลือกเสียงเอาไว้วาดใหม่ */
+export function onVoicesReady(fn: () => void): () => void {
+  if (typeof speechSynthesis === 'undefined') return () => undefined
+  speechSynthesis.addEventListener('voiceschanged', fn)
+  return () => speechSynthesis.removeEventListener('voiceschanged', fn)
+}
+
+function speak(text: string, v: { rate: number; pitch: number }, onEnd?: () => void) {
+  if (typeof speechSynthesis === 'undefined') {
+    onEnd?.()
+    return
+  }
+  // ตัดคิวเก่าทิ้งก่อนเสมอ · รถสามคันข้ามเส้นพร้อมกันแล้วพูดต่อคิวกันสามประโยค
+  // คือเสียงที่ยังพูดถึงคันแรกอยู่ตอนที่คันที่สามเลยเวลาไปแล้ว
+  speechSynthesis.cancel()
+
+  const u = new SpeechSynthesisUtterance(text)
+  const tv = thaiVoice()
+  if (tv) u.voice = tv
+  u.lang = tv?.lang ?? 'th-TH'
+  u.rate = v.rate
+  u.pitch = v.pitch
+  u.volume = 1
+  if (onEnd) u.addEventListener('end', onEnd)
+  speechSynthesis.speak(u)
+}
 
 /* ----------------------------------------------------------- เลือกชุดเสียง */
 
@@ -258,25 +371,46 @@ function current(): Pack {
   return WAIT_PACKS.find((p) => p.key === k) ?? WAIT_PACKS[0]
 }
 
-export function playWaitAlarm(stage: Stage) {
+/**
+ * เล่นหนึ่งครั้ง · เสียงนำก่อน แล้วค่อยพูดถ้าเป็นชุดเสียงพูด
+ *
+ * เว้นให้เสียงนำจบก่อนค่อยเริ่มพูด ไม่งั้นคำแรกจะหายไปในเสียงเคาะ
+ */
+function fire(p: Pack, stage: Stage, onEnd?: () => void) {
   const ctx = audioCtx()
-  if (!ctx) return
-  current().play(ctx, ctx.currentTime + 0.02, stage)
+  if (ctx) p.play(ctx, ctx.currentTime + 0.02, stage)
+
+  if (p.say) {
+    const text = p.say(stage)
+    const v = p.voice ?? { rate: 1, pitch: 1 }
+    window.setTimeout(() => speak(text, v, onEnd), 320)
+  } else {
+    onEnd?.()
+  }
+}
+
+export function playWaitAlarm(stage: Stage) {
+  fire(current(), stage)
 }
 
 /** กดฟังทีละขั้นตอนตอนเลือกชุด */
 export function previewStage(packKey: string, stage: Stage) {
-  const ctx = audioCtx()
-  if (!ctx) return
-  const p = WAIT_PACKS.find((x) => x.key === packKey) ?? WAIT_PACKS[0]
-  p.play(ctx, ctx.currentTime + 0.02, stage)
+  fire(WAIT_PACKS.find((x) => x.key === packKey) ?? WAIT_PACKS[0], stage)
 }
 
 /** ฟังทั้งสามขั้นเรียงกัน · ไว้เทียบชุดต่อชุด */
 export function previewWaitAll(packKey?: string) {
+  const p = WAIT_PACKS.find((x) => x.key === (packKey ?? getPackKey())) ?? WAIT_PACKS[0]
+
+  if (p.say) {
+    // ต่อคิวด้วยการรอให้ประโยคก่อนหน้าจบจริง ไม่ใช่เดาเวลาเอา
+    // ความยาวประโยคขึ้นกับเสียงของแต่ละเครื่อง เดาแล้วจะทับกันบนเครื่องที่พูดช้า
+    fire(p, 'm20', () => fire(p, 'm10', () => fire(p, 'late')))
+    return
+  }
+
   const ctx = audioCtx()
   if (!ctx) return
-  const p = WAIT_PACKS.find((x) => x.key === (packKey ?? getPackKey())) ?? WAIT_PACKS[0]
   const t = ctx.currentTime + 0.02
   p.play(ctx, t, 'm20')
   p.play(ctx, t + 1.6, 'm10')
