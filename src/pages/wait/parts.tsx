@@ -350,6 +350,24 @@ export function LastUpdate({
  * ยอดรวมอย่างเดียวจึงวางกำลังคนไม่ได้ · เจ้าของระบบขอให้สองตัวนี้
  * เด่นเท่ากับประเภทรถและทะเบียน ไม่ใช่ตัวหนังสือเล็ก ๆ ต่อท้าย
  */
+/** สีประจำสามตัวเลขพัสดุ · ใช้ชุดเดียวกันทุกจอ จะได้จำสีได้ไม่ต้องอ่านป้าย */
+export const PARCEL_TONE = {
+  all:   { bg: '#2A2206', line: '#4A3C10', n: '#FFD479', label: '#A8954F' },
+  do:    { bg: '#06232E', line: '#10465C', n: '#7BD8FF', label: '#4F8EA8' },
+  nondo: { bg: '#1C1033', line: '#3A2470', n: '#C4A2FF', label: '#8E78C0' },
+} as const
+
+/**
+ * สามตัวเลขพัสดุเรียงติดกัน · ทั้งหมด / DO / ไม่ใช่ DO
+ *
+ * ต้องอยู่ติดกันและกรอบเหมือนกันทั้งสาม เพราะมันคือสมการเดียวกัน
+ *   ทั้งหมด − DO = ไม่ใช่ DO
+ * ถ้าตัวหนึ่งเป็นป้ายใหญ่มีกรอบ อีกสองตัวเป็นตัวหนังสือลอย ๆ อยู่คนละมุมการ์ด
+ * คนจะไม่เห็นว่ามันเกี่ยวกัน แล้วก็จะไม่เคยเอาสองตัวหลังไปใช้เลย
+ *
+ * งาน DO คืองานส่งตรง · หักออกจากยอดทั้งหมดแล้วเหลือเท่าไหร่
+ * ส่วนต่างนั้นคือของที่ไม่ใช่งานส่งตรง ซึ่งไปคนละสายพานและใช้คนไม่เท่ากัน
+ */
 export function Parcels({
   all,
   doJob,
@@ -362,37 +380,39 @@ export function Parcels({
   size?: number
 }) {
   return (
-    <span className="inline-flex items-center" style={{ gap: Math.round(size * 0.45) }}>
-      <Tag label="ชิ้น" v={all} color="#FFD479" size={size} />
-      <Tag label="DO" v={doJob} color="#7BD8FF" size={size} />
-      <Tag label="ไม่ DO" v={nondo} color="#C4A2FF" size={size} />
+    <span className="inline-flex items-center" style={{ gap: Math.round(size * 0.34) }}>
+      <ParcelTag label="ชิ้น" v={all} tone={PARCEL_TONE.all} size={size} />
+      <ParcelTag label="DO" v={doJob} tone={PARCEL_TONE.do} size={size} />
+      <ParcelTag label="ไม่ใช่ DO" v={nondo} tone={PARCEL_TONE.nondo} size={size} />
     </span>
   )
 }
 
-function Tag({
+export function ParcelTag({
   label,
   v,
-  color,
+  tone,
   size,
 }: {
   label: string
   v: number | null
-  color: string
+  tone: { bg: string; line: string; n: string; label: string }
   size: number
 }) {
   return (
     <span
-      className="inline-flex items-baseline rounded-md font-extrabold"
+      className="inline-flex items-baseline rounded-lg font-extrabold leading-none"
       style={{
-        gap: Math.round(size * 0.3),
-        background: '#131A24',
-        border: `1px solid ${LINE}`,
-        padding: `${Math.round(size * 0.18)}px ${Math.round(size * 0.46)}px`,
+        gap: Math.round(size * 0.26),
+        background: tone.bg,
+        border: `1px solid ${tone.line}`,
+        padding: `${Math.round(size * 0.3)}px ${Math.round(size * 0.5)}px`,
       }}
     >
-      <span style={{ fontSize: size * 1.08, color }}>{nf(v)}</span>
-      <span style={{ fontSize: size * 0.76, color: DIM }}>{label}</span>
+      <span style={{ fontSize: size * 1.12, color: tone.n }}>{nf(v)}</span>
+      <span className="font-bold" style={{ fontSize: size * 0.64, color: tone.label }}>
+        {label}
+      </span>
     </span>
   )
 }

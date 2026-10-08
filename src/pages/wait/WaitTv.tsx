@@ -28,6 +28,7 @@ import {
   LINE,
   liveState,
   nf,
+  Parcels,
   pct,
   Pill,
   secLeft,
@@ -446,7 +447,17 @@ function TvCard({
           <div className="flex shrink-0 items-center" style={{ gap: px(8) }}>
             <Badge text={r.vehicle_type ?? '—'} size={px(22)} bg="#1C2430" fg="#9FB4CC" />
             <Badge text={r.plate ?? '—'} size={px(22)} bg="#1B2430" fg="#EAF0F7" />
-            <Count n={r.parcels_all} size={px(22)} />
+            {/*
+              สามตัวเลขพัสดุอยู่ติดกันเพราะเป็นสมการเดียวกัน ทั้งหมด − DO = ไม่ใช่ DO
+              ของเดิมเลขทั้งหมดอยู่บนสุด ส่วน DO ไปอยู่ล่างสุดคนละมุมการ์ด
+              คนจึงไม่เห็นว่ามันเกี่ยวกัน แล้วก็ไม่เคยเอาสองตัวหลังไปใช้เลย
+            */}
+            <Parcels
+              all={r.parcels_all}
+              doJob={r.parcels_do}
+              nondo={r.parcels_nondo}
+              size={px(20)}
+            />
           </div>
 
           <Pill state={st} size={px(15)} />
@@ -489,10 +500,11 @@ function TvCard({
           <span className="font-mono" style={{ color: DIM, fontSize: px(14) }}>
             {r.truck_barcode}
           </span>
-          <span className="ml-auto flex items-center" style={{ gap: px(8) }}>
-            <Mini label="DO" v={r.parcels_do} color={DO_COLOR} size={px(15)} />
-            <Mini label="ไม่ใช่ DO" v={r.parcels_nondo} color={NONDO_COLOR} size={px(15)} />
-          </span>
+          {r.driver_name && (
+            <span className="ml-auto truncate" style={{ color: DIM, fontSize: px(14) }}>
+              {r.driver_name}
+            </span>
+          )}
         </div>
       </div>
     </article>
@@ -523,55 +535,6 @@ function Badge({
       }}
     >
       {text}
-    </span>
-  )
-}
-
-/** จำนวนชิ้นทั้งคัน · ตัวเลขใหญ่ หน่วยเล็กอยู่ข้างหลัง อ่านรวดเดียวจบ */
-function Count({ n, size }: { n: number | null; size: number }) {
-  return (
-    <span
-      className="inline-flex items-baseline rounded-lg leading-none"
-      style={{
-        gap: Math.round(size * 0.22),
-        background: '#2A2206',
-        border: '1px solid #4A3C10',
-        padding: `${Math.round(size * 0.28)}px ${Math.round(size * 0.52)}px`,
-      }}
-    >
-      <span className="font-extrabold" style={{ fontSize: size * 1.12, color: '#FFD479' }}>
-        {nf(n)}
-      </span>
-      <span className="font-bold" style={{ fontSize: size * 0.62, color: '#A8954F' }}>
-        ชิ้น
-      </span>
-    </span>
-  )
-}
-
-function Mini({
-  label,
-  v,
-  color,
-  size,
-}: {
-  label: string
-  v: number | null
-  color: string
-  size: number
-}) {
-  return (
-    <span className="inline-flex items-baseline" style={{ gap: Math.round(size * 0.3) }}>
-      <span
-        className="inline-block rounded-sm"
-        style={{ width: size * 0.5, height: size * 0.5, background: color }}
-      />
-      <span className="font-extrabold" style={{ fontSize: size, color: '#EAF0F7' }}>
-        {nf(v)}
-      </span>
-      <span className="font-bold" style={{ fontSize: size * 0.78, color: DIM }}>
-        {label}
-      </span>
     </span>
   )
 }
@@ -975,9 +938,7 @@ function ActSheet({
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <Badge text={r.vehicle_type ?? '—'} size={24} bg="#1C2430" fg="#9FB4CC" />
           <Badge text={r.plate ?? '—'} size={24} bg="#1B2430" fg="#EAF0F7" />
-          <Count n={r.parcels_all} size={24} />
-          <Mini label="DO" v={r.parcels_do} color={DO_COLOR} size={17} />
-          <Mini label="ไม่ใช่ DO" v={r.parcels_nondo} color={NONDO_COLOR} size={17} />
+          <Parcels all={r.parcels_all} doJob={r.parcels_do} nondo={r.parcels_nondo} size={22} />
         </div>
 
         <p className="mt-2 font-mono text-[15px]" style={{ color: DIM }}>
