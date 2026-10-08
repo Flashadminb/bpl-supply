@@ -118,7 +118,7 @@ export default function WaitUpload() {
   }
 
   return (
-    <div className="min-h-dvh px-4 py-4 text-white" style={{ background: BG }}>
+    <div className="min-h-dvh px-4 pb-28 pt-4 text-white" style={{ background: BG }}>
       <div className="mx-auto w-full max-w-3xl">
         <header className="mb-4 flex items-center gap-3">
           <button

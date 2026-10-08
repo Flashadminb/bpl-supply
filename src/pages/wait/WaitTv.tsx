@@ -298,7 +298,7 @@ function StatsPage({
   }, [live])
 
   return (
-    <div className="grid gap-3 lg:grid-cols-2">
+    <div className="grid gap-3 lg:grid-cols-2" style={{ minHeight: 'calc(100dvh - 110px)', gridAutoRows: '1fr' }}>
       <Hero
         title="คันที่รอนานสุดตอนนี้"
         rows={byWait}
@@ -424,11 +424,17 @@ function Hero({
                   {nf(top.r.parcels)} ชิ้น
                 </p>
               </div>
-              <span
-                className="shrink-0 font-mono text-[42px] font-extrabold leading-none"
-                style={{ color: accent }}
-              >
-                {metric(top)}
+              {/* ติดหน่วยไว้เสมอ · 24:40 เปล่า ๆ อ่านเป็นนาทีกับวินาทีได้ง่ายมาก */}
+              <span className="flex shrink-0 items-baseline gap-1">
+                <span
+                  className="font-mono text-[42px] font-extrabold leading-none"
+                  style={{ color: accent }}
+                >
+                  {metric(top)}
+                </span>
+                <span className="text-[14px] font-bold" style={{ color: DIM }}>
+                  ชม.
+                </span>
               </span>
             </div>
           </div>

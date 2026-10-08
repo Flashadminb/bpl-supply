@@ -120,7 +120,8 @@ export default function WaitBoard() {
   }
 
   return (
-    <div className="min-h-dvh pb-24 text-white" style={{ background: BG }}>
+    <>
+      <div className="min-h-dvh pb-24 text-white" style={{ background: BG }}>
       <EdgeGlow stage={worstStage(live.map(({ sec }) => ({ sec })))} />
       <AlarmGate open={!alarm.asked} onEnable={() => void alarm.turnOn()} onSkip={alarm.decline} />
 
@@ -213,7 +214,13 @@ export default function WaitBoard() {
           ดูคันที่ลงงานเสร็จแล้ว
         </button>
       </main>
+      </div>
 
+      {/*
+        กล่องเด้งอยู่นอก div ที่ตั้ง text-white ไว้ โดยตั้งใจ
+        Modal ใช้พื้นขาวของแอพปกติ ถ้าอยู่ข้างในจะสืบสีขาวลงไปด้วย
+        แล้วชื่อกับเบอร์คนขับจะกลายเป็นตัวขาวบนพื้นขาว ซึ่งมองไม่เห็นเลย
+      */}
       {phone && <PhoneCard r={phone} onClose={() => setPhone(null)} />}
 
       {cancelling && (
@@ -234,7 +241,7 @@ export default function WaitBoard() {
           onUndo={(id) => void act(id, () => undoneWaitTruck(id))}
         />
       )}
-    </div>
+    </>
   )
 }
 
