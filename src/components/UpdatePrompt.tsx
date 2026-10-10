@@ -38,7 +38,27 @@ import { Spinner } from './ui'
  *
  * ข้อ ④ สำคัญที่สุด · ปุ่มที่กดแล้วไม่มีอะไรขยับเลย แย่กว่าปุ่มที่กดแล้วช้า
  * เพราะคนจะกดซ้ำ แล้วเดาเอาเองว่าแอปพัง
+ *
+ * ── รูรั่วรอบที่สาม · "เปิดมาแล้วยังเป็นของเก่า" ──
+ *
+ * การถามก่อนมีราคาที่ต้องจ่าย คือทุกคนเห็นของใหม่ช้าไปหนึ่งรอบปิดเปิดเสมอ
+ * เครื่องที่นาน ๆ เปิดที (คอมที่บ้าน จอทีวีที่เพิ่งเสียบไฟ) เปิดมาเจอชุดเก่าที่เก็บไว้
+ * แถบขึ้นก็จริงแต่คนไม่กด เพราะไม่รู้ว่าต่างจากเดิมตรงไหน
+ *
+ * ทางแก้ที่ไม่ย้อนกลับไปเจอจอวาบกลางฟอร์ม คือดูว่า "มีงานค้างให้เสียไหม"
+ * ตั้งแต่เปิดแอปมา ถ้ายังไม่มีใครแตะจอหรือกดคีย์เลยสักครั้ง แปลว่าไม่มีฟอร์ม
+ * ไม่มีรูปที่ถ่ายค้าง รีโหลดตอนนี้ไม่มีอะไรหาย ก็สลับให้เลยโดยไม่ต้องถาม
+ * พอมีการแตะครั้งแรกเมื่อไหร่ ประตูนี้ปิดถาวรจนกว่าจะเปิดแอปใหม่ แล้วกลับไปใช้แถบถามเหมือนเดิม
+ *
+ * จอทีวีได้ประโยชน์เต็มที่ เพราะไม่มีใครแตะมันเลย จึงได้ของใหม่เองทุกครั้ง
+ *
+ * และย่นรอบเช็คจาก 1 ชั่วโมงเหลือ 15 นาที ให้แท็บที่เปิดค้างเห็นแถบเร็วขึ้น
  */
+const CHECK_EVERY_MS = 15 * 60 * 1000
+
+/** การแตะที่นับว่า "เริ่มใช้งานแล้ว" · เลื่อนดูอย่างเดียวไม่นับ เพราะเลื่อนดูไม่มีอะไรค้าง */
+const TOUCH_EVENTS = ['pointerdown', 'keydown'] as const
+
 export function UpdatePrompt() {
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -47,8 +67,23 @@ export function UpdatePrompt() {
     let timer: number | undefined
     let stop: (() => void) | undefined
 
+    // ยังไม่มีใครแตะแอปเลยตั้งแต่เปิดมา · ครั้งแรกที่แตะ ธงนี้จะเป็น true ตลอดไป
+    let touched = false
+    const markTouched = () => {
+      touched = true
+      for (const ev of TOUCH_EVENTS) window.removeEventListener(ev, markTouched, true)
+    }
+    for (const ev of TOUCH_EVENTS) window.addEventListener(ev, markTouched, true)
+
     registerSW({
       onNeedRefresh() {
+        if (!touched) {
+          // ไม่มีงานค้างให้เสีย · สลับให้เลย แต่โชว์แถบไว้ให้รู้ว่ากำลังทำอะไร
+          setReady(true)
+          setBusy(true)
+          void applyUpdate()
+          return
+        }
         setReady(true)
       },
       onRegisteredSW(_url, reg) {
@@ -58,7 +93,7 @@ export function UpdatePrompt() {
           if (document.visibilityState === 'visible') void reg.update()
         }
 
-        timer = window.setInterval(look, 60 * 60 * 1000)
+        timer = window.setInterval(look, CHECK_EVERY_MS)
         document.addEventListener('visibilitychange', look)
         stop = () => document.removeEventListener('visibilitychange', look)
 
@@ -69,6 +104,7 @@ export function UpdatePrompt() {
     return () => {
       if (timer) window.clearInterval(timer)
       stop?.()
+      for (const ev of TOUCH_EVENTS) window.removeEventListener(ev, markTouched, true)
     }
   }, [])
 
