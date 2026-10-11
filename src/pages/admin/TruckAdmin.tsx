@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
+import { useAuth } from '../../lib/auth'
+import { MANAGER_ROLES, withoutOwner } from '../../lib/roles'
 import { exportToSheet, listProfiles } from '../../lib/api'
 import { DateRangePicker } from '../../components/DateRangePicker'
 import { BulkDeleteBar, PickBox } from '../../components/BulkDeleteBar'
 import { EmptyState, ErrorBox, Loading, Modal, Spinner } from '../../components/ui'
+import { deptName } from '../../lib/deptNames'
 import {
   addTruckBranches,
   countTruckExportRows,
@@ -46,25 +49,41 @@ function dayKey(offset = 0): string {
 }
 
 export default function TruckAdmin() {
-  const [tab, setTab] = useState<Tab>('sheet')
+  const { can } = useAuth()
+  /**
+   * ผู้ตรวจสอบเห็นหน้านี้ได้แค่แท็บรายชื่อสาขา และเป็นหน้าอ่านอย่างเดียว
+   *
+   * เจ้าของระบบสั่งไว้ตรง ๆ ว่า "เห็นแค่เมนูรายชื่อสาขาแต่แก้ไขไม่ได้"
+   * เพราะเขาต้องเทียบชื่อสาขากับใบงานตอนปล่อยรถ ซึ่งเป็นงานอ่าน
+   * ส่วนการส่งลงชีต ลบของเก่า และตั้งคนรับแจ้งเตือน เป็นงานสั่งการ ไม่ใช่งานเขา
+   *
+   * ฝั่งฐานข้อมูลยังเปิดให้เขาแก้สาขาได้อยู่ ตรงนี้จึงเป็นการซ่อนปุ่มล้วน ๆ
+   * ของที่ซ่อนคือการตั้งค่าของรายชื่ออ้างอิง ไม่ใช่ข้อมูลที่ตัดสต็อกหรือปิดใบของใคร
+   */
+  const mayManage = can(...MANAGER_ROLES)
+  const [tab, setTab] = useState<Tab>(mayManage ? 'sheet' : 'branches')
+
+  const tabs: [Tab, string][] = mayManage
+    ? [
+        ['sheet', 'ส่งลงชีตและลบของเก่า'],
+        ['branches', 'รายชื่อสาขา'],
+        ['alerts', 'แจ้งเตือน'],
+      ]
+    : [['branches', 'รายชื่อสาขา']]
 
   return (
     <div className="mx-auto max-w-[1100px]">
       <div className="mb-4">
         <h1 className="font-display text-xl">การปล่อยรถ</h1>
         <p className="mt-1 text-sm text-ink-500">
-          งานตั้งค่าและงานเก็บประวัติ · หน้ากระดานที่หน้างานใช้อยู่คนละหน้า ไม่มีปุ่มพวกนี้ปน
+          {mayManage
+            ? 'งานตั้งค่าและงานเก็บประวัติ · หน้ากระดานที่หน้างานใช้อยู่คนละหน้า ไม่มีปุ่มพวกนี้ปน'
+            : 'รายชื่อสาขาสำหรับเทียบกับใบงาน · หน้าอ่านอย่างเดียว แก้ไขไม่ได้'}
         </p>
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
-        {(
-          [
-            ['sheet', 'ส่งลงชีตและลบของเก่า'],
-            ['branches', 'รายชื่อสาขา'],
-            ['alerts', 'แจ้งเตือน'],
-          ] as [Tab, string][]
-        ).map(([k, label]) => (
+        {tabs.map(([k, label]) => (
           <button
             key={k}
             type="button"
@@ -76,9 +95,9 @@ export default function TruckAdmin() {
         ))}
       </div>
 
-      {tab === 'sheet' && <SheetTab />}
-      {tab === 'branches' && <BranchTab />}
-      {tab === 'alerts' && <AlertTab />}
+      {tab === 'sheet' && mayManage && <SheetTab />}
+      {tab === 'branches' && <BranchTab canEdit={mayManage} />}
+      {tab === 'alerts' && mayManage && <AlertTab />}
     </div>
   )
 }
@@ -196,7 +215,7 @@ function SheetTab() {
 
 /* ------------------------------------------------------------ รายชื่อสาขา */
 
-function BranchTab() {
+function BranchTab({ canEdit }: { canEdit: boolean }) {
   const [tick, setTick] = useState(0)
   const list = useAsync(() => listTruckBranches(), [tick])
   const [q, setQ] = useState('')
@@ -230,6 +249,7 @@ function BranchTab() {
         </p>
       )}
 
+      {canEdit && (
       <section className="panel mb-4 p-4">
         <p className="font-display text-sm">เพิ่มทีละหลายอัน</p>
         <p className="mb-2 text-xs text-ink-500">
@@ -260,6 +280,7 @@ function BranchTab() {
           </button>
         </div>
       </section>
+      )}
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input
@@ -269,14 +290,20 @@ function BranchTab() {
           value={q}
           onChange={(e) => { setQ(e.target.value); setPicked(new Set()) }}
         />
-        <button type="button" className="btn-ghost px-4 py-2 text-sm" onClick={() => setEdit({})}>
-          + เพิ่มทีละอัน
-        </button>
-        <span className="text-xs text-ink-500">
-          กดแก้ไขที่ท้ายแถวเพื่อปรับชื่อ รหัส ชื่อเต็ม พื้นที่ และสถานะเปิดปิด
-        </span>
+        {canEdit && (
+          <>
+            <button type="button" className="btn-ghost px-4 py-2 text-sm" onClick={() => setEdit({})}>
+              + เพิ่มทีละอัน
+            </button>
+            <span className="text-xs text-ink-500">
+              กดแก้ไขที่ท้ายแถวเพื่อปรับชื่อ รหัส ชื่อเต็ม พื้นที่ และสถานะเปิดปิด
+            </span>
+          </>
+        )}
+        {!canEdit && <span className="text-xs text-ink-500">{rows.length} สาขา</span>}
       </div>
 
+      {canEdit && (
       <BulkDeleteBar
         n={picked.size}
         noun="สาขา"
@@ -296,57 +323,69 @@ function BranchTab() {
           setTick((n) => n + 1)
         }}
       />
+      )}
 
       {list.loading && <Loading />}
       {list.error && <ErrorBox message={list.error} onRetry={list.reload} />}
       {!list.loading && rows.length === 0 && (
-        <EmptyState title="ยังไม่มีสาขา" hint="วางรายชื่อในช่องด้านบนแล้วกดเพิ่ม" />
+        <EmptyState
+          title="ยังไม่มีสาขา"
+          hint={canEdit ? 'วางรายชื่อในช่องด้านบนแล้วกดเพิ่ม' : 'ยังไม่มีใครใส่รายชื่อสาขาเข้าระบบ'}
+        />
       )}
 
+      {canEdit && (
       <BranchEdit
         value={edit}
         onClose={() => setEdit(null)}
         onSaved={() => { setEdit(null); setMsg('บันทึกสาขาแล้ว'); setTick((n) => n + 1) }}
       />
+      )}
 
       {rows.length > 0 && (
         <section className="panel overflow-x-auto p-2">
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="text-ink-500">
               <tr className="border-b border-line">
-                <th className="w-[44px] px-3 py-2">
-                  <PickBox
-                    on={allPicked}
-                    label="เลือกทั้งหมด"
-                    onToggle={() => setPicked(allPicked ? new Set() : new Set(rows.map((b) => b.id)))}
-                  />
-                </th>
+                {canEdit && (
+                  <th className="w-[44px] px-3 py-2">
+                    <PickBox
+                      on={allPicked}
+                      label="เลือกทั้งหมด"
+                      onToggle={() =>
+                        setPicked(allPicked ? new Set() : new Set(rows.map((b) => b.id)))
+                      }
+                    />
+                  </th>
+                )}
                 <th className="px-3 py-2 font-medium">ชื่อ</th>
                 <th className="w-[110px] px-3 py-2 font-medium">รหัส</th>
                 <th className="px-3 py-2 font-medium">ชื่อเต็ม</th>
                 <th className="w-[80px] px-3 py-2 font-medium">โซน</th>
                 <th className="px-3 py-2 font-medium">พื้นที่</th>
                 <th className="w-[110px] px-3 py-2 font-medium">สถานะ</th>
-                <th className="w-[80px] px-3 py-2" />
+                {canEdit && <th className="w-[80px] px-3 py-2" />}
               </tr>
             </thead>
             <tbody>
               {rows.map((b) => (
                 <tr key={b.id} className="border-b border-line-2 last:border-0">
-                  <td className="px-3 py-2">
-                    <PickBox
-                      on={picked.has(b.id)}
-                      label={`เลือก ${b.name}`}
-                      onToggle={() =>
-                        setPicked((s) => {
-                          const n = new Set(s)
-                          if (n.has(b.id)) n.delete(b.id)
-                          else n.add(b.id)
-                          return n
-                        })
-                      }
-                    />
-                  </td>
+                  {canEdit && (
+                    <td className="px-3 py-2">
+                      <PickBox
+                        on={picked.has(b.id)}
+                        label={`เลือก ${b.name}`}
+                        onToggle={() =>
+                          setPicked((s) => {
+                            const n = new Set(s)
+                            if (n.has(b.id)) n.delete(b.id)
+                            else n.add(b.id)
+                            return n
+                          })
+                        }
+                      />
+                    </td>
+                  )}
                   <td className="px-3 py-2 font-medium">{b.name}</td>
                   <td className="px-3 py-2 font-mono text-xs">{b.code ?? '—'}</td>
                   <td className="px-3 py-2 text-xs text-ink-500">{b.full_name ?? '—'}</td>
@@ -361,11 +400,17 @@ function BranchTab() {
                       <span className="badge-warn">ปิดบริการ</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right">
-                    <button type="button" className="btn-ghost px-3 py-1.5 text-xs" onClick={() => setEdit(b)}>
-                      แก้ไข
-                    </button>
-                  </td>
+                  {canEdit && (
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        type="button"
+                        className="btn-ghost px-3 py-1.5 text-xs"
+                        onClick={() => setEdit(b)}
+                      >
+                        แก้ไข
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -517,6 +562,7 @@ function BranchEdit({
 /* -------------------------------------------------------------- แจ้งเตือน */
 
 function AlertTab() {
+  const { profile: me } = useAuth()
   const [tick, setTick] = useState(0)
   const cfg = useAsync(() => getTruckAlertSettings(), [tick])
   const subs = useAsync(() => listTruckAlertSubs(), [tick])
@@ -534,7 +580,7 @@ function AlertTab() {
 
   const people = useMemo(() => {
     const t = q.trim().toLowerCase()
-    const all = (users.data ?? []).filter((u) => u.is_active)
+    const all = withoutOwner((users.data ?? []).filter((u) => u.is_active), me)
     if (!t) return all.filter((u) => chosen.has(u.id)).slice(0, 50)
     return all
       .filter((u) => `${u.full_name} ${u.employee_code} ${u.dept_code ?? ''}`.toLowerCase().includes(t))
@@ -740,7 +786,9 @@ function AlertTab() {
               <span className="min-w-0 flex-1 text-sm">
                 {u.full_name}
                 <span className="ml-2 font-mono text-xs text-ink-400">{u.employee_code}</span>
-                {u.dept_code && <span className="ml-2 text-xs text-ink-400">{u.dept_code}</span>}
+                {u.dept_code && (
+                  <span className="ml-2 text-xs text-ink-400">{deptName(u.dept_code)}</span>
+                )}
               </span>
               <button
                 type="button"

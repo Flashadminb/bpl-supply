@@ -17,6 +17,7 @@ import { fmtDateTime } from '../../lib/format'
 import { AssetReturn } from '../../components/AssetReturn'
 import { HubHoldings } from '../../components/HubHoldings'
 import { TransferNotices } from '../../components/TransferNotices'
+import { deptName } from '../../lib/deptNames'
 
 const CONDITIONS: { key: ReturnCond; label: string }[] = [
   { key: 'ok', label: 'ใช้ได้' },
@@ -95,7 +96,7 @@ export default function Returns() {
           stamp: stampLines(
             profile?.full_name ?? '—',
             profile?.employee_code ?? '—',
-            profile?.dept_code ?? profile?.hub_code ?? '—',
+            deptName(profile?.dept_code, profile?.hub_code ?? '—'),
             from === 'gallery' ? 'คืนวัสดุ · เลือกจากคลังรูป' : 'คืนวัสดุ',
           ),
         })

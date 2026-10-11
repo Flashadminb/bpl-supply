@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { listProxyTargets, type ProxyTarget } from '../lib/api'
 import { readableError } from '../lib/supabase'
 import { Sheet, Spinner } from './ui'
+import { deptSuffix } from '../lib/deptNames'
 
 /**
  * "เบิกให้ใคร" — ขึ้นหน้าสุดของการเบิกอุปกรณ์
@@ -74,7 +75,7 @@ export function ProxyPicker({
             {value && (
               <p className="truncate text-xs text-warn-txt">
                 <span className="font-mono">{value.employee_code}</span>
-                {value.dept_code ? ` · ${value.dept_code}` : ''} · {shiftText(value)}
+                {deptSuffix(value.dept_code)} · {shiftText(value)}
               </p>
             )}
           </div>
@@ -154,7 +155,7 @@ export function ProxyPicker({
                   }`}
                 >
                   <span className="font-mono">{t.employee_code}</span>
-                  {t.dept_code ? ` · ${t.dept_code}` : ''}
+                  {deptSuffix(t.dept_code)}
                   {t.sub_dept ? ` · ${t.sub_dept}` : ''} · {shiftText(t)}
                 </span>
               </button>

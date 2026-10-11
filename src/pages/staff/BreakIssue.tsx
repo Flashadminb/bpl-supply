@@ -7,6 +7,7 @@ import { PhotoSteps, shotsToPhotos, type Shot } from '../../components/PhotoStep
 import { BreakBanBar } from '../../components/BreakBanBar'
 import { ErrorBox, Loading, EmptyState, Spinner } from '../../components/ui'
 import { StaffPage, TopBar } from '../../components/Shell'
+import { deptName } from '../../lib/deptNames'
 import {
   breakBanNext,
   breakBanNow,
@@ -138,7 +139,7 @@ export default function BreakIssue() {
   const stamp = stampLines(
     profile?.full_name ?? '',
     profile?.employee_code ?? '',
-    profile?.dept_code ?? profile?.hub_code ?? 'BPL',
+    deptName(profile?.dept_code, profile?.hub_code ?? 'BPL'),
     'ปล่อยเบรค OS',
   )
 

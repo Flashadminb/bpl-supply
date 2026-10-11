@@ -19,6 +19,7 @@ import { EmptyState, ErrorBox, Loading, Modal, Spinner } from './ui'
 import { EvidenceImg } from './EvidenceThumbs'
 import { fmtDateTime } from '../lib/format'
 import type { AttendState, MeetingEvent, MeetingStatus, RosterRow } from '../lib/types'
+import { deptName, deptSuffix } from '../lib/deptNames'
 
 /**
  * ใบเช็คอิน — แผ่นเดียวต่อหนึ่งนัด
@@ -546,7 +547,7 @@ function MeetingSet({
             <EvidenceImg fileId={big.file_id} enabled className="w-full rounded-card" />
             <p className="mt-2 text-sm text-ink-500">
               <span className="font-mono">{big.employee_code}</span>
-              {big.dept_code ? ` · ${big.dept_code}` : ''}
+              {deptSuffix(big.dept_code)}
               {big.ref_no ? ` · ${big.ref_no}` : ''}
             </p>
             {big.note && <p className="mt-1 text-sm">เขาเขียนมาว่า “{big.note}”</p>}
@@ -621,7 +622,9 @@ function RosterLine({
           <span className="block text-sm">
             {row.full_name}
             <span className="ml-2 font-mono text-xs text-ink-400">{row.employee_code}</span>
-            {row.dept_code && <span className="ml-2 text-xs text-ink-400">{row.dept_code}</span>}
+            {row.dept_code && (
+              <span className="ml-2 text-xs text-ink-400">{deptName(row.dept_code)}</span>
+            )}
           </span>
           <span className="block text-xs">
             {row.checked_at ? (

@@ -9,6 +9,7 @@ import { SearchSelect, type Option } from '../../components/SearchSelect'
 import { QtyStepper } from '../../components/ui'
 import { fmtDateTime, relativeAge } from '../../lib/format'
 import type { ByRow, ByStatus } from '../../lib/types'
+import { deptName } from '../../lib/deptNames'
 
 /**
  * กล่องรับบาร์โค้ดจาก BY
@@ -273,7 +274,7 @@ export default function ByInbox() {
                     {r.who}
                     <span className="ml-1 font-mono text-xs text-ink-400">{r.employee_code}</span>
                     <p className="text-xs text-ink-400">
-                      {r.dept_code}
+                      {deptName(r.dept_code)}
                       {r.sub_dept ? ` · ${r.sub_dept}` : ''}
                       {r.shift_start && r.shift_end
                         ? ` · กะ ${r.shift_start.slice(0, 5)}–${r.shift_end.slice(0, 5)}`

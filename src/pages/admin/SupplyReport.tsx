@@ -24,6 +24,7 @@ import {
   type Datum,
 } from '../../components/charts'
 import { STATUS_TH, fmtDateTime } from '../../lib/format'
+import { deptSuffix } from '../../lib/deptNames'
 
 /**
  * รายงานฝั่งวัสดุสิ้นเปลือง
@@ -91,7 +92,7 @@ export default function SupplyReport() {
         .map((p) => ({
           value: p.id,
           label: p.full_name,
-          hint: `${p.employee_code}${p.dept_code ? ` · ${p.dept_code}` : ''}`,
+          hint: `${p.employee_code}${deptSuffix(p.dept_code)}`,
         })),
     [people.data],
   )

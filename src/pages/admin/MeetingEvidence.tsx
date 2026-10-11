@@ -10,6 +10,7 @@ import { readableError } from '../../lib/supabase'
 import { EmptyState, ErrorBox, Loading, Modal, Spinner } from '../../components/ui'
 import { fmtDateTime } from '../../lib/format'
 import type { MeetingStatus } from '../../lib/types'
+import { deptName } from '../../lib/deptNames'
 
 /**
  * หลักฐานการเข้าประชุม — ตารางรายชื่อคนที่เข้าจริง
@@ -294,7 +295,7 @@ export default function MeetingEvidence() {
                     {m.note && <p className="text-xs text-ink-500">“{m.note}”</p>}
                   </td>
                   <td className="px-3 py-2 align-top text-xs text-ink-500">
-                    {m.dept_code ?? '—'}
+                    {deptName(m.dept_code)}
                     {m.sub_dept ? ` · ${m.sub_dept}` : ''}
                     {m.shift_start && m.shift_end && (
                       <p>

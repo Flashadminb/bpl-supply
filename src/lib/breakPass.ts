@@ -448,10 +448,70 @@ export async function listBreakPhotos(passId: number): Promise<BreakPhoto[]> {
 }
 
 /** ปิดใบที่ไม่มีใครมารับกลับ · หลังบ้านหรือหัวหน้าที่ปล่อยเอง */
-export async function closeBreakPasses(ids: number[], note?: string | null) {
+/**
+ * เหตุผลที่ต้องปิดใบแทน
+ *
+ * เก็บเป็นรหัสคงที่ ไม่ใช่ข้อความอิสระ เพราะปลายทางคือเอาไปนับเป็นสถิติ
+ * ข้อความอิสระนับไม่ได้ · พิมพ์ "รปภไม่สแกน" กับ "รปภ ไม่ได้สแกน" คือคนละอันในสายตาคอมพิวเตอร์
+ *
+ * สี่ข้อนี้มาจากสี่สาเหตุที่เจ้าของระบบบอกว่าเกิดจริง
+ * สามข้อแรกคือระบบงานพลาด ข้อสุดท้ายคือไม่ได้ใช้ใบนั้นจริง ๆ
+ * แยกออกจากกันได้แปลว่ารู้ว่าต้องไปแก้ที่ประตู ที่คนปล่อย หรือไม่ต้องแก้อะไรเลย
+ */
+/** ก้อนสถิติบัตรเบรค · ฐานข้อมูลคิดมาให้หมดแล้ว */
+export interface BreakStats {
+  grace: number
+  total: {
+    passes: number
+    people: number
+    closed: number
+    open: number
+    no_gate_out: number
+    late: number
+    on_time: number
+    forced: number
+    avg_wait: number
+    avg_out: number
+    avg_over: number
+    max_over: number
+  }
+  cards: { card: string; grp: string; n: number; late: number; avg_out: number; worst: number }[]
+  groups: { grp: string; n: number; late: number; avg_wait: number; avg_out: number }[]
+  issuers: { name: string; n: number; late: number; forced: number; avg_wait: number }[]
+  reasons: { code: string; n: number }[]
+  by_hour: { h: number; n: number; late: number }[]
+  by_day: { d: string; n: number; late: number }[]
+}
+
+/**
+ * สถิติบัตรเบรค
+ *
+ * grace = ผ่อนผันกี่นาทีถึงจะนับว่าเกินเวลา
+ * ต้องมี เพราะตัวเลขดิบนับคนที่เกินสามสิบวินาทีรวมกับคนที่เกินยี่สิบนาที
+ * แล้วรายชื่อจะยาวจนใช้ชี้ตัวคนที่มีปัญหาจริงไม่ได้
+ */
+export async function breakStats(from: string, to: string, grace = 0): Promise<BreakStats> {
+  return rpc<BreakStats>('break_stats', { p_from: from, p_to: to, p_grace_min: grace })
+}
+
+export const BREAK_CLOSE_REASONS = [
+  { code: 'no_scan_in', label: 'รปภ ไม่ได้สแกนกลับ' },
+  { code: 'no_scan_out', label: 'รปภ ไม่ได้สแกนปล่อย' },
+  { code: 'wrong_card', label: 'คนปล่อย ปล่อยผิดใบ' },
+  { code: 'cancel', label: 'ยกเลิก ไม่ได้ใช้ใบนี้' },
+] as const
+
+export type BreakCloseReason = (typeof BREAK_CLOSE_REASONS)[number]['code']
+
+export async function closeBreakPasses(
+  ids: number[],
+  note?: string | null,
+  reason?: BreakCloseReason | null,
+) {
   return rpc<{ ok: true; closed: number }>('break_close', {
     p_pass_ids: ids,
     p_note: note ?? null,
+    p_reason: reason ?? null,
   })
 }
 

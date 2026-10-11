@@ -9,7 +9,7 @@ import {
   listAssetTypes,
 } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
-import { MANAGER_ROLES } from '../../lib/roles'
+import { MANAGER_ROLES, canProxy } from '../../lib/roles'
 import {
   AssetTransfer,
   candidateFromHolding,
@@ -22,6 +22,7 @@ import { stampLines } from '../../lib/image'
 import { EmptyState, ErrorBox, Loading, Modal, Sheet, Spinner } from '../../components/ui'
 import { fmtDateTime, relativeAge } from '../../lib/format'
 import type { AssetHolding } from '../../lib/types'
+import { deptName } from '../../lib/deptNames'
 
 /**
  * เครื่องที่ยังไม่ได้คืน
@@ -72,6 +73,13 @@ export default function AssetOutstanding() {
   const [closeBusy, setCloseBusy] = useState(false)
   const [closeErr, setCloseErr] = useState<string | null>(null)
   const mayCancel = can(...MANAGER_ROLES)
+  /**
+   * คืนแทนเจ้าตัวได้ไหม — ตรงกับ my_can_proxy() ในฐานข้อมูล
+   *
+   * ผู้ตรวจสอบตามของค้างและโอนเครื่องได้ แต่ไม่คืนแทน
+   * เพราะคนคืนต้องถือของอยู่จริงถึงจะถ่ายรูปสภาพได้ ซึ่งเขาไม่ได้ถือ
+   */
+  const mayGiveBack = canProxy(profile)
   // โอนเครื่องให้แผนกอื่น · ผู้ตรวจสอบทำได้ด้วย เพราะนี่คือหน้าเดียวที่เขาเห็นเครื่องที่ถูกยืมอยู่
   const [moving, setMoving] = useState<AssetHolding | null>(null)
   const [picked, setPicked] = useState<string[]>([])
@@ -347,13 +355,15 @@ export default function AssetOutstanding() {
                       <td className="p-2 font-mono text-xs">{h.ref_no}</td>
                       <td className="p-2 text-right">
                         <div className="flex justify-end gap-1">
-                          <button
-                            type="button"
-                            className="btn-soft h-tap px-3 text-sm"
-                            onClick={() => openReturn(h)}
-                          >
-                            คืนแทน
-                          </button>
+                          {mayGiveBack && (
+                            <button
+                              type="button"
+                              className="btn-soft h-tap px-3 text-sm"
+                              onClick={() => openReturn(h)}
+                            >
+                              คืนแทน
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="btn-soft h-tap px-3 text-sm"
@@ -488,7 +498,7 @@ export default function AssetOutstanding() {
                     stamp={stampLines(
                       profile?.full_name ?? '',
                       profile?.employee_code ?? '',
-                      profile?.dept_code ?? 'BPL',
+                      deptName(profile?.dept_code, 'BPL'),
                       `คืนแทน ${giveBack.holder_name}`,
                     )}
                     shots={shots}

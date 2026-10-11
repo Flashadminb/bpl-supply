@@ -14,7 +14,40 @@ import type { UserRole } from './types'
 export const ROLE_TH: Record<UserRole, string> = {
   staff: 'หน้างาน',
   supervisor: 'แอดมิน',
-  admin: 'เจ้าของระบบ',
+  admin: 'ผู้ดูแลระบบ',
+}
+
+/**
+ * เจ้าของระบบตัวจริง · แยกจาก "ผู้ดูแลระบบ" ด้วยธง is_owner ไม่ใช่ด้วย role
+ *
+ * สองคนนี้ใช้ role เดียวกันคือ admin จึงทำได้ทุกอย่างเท่ากันโดยอัตโนมัติ
+ * ไม่ต้องไล่แก้ policy สามสิบจุดให้รู้จักบทบาทใหม่ ซึ่งพลาดจุดเดียวคือรูรั่ว
+ * ต่างกันแค่สองอย่าง คือแตะบัญชีเจ้าของไม่ได้ และตั้งผู้ดูแลระบบคนใหม่ไม่ได้
+ */
+export const OWNER_TH = 'เจ้าของระบบ'
+
+/** คนนี้เป็นเจ้าของระบบตัวจริงไหม */
+export const isOwner = (p?: { is_owner?: boolean } | null) => Boolean(p?.is_owner)
+
+/**
+ * ตัดบัญชีเจ้าของระบบออกจากรายชื่อที่ใช้ "ตั้งสิทธิ์ให้คน"
+ *
+ * เจ้าของระบบสั่งไว้ว่าคนอื่น แม้แต่ผู้ดูแลระบบ จะเห็นหรือตั้งสิทธิ์อะไรให้บัญชีเขาไม่ได้เลย
+ * เหตุผลที่เขาให้มาคือเขาเห็นทุกอย่างอยู่แล้ว การยกสิทธิ์ให้จึงไม่มีความหมาย
+ * มีแต่จะกลายเป็นช่องให้คนอื่นไปยุ่งกับบัญชีที่ยุ่งไม่ได้
+ *
+ * ของจริงฐานข้อมูลกันอยู่แล้วด้วย trigger guard_owner_row ซึ่งปฏิเสธการแก้แถวของเจ้าของ
+ * ตัวนี้จึงไม่ใช่ด่าน แต่คือการไม่เอาของที่กดไม่ได้ไปวางให้คนกด
+ *
+ * ยกเว้นที่เดียวคือการเลือกคนเข้าประชุม ซึ่งเจ้าของระบบสั่งเองว่า
+ * ยังนัดชื่อเขาได้ตามปกติ เพราะนั่นคือการเชิญ ไม่ใช่การยกสิทธิ์
+ */
+export function withoutOwner<T extends { is_owner?: boolean }>(
+  people: T[],
+  me?: { is_owner?: boolean } | null,
+): T[] {
+  if (isOwner(me)) return people
+  return people.filter((p) => !p.is_owner)
 }
 
 /**
@@ -54,7 +87,9 @@ export function roleLabel(p: {
   role: UserRole
   can_dispatch?: boolean
   can_guard?: boolean
+  is_owner?: boolean
 }): string {
+  if (p.role === 'admin' && p.is_owner) return OWNER_TH
   if (p.role === 'staff' && p.can_dispatch) return DISPATCH_TH
   if (p.role === 'staff' && p.can_guard) return GUARD_TH
   return ROLE_TH[p.role]
@@ -79,6 +114,20 @@ export const POSTS: { key: PostKey; label: string; hint: string }[] = [
     hint: 'สแกนบัตร OS อย่างเดียว · ไม่เห็นเมนูเบิกของ ไม่เห็นรายชื่อ OS ทั้งกอง',
   },
   { key: 'supervisor', label: 'แอดมิน', hint: 'อนุมัติคำขอ แก้สต็อก ส่งออก Sheet' },
+]
+
+/**
+ * ตัวเลือกที่เจ้าของระบบเห็นเพิ่มอีกหนึ่งอัน
+ *
+ * แยกออกมาเพราะยกให้ใครแล้วเขาทำได้ทุกอย่างเท่าเจ้าของ รวมถึงลบของถาวร
+ * ฐานข้อมูลกันซ้ำอีกชั้นด้วย trigger guard_owner_row ไม่ได้กันแค่ที่ดรอปดาวน์
+ */
+export const OWNER_ONLY_POSTS: { key: PostKey; label: string; hint: string }[] = [
+  {
+    key: 'admin',
+    label: ROLE_TH.admin,
+    hint: 'ทำได้ทุกอย่างเหมือนเจ้าของระบบ รวมการลบ · แตะบัญชีเจ้าของไม่ได้',
+  },
 ]
 
 export function postOf(p: {

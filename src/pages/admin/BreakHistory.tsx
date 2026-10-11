@@ -5,10 +5,13 @@ import { BulkDeleteBar, PickBox } from '../../components/BulkDeleteBar'
 import { TextHistory } from '../../components/TextHistory'
 import { EvidenceImg } from '../../components/EvidenceThumbs'
 import { EmptyState, ErrorBox, Loading, Modal, Spinner } from '../../components/ui'
+import { BreakStats } from './BreakStats'
 import { fmtDateTime } from '../../lib/format'
 import { exportToSheet } from '../../lib/api'
 import {
+  BREAK_CLOSE_REASONS,
   closeBreakPasses,
+  type BreakCloseReason,
   countBreakExportRows,
   deleteBreakPasses,
   purgeExportedBreaks,
@@ -32,7 +35,7 @@ import {
  * ไม่ใช่คนนั้นอยู่ข้างนอกจริง ๆ ถ้านับรวมสถิติทั้งเดือนจะเพี้ยนไปเลย
  */
 
-type Tab = 'history' | 'stuck' | 'trash'
+type Tab = 'history' | 'stuck' | 'stats' | 'trash'
 
 function dayKey(offset = 0): string {
   const d = new Date()
@@ -210,11 +213,22 @@ export default function BreakHistory() {
     return { total: list.length, people, over, outAvg, problem: list.filter((r) => r.close_kind === 'problem').length }
   }, [list])
 
-  async function closeStuck(ids: number[]) {
+  /**
+   * ใบที่กำลังจะปิด · null = ยังไม่ได้กดปิดอะไร
+   * เก็บเป็นรายการ id เพราะปุ่ม "ปิดทั้งหมด" ใช้กล่องเดียวกัน
+   */
+  const [closing, setClosing] = useState<number[] | null>(null)
+  const [reason, setReason] = useState<BreakCloseReason | null>(null)
+  const [closeNote, setCloseNote] = useState('')
+
+  async function closeStuck(ids: number[], why: BreakCloseReason, note: string) {
     setBusy(true)
     setErr(null)
     try {
-      await closeBreakPasses(ids, 'ปิดจากหน้าหลังบ้าน')
+      await closeBreakPasses(ids, note.trim() || 'ปิดจากหน้าหลังบ้าน', why)
+      setClosing(null)
+      setReason(null)
+      setCloseNote('')
       setTick((n) => n + 1)
     } catch (e) {
       setErr((e as Error).message)
@@ -225,6 +239,55 @@ export default function BreakHistory() {
 
   return (
     <div>
+      {/*
+        กล่องเลือกเหตุผลตอนปิดใบแทน
+        บังคับเลือก เพราะปลายทางคือสถิติว่าปิดแทนเพราะอะไรบ่อยสุด
+        ถ้าปล่อยให้ข้ามได้ สถิติจะเต็มไปด้วยช่องว่างซึ่งแปลผลไม่ได้
+      */}
+      <Modal
+        open={closing !== null}
+        onClose={() => setClosing(null)}
+        title={closing && closing.length > 1 ? `ปิด ${closing.length} ใบ` : 'ปิดใบนี้'}
+      >
+        <p className="mb-3 text-sm text-ink-500">
+          เลือกว่าทำไมใบนี้ถึงต้องปิดแทน · ใบที่ปิดแทนไม่ได้แปลว่าคนผิดเสมอไป
+          บางทีคือประตูไม่ได้สแกน ซึ่งต้องไปแก้คนละที่
+        </p>
+        <div className="mb-3 flex flex-wrap gap-2">
+          {BREAK_CLOSE_REASONS.map((x) => (
+            <button
+              key={x.code}
+              type="button"
+              className={'chip ' + (reason === x.code ? 'chip-on' : '')}
+              onClick={() => setReason(x.code)}
+            >
+              {x.label}
+            </button>
+          ))}
+        </div>
+        <input
+          className="input"
+          placeholder="รายละเอียดเพิ่มเติม (ไม่บังคับ)"
+          value={closeNote}
+          onChange={(e) => setCloseNote(e.target.value)}
+        />
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <button type="button" className="btn-soft text-sm" onClick={() => setClosing(null)}>
+            ไม่ปิดแล้ว
+          </button>
+          <button
+            type="button"
+            className="btn-primary text-sm"
+            disabled={busy || !reason || !closing}
+            onClick={() => {
+              if (closing && reason) void closeStuck(closing, reason, closeNote)
+            }}
+          >
+            {busy ? <Spinner /> : null} ยืนยันปิด
+          </button>
+        </div>
+      </Modal>
+
       <div className="mb-4">
         <h1 className="font-display text-xl">ประวัติเบรค</h1>
         <p className="mt-1 text-sm text-ink-500">
@@ -309,6 +372,7 @@ export default function BreakHistory() {
           [
             ['history', 'ประวัติ'],
             ['stuck', `ใบที่ค้างอยู่ (${stuckList.length})`],
+            ['stats', 'สถิติ'],
             ['trash', 'ที่ลบแล้ว'],
           ] as [Tab, string][]
         ).map(([k, label]) => (
@@ -329,7 +393,9 @@ export default function BreakHistory() {
         </div>
       )}
 
-      {tab === 'trash' ? (
+      {tab === 'stats' ? (
+        <BreakStats from={range.from} to={range.to} />
+      ) : tab === 'trash' ? (
         <TextHistory kind="break" fromISO={range.from} toISO={range.to} />
       ) : tab === 'stuck' ? (
         <>
@@ -364,7 +430,11 @@ export default function BreakHistory() {
                         type="button"
                         className="btn-ghost px-3 py-1.5 text-xs"
                         disabled={busy}
-                        onClick={() => void closeStuck([r.id])}
+                        onClick={() => {
+                          setClosing([r.id])
+                          setReason(null)
+                          setCloseNote('')
+                        }}
                       >
                         ปิดใบนี้
                       </button>
@@ -376,7 +446,11 @@ export default function BreakHistory() {
                 type="button"
                 className="btn-primary mt-3 px-4 py-2 text-sm"
                 disabled={busy}
-                onClick={() => void closeStuck(stuckList.map((r) => r.id))}
+                onClick={() => {
+                  setClosing(stuckList.map((x) => x.id))
+                  setReason(null)
+                  setCloseNote('')
+                }}
               >
                 {busy ? <Spinner /> : null}ปิดทั้งหมด {stuckList.length} ใบ
               </button>

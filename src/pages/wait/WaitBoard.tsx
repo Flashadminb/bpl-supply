@@ -18,7 +18,7 @@ import { useAlarmPref, useTruckAlarm } from '../trucks/alarm'
 import { AlarmGate, EdgeGlow, worstStage } from '../trucks/alert-ui'
 import { playWaitAlarm, WAIT_ALARM_PREF, waitKit } from './waitAlarm'
 import { UploadBox } from './UploadBox'
-import { SoundPicker } from '../../components/SoundPicker'
+import { SoundPicker, WAIT_STAGES } from '../../components/SoundPicker'
 import {
   BG,
   CARD,
@@ -274,9 +274,9 @@ export default function WaitBoard() {
               เหลือ "เ.. 0" กับ "กำ 0" และตัวเลขสองใบทับกัน
             */}
             <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-              <Chip label="เกินเวลา" n={tally.over} color="#E5484D" />
-              <Chip label="เฝ้าระวัง" n={tally.warn} color="#E8B931" />
-              <Chip label="กำลังรอ" n={tally.wait} color="#2F7FE0" />
+              <Chip label="ต้องลงงาน" n={tally.over} color="#E5484D" />
+              <Chip label="ใกล้ถึงเวลา" n={tally.warn} color="#E8B931" />
+              <Chip label="ยังมีเวลา" n={tally.wait} color="#2F7FE0" />
               <Chip label="DO" n={nf(tally.doJob)} color="#17566E" sub="ชิ้น" />
               <Chip label="ไม่ใช่ DO" n={nf(tally.nondo)} color="#3D2C66" sub="ชิ้น" />
               {/* กินเต็มแถวบนมือถือ เพราะข้างในมีทั้งวันที่ เวลา และนานแค่ไหนแล้ว */}
@@ -446,7 +446,13 @@ export default function WaitBoard() {
 
       {showDone && <DoneList onClose={() => setShowDone(false)} onChanged={reloadAll} />}
 
-      {pickSound && <SoundPicker kit={waitKit} title="เลือกเสียงเตือนรถรอลงงาน" onClose={() => setPickSound(false)} />}
+      {pickSound && <SoundPicker
+          kit={waitKit}
+          title="เลือกเสียงเตือนรถรอลงงาน"
+          stages={WAIT_STAGES}
+          lastLabel="ถึงเวลาต้องลงงาน"
+          onClose={() => setPickSound(false)}
+        />}
     </>
   )
 }
@@ -483,7 +489,7 @@ function HeadBtn({
  * และทำให้เห็นรถน้อยลงหนึ่งคันต่อจอโดยไม่ได้อะไรกลับมา
  *
  * ข้อมูลยังครบเหมือนเดิม แค่เรียงใหม่ให้กวาดตาจากซ้ายไปขวาได้รวดเดียว
- * เวลาที่ต้องเสร็จก่อนเป็นสีเหลือง เพราะเป็นตัวเลขที่คนเอาไปเทียบกับนาฬิกาบนผนัง
+ * เวลาที่ต้องลงงานเป็นสีเหลือง เพราะเป็นตัวเลขที่คนเอาไปเทียบกับนาฬิกาบนผนัง
  */
 function TruckRow({
   r,
@@ -534,7 +540,7 @@ function TruckRow({
           <Timer sec={sec} size={30} />
           <div className="leading-tight">
             <div className="text-[10px] font-bold" style={{ color: DIM }}>
-              ถึง · เสร็จก่อน
+              ถึง · ต้องลงงาน
             </div>
             <div className="font-mono text-[14px] font-extrabold">
               {clock(r.arrived_at)}

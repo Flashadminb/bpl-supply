@@ -18,8 +18,23 @@ export interface Profile {
   hub_code: string
   role: UserRole
   is_active: boolean
+  /**
+   * เจ้าของระบบตัวจริง · มีคนเดียว
+   *
+   * role = 'admin' ที่ธงนี้เป็น false คือ "ผู้ดูแลระบบ" ซึ่งทำได้ทุกอย่างเหมือนกัน
+   * ต่างกันแค่แตะบัญชีเจ้าของไม่ได้ และตั้งผู้ดูแลระบบคนใหม่ไม่ได้
+   */
+  is_owner?: boolean
   must_change_password: boolean
   dept_code: string | null
+  /**
+   * ตำแหน่งงาน · ว่าง = ยังไม่ได้ตั้ง
+   *
+   * คนละเรื่องกับ role ซึ่งเป็นสิทธิ์ในระบบ
+   * อันนี้คือชื่อที่องค์กรเรียก ไว้ล็อกกลุ่มตอนเรียกประชุม
+   * และไว้ให้คนอ่านรายชื่อรู้ว่าใครเป็นใครตอนคนเยอะ
+   */
+  position_code: string | null
   sub_dept: string | null
   can_assets: boolean
   /** เห็นงานกระสอบไหม · ตั้งรายคนได้จากหน้าผู้ใช้และสิทธิ์ */
@@ -165,6 +180,123 @@ export interface CartLine {
   is_returnable: boolean
   requires_approval: boolean
   qty: number
+}
+
+/**
+ * กลุ่มรายชื่อที่บันทึกไว้ใช้ซ้ำ
+ *
+ * แผนกกับรายคนเก็บแยกกันเหมือนตอนติ๊กมือ ไม่ได้แบนเป็นรายชื่อตายตัว
+ * เพราะกลุ่ม "ทีม OUT ทั้งกอง" ที่เก็บเป็นแผนก จะได้คนเข้าใหม่ไปด้วยเอง
+ * ถ้าเก็บเป็นรายชื่อ วันที่มีคนเข้าใหม่ กลุ่มจะตกเขาไปเงียบ ๆ
+ */
+export interface AudienceGroup {
+  id: string
+  name: string
+  dept_codes: string[]
+  user_ids: string[]
+  created_by: string | null
+  created_at: string
+  updated_at: string | null
+}
+
+/** หนึ่งคน กับสถานะว่าเครื่องของเขาพร้อมรับแจ้งเตือนหรือยัง */
+export interface PushCoverageRow {
+  user_id: string
+  full_name: string
+  employee_code: string
+  dept_code: string | null
+  role: UserRole
+  can_dispatch: boolean
+  can_guard: boolean
+  /** จำนวนเครื่องที่เปิดแจ้งเตือนไว้ · 0 = ประกาศไปก็ไม่ถึงเขา */
+  devices: number
+  last_device_at: string | null
+  last_push_at: string | null
+}
+
+/** หนึ่งเครื่องบนกระดาน Asset · สถานะคิดมาจากฐานข้อมูลแล้ว */
+export interface AssetBoardRow {
+  code: string
+  type_code: string
+  type_name: string
+  dept_code: string | null
+  is_enabled: boolean
+  /** free ว่าง · held ถืออยู่ · late เลยกำหนดคืน · off ปิดใช้งาน */
+  state: 'free' | 'held' | 'late' | 'off'
+  holder_id: string | null
+  holder_name: string | null
+  holder_code: string | null
+  holder_dept: string | null
+  out_at: string | null
+  due_at: string | null
+  ref_no: string | null
+  late_min: number | null
+  sub_dept: string | null
+  /** การโอนที่ปลายทางยังไม่กดเบิกและยังไม่ถูกยกเลิก · ว่าง = ไม่มีค้าง */
+  pending_transfer_id: number | null
+  pending_to_name: string | null
+  pending_since: string | null
+  /**
+   * แจ้งเสียที่ยังไม่ได้เคลียร์
+   *
+   * คนละแกนกับสถานะการถือ · เครื่องเสียอาจว่างอยู่หรือถูกถืออยู่ก็ได้
+   * จึงโชว์เป็นป้ายแยก ไม่ได้ยุบรวมเป็นสถานะเดียว
+   */
+  open_issues: number
+  issue_symptom: string | null
+  issue_at: string | null
+  issue_by: string | null
+}
+
+export interface AssetHistoryRowBoard {
+  ref_no: string
+  kind: 'out' | 'in'
+  at: string
+  who_name: string | null
+  who_code: string | null
+  due_at: string | null
+  note: string | null
+}
+
+/** ก้อนสถิติการเบิก-คืน · ฐานข้อมูลคิดมาให้หมดแล้ว */
+export interface AssetStats {
+  range: { from: string; to: string }
+  total: {
+    outs: number
+    returned: number
+    open: number
+    people: number
+    assets: number
+    late: number
+    on_time: number
+    avg_hold: number
+    max_hold: number
+    max_late: number
+  }
+  people: {
+    name: string
+    code: string
+    dept: string | null
+    pos: string | null
+    outs: number
+    assets: number
+    late: number
+    worst: number
+    avg_hold: number
+  }[]
+  depts: { dept: string | null; outs: number; people: number; late: number; avg_hold: number }[]
+  assets: { code: string; type: string; outs: number; late: number; avg_hold: number }[]
+  types: { type: string; outs: number; late: number }[]
+  by_hour: { h: number; outs: number; late: number }[]
+  by_day: { d: string; outs: number; late: number }[]
+  idle: { code: string; type: string; dept: string | null }[]
+}
+
+export interface Position {
+  code: string
+  name: string
+  sort_no: number
+  is_active: boolean
 }
 
 export interface Department {
@@ -315,7 +447,39 @@ export interface SystemHealth {
 }
 
 /** ตำแหน่งที่เลือกให้เห็นลิงก์ได้ — dispatch มาจากธง can_dispatch ไม่ใช่ role */
-export type LinkRoleKey = 'staff' | 'supervisor' | 'admin' | 'dispatch'
+/**
+ * คีย์ผู้ชมของลิงก์งาน
+ *
+ * 'admin' คือ role ในฐานข้อมูล ซึ่งตอนนี้มีสองคนใช้ร่วมกัน
+ * คือเจ้าของระบบกับผู้ดูแลระบบ · ติ๊กแล้วทั้งสองคนเห็น
+ *
+ * 'owner' ไม่ใช่ role · เป็นธง is_owner ของบัญชีเจ้าของตัวจริง
+ * ติ๊กแล้วเหลือเจ้าของคนเดียวที่เห็น แก้ และลบลิงก์นั้นได้
+ * ฐานข้อมูลบังคับให้ใน migration 139 ทั้งนโยบายอ่าน เขียน และ save_work_link
+ */
+export type LinkRoleKey = 'owner' | 'staff' | 'supervisor' | 'admin' | 'dispatch'
+
+/**
+ * ยอดเบิกรวมต่อคนในช่วงวันที่เลือก — มาจาก supply_person_history()
+ *
+ * open_units เป็นยอดค้างคืน "ตอนนี้" ไม่ผูกกับช่วงวัน
+ * เพราะของที่ค้างคือของที่ยังไม่กลับมา ไม่ว่าจะเบิกไปตั้งแต่เมื่อไหร่
+ */
+export interface SupplyPersonRow {
+  user_id: string
+  full_name: string
+  employee_code: string
+  dept_code: string | null
+  sub_dept: string | null
+  position_code: string | null
+  slips: number
+  units: number
+  kinds: number
+  pending_slips: number
+  rejected_slips: number
+  open_units: number
+  last_at: string
+}
 
 export interface WorkLink {
   id: number
@@ -759,6 +923,10 @@ export interface MeetingEvent {
   closed_by_name?: string | null
   audience_mode?: string
   day: string
+  /** คนที่ถูกเรียกเข้าประชุมกี่คน · โหมดพิมพ์เองไม่มีรายชื่อจึงเป็น 0 */
+  member_count?: number
+  /** การ์ดนี้ควรขึ้นให้คนที่เปิดอยู่เห็นไหม · ฐานข้อมูลคิดมาให้แล้ว */
+  for_me?: boolean
 }
 
 /* ------------------------------------------------- กระจายกระสอบไปสาขา */

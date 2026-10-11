@@ -6,6 +6,7 @@ import { StaffPage, TopBar } from '../../components/Shell'
 import { PushSetup } from '../../components/PushSetup'
 import { Spinner } from '../../components/ui'
 import { ROLE_TH } from '../../lib/roles'
+import { deptName } from '../../lib/deptNames'
 
 
 const MIN = 8
@@ -51,7 +52,7 @@ export default function Account() {
             <span className="badge-mute">{hubName}</span>
             {profile?.dept_code && (
               <span className="badge-mute">
-                {profile.dept_code}
+                {deptName(profile.dept_code)}
                 {profile.sub_dept ? ` · ${profile.sub_dept}` : ''}
               </span>
             )}

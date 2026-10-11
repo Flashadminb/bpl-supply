@@ -11,7 +11,7 @@ import {
 } from '../../lib/waitTrucks'
 import { exportToSheet } from '../../lib/api'
 import { PanelHead } from '../../components/charts'
-import { ErrorBox, Loading, Toggle } from '../../components/ui'
+import { ErrorBox, Loading, Toggle, Spinner } from '../../components/ui'
 
 /**
  * หลังบ้านรถรอลงงาน · เหลือแค่ที่ตั้งเกณฑ์เวลา
@@ -133,7 +133,7 @@ function KpiTable({
           <thead>
             <tr className="border-b text-left text-ink-500">
               <th className="py-2">ประเภทรถ</th>
-              <th className="py-2">รอลงงานได้ (นาที)</th>
+              <th className="py-2">ต้องลงงานภายใน (นาที)</th>
               <th className="py-2">ลงงานให้เสร็จใน (นาที)</th>
               <th className="py-2">ใช้งาน</th>
               <th className="py-2" />
@@ -193,8 +193,11 @@ function KpiTable({
           </tbody>
         </table>
       </div>
+      {canEdit && <AddKpi rows={rows} onSaved={onSaved} />}
+
       <p className="mt-3 text-xs text-ink-400">
-        ช่อง “ลงงานให้เสร็จใน” ยังไม่ถูกใช้ตัดสินอะไร เก็บไว้เพราะไฟล์ของหน้างานมีเกณฑ์นี้อยู่แล้ว
+        ช่อง “ต้องลงงานภายใน” คือตัวที่นาฬิกาบนกระดานนับถอยหลังถึง และตัวที่ตัดสินทัน–ไม่ทัน
+        ส่วนช่อง “ลงงานให้เสร็จใน” ยังไม่ถูกใช้ตัดสินอะไร รอให้หน้างานยืนยันก่อนว่าจะบวกต่อท้ายไหม
       </p>
     </>
   )
@@ -302,5 +305,125 @@ function SheetBackup() {
         </>
       )}
     </section>
+  )
+}
+
+/**
+ * เพิ่มประเภทรถเอง
+ *
+ * ของเดิมเจ็ดประเภทถูกใส่ไว้ตอนสร้างระบบ พอมีรถประเภทใหม่เข้าฮับ
+ * ไฟล์จะถูกตีกลับทั้งแถวด้วยข้อความ "ไม่มีเกณฑ์ของประเภท 18W"
+ * แล้วไม่มีใครเพิ่มได้นอกจากคนเขียนโค้ด ซึ่งไม่ควรเป็นแบบนั้น
+ *
+ * รหัสประเภทต้องตรงกับที่ระบบแกะได้จากชื่อเส้นทางในไฟล์
+ * ไม่ใช่ชื่อที่เราอยากเรียก · พิมพ์ผิดตัวเดียวคือไฟล์ยังถูกตีกลับเหมือนเดิม
+ */
+function AddKpi({ rows, onSaved }: { rows: WaitTruckKpi[]; onSaved: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [type, setType] = useState('')
+  const [wait, setWait] = useState(120)
+  const [unload, setUnload] = useState(60)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const code = type.trim().toUpperCase()
+  const dup = rows.some((r) => r.vehicle_type === code)
+  /* รูปแบบที่ตัวแกะชื่อเส้นทางคืนออกมาได้จริง · ตัวเลขหนึ่งถึงสองหลัก ตามด้วย W */
+  const shaped = /^[0-9]{1,2}W/.test(code)
+  const ok = code !== '' && !dup && shaped && wait >= 1 && unload >= 1
+
+  function add() {
+    setBusy(true)
+    setErr(null)
+    void saveWaitTruckKpi({
+      vehicle_type: code,
+      wait_minutes: wait,
+      unload_minutes: unload,
+      sort_no: Math.max(0, ...rows.map((r) => r.sort_no)) + 1,
+      is_active: true,
+    })
+      .then(() => {
+        setType('')
+        setOpen(false)
+        onSaved()
+      })
+      .catch((e) => setErr(readableError(e)))
+      .finally(() => setBusy(false))
+  }
+
+  if (!open) {
+    return (
+      <button type="button" className="btn-soft mt-3 text-sm" onClick={() => setOpen(true)}>
+        เพิ่มประเภทรถ
+      </button>
+    )
+  }
+
+  return (
+    <div className="mt-3 rounded-card border border-line p-3">
+      <p className="font-display text-base">เพิ่มประเภทรถ</p>
+      <p className="mb-2 text-sm text-ink-500">
+        พิมพ์ให้ตรงกับที่ขึ้นในชื่อเส้นทางของไฟล์ เช่น <b>18W</b> · <b>6W7</b> · <b>4WJ</b>
+        <br />
+        ระบบแกะประเภทจากชื่อเส้นทางเอง ถ้าพิมพ์ไม่ตรง ไฟล์จะยังถูกตีกลับเหมือนเดิม
+      </p>
+
+      {err && (
+        <div className="mb-2">
+          <ErrorBox message={err} />
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="block">
+          <span className="label">ประเภทรถ</span>
+          <input
+            className="input w-[120px] font-mono"
+            autoFocus
+            placeholder="18W"
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+          />
+        </label>
+        <label className="block">
+          <span className="label">ต้องลงงานภายใน (นาที)</span>
+          <input
+            className="input w-[150px]"
+            type="number"
+            min={1}
+            max={1440}
+            value={wait}
+            onChange={(e) => setWait(Number(e.target.value))}
+          />
+        </label>
+        <label className="block">
+          <span className="label">ลงงานให้เสร็จใน (นาที)</span>
+          <input
+            className="input w-[150px]"
+            type="number"
+            min={1}
+            max={1440}
+            value={unload}
+            onChange={(e) => setUnload(Number(e.target.value))}
+          />
+        </label>
+        <button type="button" className="btn-primary text-sm" disabled={busy || !ok} onClick={add}>
+          {busy ? <Spinner /> : null} เพิ่ม
+        </button>
+        <button type="button" className="btn-soft text-sm" onClick={() => setOpen(false)}>
+          ยกเลิก
+        </button>
+      </div>
+
+      {code !== '' && dup && (
+        <p className="mt-2 text-sm text-danger-txt">มีประเภท {code} อยู่แล้ว แก้ที่แถวข้างบนได้เลย</p>
+      )}
+      {code !== '' && !dup && !shaped && (
+        <p className="mt-2 text-sm text-warn-txt">
+          รูปแบบนี้ตัวแกะชื่อเส้นทางจะไม่คืนค่าออกมา · ต้องขึ้นต้นด้วยตัวเลขหนึ่งถึงสองหลัก
+          แล้วตามด้วย W
+        </p>
+      )}
+    </div>
   )
 }

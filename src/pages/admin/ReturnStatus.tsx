@@ -8,6 +8,7 @@ import { EvidenceImg, ThumbStrip } from '../../components/EvidenceThumbs'
 import { DateRangePicker } from '../../components/DateRangePicker'
 import { fmtDateTime } from '../../lib/format'
 import type { CardEvent, CardItem, ReturnCard } from '../../lib/types'
+import { deptSuffix } from '../../lib/deptNames'
 
 /**
  * สถานะเบิก-คืน — หนึ่งการกดส่งคือหนึ่งการ์ด
@@ -423,7 +424,7 @@ export default function ReturnStatus() {
                   <span className="font-display text-base">{c.who}</span>
                   <span className="block text-sm text-ink-500">
                     {c.employee_code}
-                    {c.dept_code ? ` · ${c.dept_code}` : ''}
+                    {deptSuffix(c.dept_code)}
                     {c.shift_start && c.shift_end
                       ? ` · กะ ${c.shift_start.slice(0, 5)}–${c.shift_end.slice(0, 5)}`
                       : ''}

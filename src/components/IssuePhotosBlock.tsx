@@ -2,6 +2,7 @@ import { useAuth } from '../lib/auth'
 import { stampLines } from '../lib/image'
 import { PhotoSteps, shotsToPhotos, type Shot } from './PhotoSteps'
 import { attachIssuePhotos } from '../lib/api'
+import { deptName } from '../lib/deptNames'
 
 export type IssueShots = Record<string, Shot[]>
 
@@ -36,7 +37,7 @@ export function IssuePhotosBlock({
   const stamp = stampLines(
     profile?.full_name ?? '',
     profile?.employee_code ?? '',
-    profile?.dept_code ?? profile?.hub_code ?? 'BPL',
+    deptName(profile?.dept_code, profile?.hub_code ?? 'BPL'),
     'แจ้งเสีย',
   )
 

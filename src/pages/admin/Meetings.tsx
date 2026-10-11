@@ -5,6 +5,7 @@ import { useAsync } from '../../lib/useAsync'
 import { meetingStats } from '../../lib/api'
 import { EmptyState, ErrorBox, Loading } from '../../components/ui'
 import { fmtDateTime } from '../../lib/format'
+import { deptName } from '../../lib/deptNames'
 
 /**
  * รายชื่อประชุม — หน้าตรวจสอบ
@@ -199,7 +200,7 @@ export default function Meetings() {
                       <td className="px-3 py-2">{s.full_name}</td>
                       <td className="px-3 py-2 font-mono text-xs">{s.employee_code}</td>
                       <td className="px-3 py-2 text-ink-500">
-                        {s.dept_code ?? '—'}
+                        {deptName(s.dept_code)}
                         {s.sub_dept ? ` · ${s.sub_dept}` : ''}
                       </td>
                       <td className="px-3 py-2">

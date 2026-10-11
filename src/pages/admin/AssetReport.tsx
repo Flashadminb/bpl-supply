@@ -24,6 +24,7 @@ import {
   type Datum,
 } from '../../components/charts'
 import { fmtDateTime, relativeAge } from '../../lib/format'
+import { deptName, deptSuffix } from '../../lib/deptNames'
 
 /**
  * รายงานฝั่งอุปกรณ์ Asset
@@ -81,7 +82,7 @@ export default function AssetReport() {
       (assets.data ?? []).map((a) => ({
         value: a.code,
         label: a.code,
-        hint: `${a.asset_types?.name ?? a.type_code}${a.dept_code ? ` · ${a.dept_code}` : ''}`,
+        hint: `${a.asset_types?.name ?? a.type_code}${deptSuffix(a.dept_code)}`,
       })),
     [assets.data],
   )
@@ -92,7 +93,7 @@ export default function AssetReport() {
         .map((p) => ({
           value: p.id,
           label: p.full_name,
-          hint: `${p.employee_code}${p.dept_code ? ` · ${p.dept_code}` : ''}`,
+          hint: `${p.employee_code}${deptSuffix(p.dept_code)}`,
         })),
     [people.data],
   )
@@ -162,7 +163,7 @@ export default function AssetReport() {
   const faultByDept: Datum[] = useMemo(() => {
     const m = new Map<string, number>()
     for (const f of faults) {
-      const d = assetBy.get(f.asset_code)?.dept_code ?? 'ส่วนกลาง'
+      const d = deptName(assetBy.get(f.asset_code)?.dept_code, 'ส่วนกลาง')
       m.set(d, (m.get(d) ?? 0) + 1)
     }
     return [...m.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value)

@@ -11,6 +11,7 @@ import { PhotoSteps, shotsToPhotos, type Shot } from './PhotoSteps'
 import { ErrorBox, Sheet, Spinner } from './ui'
 import { PartBoundary } from './ErrorBoundary'
 import type { AssetHolding } from '../lib/types'
+import { deptName } from '../lib/deptNames'
 
 /**
  * เครื่องที่คนอื่นถืออยู่ — เห็นได้เฉพาะแอดมิน ผู้ดูแลระบบ และผู้ตรวจสอบ
@@ -349,7 +350,7 @@ export function HubHoldings({ onCount }: { onCount?: (n: number) => void }) {
                   stamp={stampLines(
                     profile?.full_name ?? '',
                     profile?.employee_code ?? '',
-                    profile?.dept_code ?? 'BPL',
+                    deptName(profile?.dept_code, 'BPL'),
                     'คืนแทน',
                   )}
                   shots={shots}

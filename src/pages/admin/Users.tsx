@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { StaffImport } from '../../components/StaffImport'
 import { LoginQr } from '../../components/LoginQr'
+import { PositionManager } from '../../components/PositionManager'
 import { TimeSelect } from '../../components/TimeSelect'
 import { useAsync } from '../../lib/useAsync'
 import {
@@ -15,7 +16,18 @@ import {
 import { emailFromEmployeeCode, readableError } from '../../lib/supabase'
 import { ErrorBox, Loading, Modal, Spinner } from '../../components/ui'
 import type { Profile } from '../../lib/types'
-import { POSTS, ROLE_TH, postOf, postPatch, type PostKey } from '../../lib/roles'
+import { listPositions } from '../../lib/api'
+import {
+  OWNER_ONLY_POSTS,
+  POSTS,
+  ROLE_TH,
+  isOwner,
+  withoutOwner,
+  postOf,
+  postPatch,
+  type PostKey,
+} from '../../lib/roles'
+import { useAuth } from '../../lib/auth'
 
 const MIN_PASSWORD = 8
 
@@ -106,7 +118,18 @@ interface Draft {
 
 export default function Users() {
   const users = useAsync(() => listProfiles(), [])
+  const { profile: me } = useAuth()
+  /* ยกคนเป็นผู้ดูแลระบบได้เฉพาะเจ้าของระบบ · trigger ในฐานข้อมูลกันซ้ำอีกชั้น */
+  const iAmOwner = isOwner(me)
+  const postOptions = iAmOwner ? [...POSTS, ...OWNER_ONLY_POSTS] : POSTS
+
   const depts = useAsync(() => listDepartments(), [])
+  /**
+   * ตำแหน่งงาน · ว่างได้ และตอนเริ่มต้นว่างจริง ๆ
+   * เจ้าของระบบพิมพ์ชื่อเองจากปุ่มจัดการ เพราะชื่อตำแหน่งเป็นคำขององค์กร
+   */
+  const positions = useAsync(listPositions, [])
+  const [managePos, setManagePos] = useState(false)
   const subs = useAsync(() => listSubDepts(), [])
   const [error, setError] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
@@ -132,7 +155,7 @@ export default function Users() {
   // 49 คนขึ้นไปแล้ว ไล่หาด้วยตาไม่ไหว — ค้นได้ทั้งชื่อ รหัส แผนก และแผนกย่อย
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return (users.data ?? []).filter((u) => {
+    return withoutOwner(users.data ?? [], me).filter((u) => {
       if (onlyInactive && u.is_active) return false
       if (!q) return true
       return `${u.full_name} ${u.employee_code} ${u.dept_code ?? ''} ${u.sub_dept ?? ''}`
@@ -280,7 +303,7 @@ export default function Users() {
           เฉพาะที่ปิดใช้งาน
         </button>
         <span className="text-sm text-ink-500">
-          แสดง {shown.length} จาก {(users.data ?? []).length} คน
+          แสดง {shown.length} จาก {withoutOwner(users.data ?? [], me).length} คน
         </span>
       </div>
 
@@ -296,6 +319,16 @@ export default function Users() {
                 <th className="px-3 py-2 font-medium">ชื่อ</th>
                 <th className="w-[124px] px-3 py-2 font-medium">รหัสพนักงาน</th>
                 <th className="w-[210px] px-3 py-2 font-medium">แผนก</th>
+                <th className="w-[180px] px-3 py-2 font-medium">
+                  ตำแหน่ง
+                  <button
+                    type="button"
+                    className="ml-2 font-normal underline"
+                    onClick={() => setManagePos(true)}
+                  >
+                    จัดการ
+                  </button>
+                </th>
                 <th className="w-[250px] px-3 py-2 font-medium">กะ / แผนกย่อย</th>
                 <th className="w-[160px] px-3 py-2 font-medium">บทบาท</th>
                 <th className="w-[130px] px-3 py-2 font-medium">เบิก Asset</th>
@@ -345,6 +378,39 @@ export default function Users() {
                       เห็นแผนกอื่น: {u.extra_depts?.length ? u.extra_depts.length + ' แผนก' : 'ไม่มี'}
                     </button>
                   </td>
+                  {/*
+                    ตำแหน่งงาน · ว่างไว้ได้ และจะว่างอยู่นานจนกว่าจะไล่กรอกครบ 92 คน
+                    จึงต้องมีตัวเลือก "ยังไม่ได้ตั้ง" ให้เลือกกลับได้ ไม่ใช่ตั้งแล้วตั้งเลย
+                  */}
+                  <td className="px-3 py-2 align-top">
+                    <select
+                      className="input h-tap"
+                      value={u.position_code ?? ''}
+                      disabled={savingId === u.id}
+                      onChange={(e) =>
+                        void patch(u.id, { position_code: e.target.value || null })
+                      }
+                    >
+                      <option value="">— ยังไม่ได้ตั้ง —</option>
+                      {(positions.data ?? [])
+                        .filter((p) => p.is_active || p.code === u.position_code)
+                        .map((p) => (
+                          <option key={p.code} value={p.code}>
+                            {p.name}
+                            {p.is_active ? '' : ' (ปิดอยู่)'}
+                          </option>
+                        ))}
+                    </select>
+                    {(positions.data ?? []).length === 0 && (
+                      <button
+                        type="button"
+                        className="mt-1 block text-xs text-ink-500 underline"
+                        onClick={() => setManagePos(true)}
+                      >
+                        ยังไม่มีตำแหน่งในระบบ · กดเพิ่ม
+                      </button>
+                    )}
+                  </td>
                   {/* กะใช้คำนวณกำหนดคืนอุปกรณ์ แก้ตรงนี้ได้เลยไม่ต้องสร้างบัญชีใหม่ */}
                   <td className="px-3 py-2 align-top">
                     <div className="flex items-center gap-1">
@@ -381,16 +447,18 @@ export default function Users() {
                     <select
                       className="input h-tap"
                       value={postOf(u)}
-                      disabled={savingId === u.id}
+                      disabled={savingId === u.id || Boolean(u.is_owner)}
                       onChange={(e) => void patch(u.id, postPatch(e.target.value as PostKey))}
                     >
-                      {POSTS.map((r) => (
+                      {postOptions.map((r) => (
                         <option key={r.key} value={r.key}>
                           {r.label}
                         </option>
                       ))}
-                      {/* เจ้าของระบบเปลี่ยนบทบาทตัวเองในหน้านี้ไม่ได้ กันล็อกตัวเองออกจากระบบ */}
-                      {u.role === 'admin' && <option value="admin">{ROLE_TH.admin}</option>}
+                      {/* ไม่ใช่เจ้าของระบบแต่เป็นผู้ดูแลระบบอยู่แล้ว · ต้องมีค่าตัวเองให้เลือกค้างไว้ */}
+                      {!iAmOwner && u.role === 'admin' && (
+                        <option value="admin">{ROLE_TH.admin}</option>
+                      )}
                     </select>
                   </td>
                   {/* สลับได้ทีหลัง ไม่ใช่แค่ตอนสร้างบัญชี
@@ -458,7 +526,7 @@ export default function Users() {
               {!users.loading && shown.length === 0 && (
                 <tr>
                   <td colSpan={7} className="py-6 text-center text-ink-400">
-                    {(users.data ?? []).length === 0 ? 'ยังไม่มีผู้ใช้ในระบบ' : 'ไม่พบผู้ใช้ตามคำค้น'}
+                    {withoutOwner(users.data ?? [], me).length === 0 ? 'ยังไม่มีผู้ใช้ในระบบ' : 'ไม่พบผู้ใช้ตามคำค้น'}
                   </td>
                 </tr>
               )}
@@ -766,6 +834,15 @@ export default function Users() {
           </>
         )}
       </Modal>
+
+      {/* -------------------------------------------------- ตำแหน่งงาน */}
+      <PositionManager
+        open={managePos}
+        onClose={() => setManagePos(false)}
+        positions={positions.data ?? []}
+        onChanged={positions.reload}
+        canEdit
+      />
 
       {/* ------------------------------------------------ รีเซ็ตรหัสผ่าน */}
       <Modal

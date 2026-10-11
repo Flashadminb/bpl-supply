@@ -4,6 +4,7 @@ import { readableError } from '../lib/supabase'
 import { fmtDateTime } from '../lib/format'
 import { Sheet, Spinner } from './ui'
 import type { Asset, AssetHolding, TransferTargetRow } from '../lib/types'
+import { deptName, deptSuffix } from '../lib/deptNames'
 
 /**
  * ข้อมูลเครื่องเท่าที่หน้าต่างนี้ใช้จริง
@@ -178,7 +179,7 @@ export function AssetTransfer({
         <>
           <p className="text-sm text-ink-500">
             {asset.asset_types?.name ?? asset.type_code}
-            {asset.dept_code ? ` · เครื่องของแผนก ${asset.dept_code}` : ''}
+            {asset.dept_code ? ` · เครื่องของแผนก ${deptName(asset.dept_code)}` : ''}
           </p>
 
           {holding ? (
@@ -209,7 +210,7 @@ export function AssetTransfer({
                 <span className="font-display">{to.full_name}</span>
                 <span className="block text-sm text-ink-500">
                   {to.employee_code}
-                  {to.dept_code ? ` · ${to.dept_code}` : ''}
+                  {deptSuffix(to.dept_code)}
                   {to.sub_dept ? ` · ${to.sub_dept}` : ''}
                 </span>
               </span>
@@ -247,7 +248,7 @@ export function AssetTransfer({
                         <span className="font-display">{r.full_name}</span>
                         <span className="block text-sm text-ink-500">
                           {r.employee_code}
-                          {r.dept_code ? ` · ${r.dept_code}` : ''}
+                          {deptSuffix(r.dept_code)}
                           {r.sub_dept ? ` · ${r.sub_dept}` : ''}
                         </span>
                       </button>

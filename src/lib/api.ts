@@ -9,6 +9,7 @@ import type {
   OpenBorrowing,
   Profile,
   Requisition,
+  SupplyPersonRow,
   ReturnCond,
   SyncChannel,
   SyncState,
@@ -40,6 +41,12 @@ import type {
   OsScanHit,
   OsScanRow,
   TransferNotice,
+  AudienceGroup,
+  AssetBoardRow,
+  AssetStats,
+  AssetHistoryRowBoard,
+  Position,
+  PushCoverageRow,
   LinkAudience,
   LinkRoleKey,
   SystemHealth,
@@ -490,6 +497,181 @@ export async function deleteWorkLink(id: number) {
 
 /* -------------------------------------------------------------- แผนก */
 
+/**
+ * ธงสิทธิ์แต่ละตัวถูกใช้ตรงไหนในฐานข้อมูลจริง
+ *
+ * อ่านสดจาก catalog ทุกครั้ง ไม่ใช่รายการที่พิมพ์ไว้ในโค้ด
+ * เพิ่ม policy ใหม่วันนี้ พรุ่งนี้หน้าจอก็ขึ้นเองโดยไม่ต้องมาแก้อะไร
+ */
+export async function permissionUsage(): Promise<
+  Record<string, { functions: string[]; tables: string[] }>
+> {
+  const { data, error } = await supabase.rpc('permission_usage')
+  if (error) throw new Error(readableError(error))
+  return (data ?? {}) as Record<string, { functions: string[]; tables: string[] }>
+}
+
+/* ------------------------------------------------- กระดานเครื่อง Asset */
+
+/**
+ * หนึ่งแถวต่อหนึ่งเครื่อง พร้อมว่าตอนนี้อยู่กับใคร
+ *
+ * อ่านจาก assets.held_item_id ที่ชี้ไปแถวตอนเบิกที่ยังไม่ถูกคืน
+ * จึงเป็นงานขนาดคงที่ ไม่โตตามประวัติที่เพิ่มขึ้นทุกเดือน
+ */
+export async function assetBoard(): Promise<AssetBoardRow[]> {
+  const { data, error } = await supabase.rpc('asset_board')
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as AssetBoardRow[]
+}
+
+/** ประวัติของเครื่องเดียว · เรียกตอนกดเปิดดูเท่านั้น */
+export async function assetHistory(code: string, limit = 40): Promise<AssetHistoryRowBoard[]> {
+  const { data, error } = await supabase.rpc('asset_history', { p_code: code, p_limit: limit })
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as AssetHistoryRowBoard[]
+}
+
+/** สถิติการเบิก-คืนในช่วงวันที่เลือก · คิดที่ฐานข้อมูลแล้วส่งมาเป็นก้อนเดียว */
+export async function assetStats(from: string, to: string): Promise<AssetStats> {
+  const { data, error } = await supabase.rpc('asset_stats', { p_from: from, p_to: to })
+  if (error) throw new Error(readableError(error))
+  return data as AssetStats
+}
+
+/* ------------------------------------------------------------ ตำแหน่งงาน */
+
+/** ตำแหน่งทั้งหมด · เรียงตามลำดับที่ตั้งไว้ */
+export async function listPositions(): Promise<Position[]> {
+  return unwrap(
+    await supabase.from('positions').select('*').order('sort_no').order('name'),
+  ) as unknown as Position[]
+}
+
+/** รหัส→ชื่อ ของทุกตำแหน่งรวมที่ปิดใช้งานแล้ว · ใช้ทำพจนานุกรมชื่อ */
+export async function listPositionNames(): Promise<Pick<Position, 'code' | 'name'>[]> {
+  return unwrap(
+    await supabase.from('positions').select('code,name').order('sort_no'),
+  ) as unknown as Pick<Position, 'code' | 'name'>[]
+}
+
+/** เพิ่มตำแหน่ง · ชื่อซ้ำคืนรหัสเดิม ไม่สร้างซ้ำ */
+export async function createPosition(name: string): Promise<string> {
+  const { data, error } = await supabase.rpc('create_position', { p_name: name.trim() })
+  if (error) throw new Error(readableError(error))
+  return data as string
+}
+
+/** เปลี่ยนชื่อได้อิสระ เพราะทุกอย่างอ้างด้วยรหัสที่ซ่อนอยู่ ไม่ได้อ้างด้วยชื่อ */
+export async function renamePosition(code: string, name: string) {
+  const { error } = await supabase.from('positions').update({ name: name.trim() }).eq('code', code)
+  if (error) throw new Error(readableError(error))
+}
+
+/**
+ * ปิดใช้งานแทนการลบ
+ *
+ * ลบไม่ได้ถ้ามีคนถืออยู่ เพราะ foreign key กันไว้ ซึ่งถูกแล้ว
+ * ตำแหน่งที่เลิกใช้แต่ยังมีคนผูกอยู่ ต้องอ่านชื่อออกได้ตลอดไป
+ */
+export async function setPositionActive(code: string, on: boolean) {
+  const { error } = await supabase.from('positions').update({ is_active: on }).eq('code', code)
+  if (error) throw new Error(readableError(error))
+}
+
+/* -------------------------------------------------- กลุ่มรายชื่อที่บันทึกไว้ */
+
+export async function listAudienceGroups(): Promise<AudienceGroup[]> {
+  return unwrap(
+    await supabase.from('audience_groups').select('*').order('name'),
+  ) as unknown as AudienceGroup[]
+}
+
+/**
+ * บันทึกกลุ่ม · ไม่ส่ง id มาแล้วชื่อซ้ำ = ทับกลุ่มเดิม
+ *
+ * ตัดสินใจเรื่องชื่อซ้ำที่ฝั่งฐานข้อมูล ไม่ใช่ที่นี่
+ * เพราะสองคนกดบันทึกชื่อเดียวกันพร้อมกันได้ และ unique index เป็นคนตัดสินอยู่แล้ว
+ */
+export async function saveAudienceGroup(g: {
+  name: string
+  deptCodes: string[]
+  userIds: string[]
+  id?: string | null
+}): Promise<string> {
+  const { data, error } = await supabase.rpc('audience_group_save', {
+    p_name: g.name,
+    p_depts: g.deptCodes,
+    p_users: g.userIds,
+    p_id: g.id ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as string
+}
+
+/** ลบกลุ่ม · RLS ยอมให้เฉพาะเจ้าของระบบหรือคนที่สร้างกลุ่มนั้นเอง */
+export async function deleteAudienceGroup(id: string) {
+  const { error } = await supabase.from('audience_groups').delete().eq('id', id)
+  if (error) throw new Error(readableError(error))
+}
+
+/**
+ * รหัส→ชื่อ ของทุกแผนก รวมแผนกที่ปิดใช้งานแล้ว
+ *
+ * แยกจาก listDepartments เพราะอันนั้นกรองเฉพาะแผนกที่ยังใช้อยู่ ซึ่งถูกสำหรับดรอปดาวน์
+ * แต่พจนานุกรมสำหรับทำป้ายต้องรู้จักทุกรหัสที่เคยมี ไม่งั้นคนที่สังกัดแผนกที่เพิ่งปิด
+ * จะเห็นรหัสดิบแทนชื่อแผนกของตัวเอง
+ */
+/**
+ * ใครเปิดแจ้งเตือนไว้แล้วบ้าง · ไว้ไล่ตามคนที่ยังไม่เปิด
+ *
+ * บอกได้แค่ว่าเครื่องพร้อมรับหรือยัง ไม่ได้บอกว่าเขาเห็นแล้วหรือยัง
+ * เพราะเมื่อส่งออกจากเซิร์ฟเวอร์ไปแล้ว ระบบไม่มีทางรู้ต่อ
+ */
+/**
+ * เครื่องนี้ลงทะเบียนไว้กับบัญชีเราหรือเปล่า
+ *
+ * เบราว์เซอร์จำ subscription ไว้ต่อเครื่อง ไม่ได้จำต่อคน
+ * เครื่องที่คนอื่นเคยล็อกอินแล้วกดเปิดไว้ จะยังมี subscription ค้างอยู่
+ * ถ้าดูแค่ว่า "เครื่องนี้มี subscription ไหม" จะตอบว่ามี แล้วขึ้นว่าเปิดแล้ว
+ * ทั้งที่แถวฝั่งเซิร์ฟเวอร์เป็นชื่อคนก่อน · เจ้าตัวจะไม่ได้รับอะไรเลยสักอย่าง
+ *
+ * ต้องกรอง user_id ด้วย ไม่ใช่กรองแค่ endpoint
+ * เพราะ RLS เปิดให้เจ้าของระบบอ่านได้ทุกแถว ถ้ากรองแค่ endpoint
+ * เจ้าของระบบจะได้คำตอบว่า "ของเรา" กับเครื่องของคนอื่นทุกเครื่อง
+ */
+export async function isMyPushEndpoint(userId: string, endpoint: string): Promise<boolean> {
+  const { count, error } = await supabase
+    .from('push_subscriptions')
+    .select('endpoint', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('endpoint', endpoint)
+  if (error) throw new Error(readableError(error))
+  return (count ?? 0) > 0
+}
+
+/** เครื่องของตัวเองที่เปิดแจ้งเตือนไว้มีกี่เครื่อง · 0 = ประกาศอะไรไปก็ไม่ถึง */
+export async function countMyPushDevices(userId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('push_subscriptions')
+    .select('endpoint', { count: 'exact', head: true })
+    .eq('user_id', userId)
+  if (error) throw new Error(readableError(error))
+  return count ?? 0
+}
+
+export async function listPushCoverage(): Promise<PushCoverageRow[]> {
+  const { data, error } = await supabase.rpc('push_coverage')
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as PushCoverageRow[]
+}
+
+export async function listDeptNames(): Promise<Pick<Department, 'code' | 'name'>[]> {
+  return unwrap(
+    await supabase.from('departments').select('code,name').order('sort_no'),
+  ) as unknown as Pick<Department, 'code' | 'name'>[]
+}
+
 export async function listDepartments(): Promise<Department[]> {
   return unwrap(
     await supabase.from('departments').select('*').eq('is_active', true).order('sort_no'),
@@ -591,6 +773,7 @@ export async function updateProfile(
       | 'is_active'
       | 'hub_code'
       | 'dept_code'
+      | 'position_code'
       | 'sub_dept'
       | 'can_assets'
       | 'can_sack'
@@ -1747,9 +1930,9 @@ export async function listRequisitionHistory(
   fromISO: string,
   toISO: string,
   limit = 400,
+  requesterId?: string,
 ): Promise<Requisition[]> {
-  return unwrap(
-    await supabase
+  let q = supabase
       .from('requisitions')
       .select(
         'id,ref_no,status,created_at,requester_id,acted_by,' +
@@ -1760,8 +1943,23 @@ export async function listRequisitionHistory(
       .gte('created_at', fromISO)
       .lte('created_at', toISO)
       .order('created_at', { ascending: false })
-      .limit(limit),
-  ) as unknown as Requisition[]
+      .limit(limit)
+  /* เจาะคนเดียว · ใช้ตอนกดชื่อในแท็บรายคน จะได้ไม่ต้องกรองก้อน 400 ใบในเครื่อง */
+  if (requesterId) q = q.eq('requester_id', requesterId)
+  return unwrap(await q) as unknown as Requisition[]
+}
+
+/** ยอดเบิกรวมต่อคนในช่วงวันที่เลือก · รวมที่ฐานข้อมูล ไม่ติดเพดานจำนวนใบ */
+export async function supplyPersonHistory(
+  fromISO: string,
+  toISO: string,
+): Promise<SupplyPersonRow[]> {
+  const { data, error } = await supabase.rpc('supply_person_history', {
+    p_from: fromISO,
+    p_to: toISO,
+  })
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as SupplyPersonRow[]
 }
 
 /** ลบรายการเช็คอินถาวร — รูปใน Drive และแถวที่ส่งขึ้นชีตไปแล้วยังอยู่ */
@@ -2642,6 +2840,45 @@ export async function addAssetGrant(args: { code: string; userId: string; note?:
   })
   if (error) throw new Error(readableError(error))
   return data as { asset_code: string; full_name: string }
+}
+
+/**
+ * เปิดสิทธิ์หลายเครื่องให้หลายคนในครั้งเดียว
+ *
+ * ยิงเป็นคู่ไขว้ทั้งหมดในคำสั่งเดียว ไม่ใช่วนลูปเรียกทีละคู่จากเครื่องลูกข่าย
+ * เพราะยี่สิบเครื่องกับห้าคนคือร้อยรอบ ซึ่งช้าและพังกลางทางได้
+ * คู่ที่เปิดไว้แล้วถือเป็นการทับของเดิม ไม่ใช่ error — กดซ้ำได้เสมอ
+ */
+export async function addAssetGrants(args: {
+  codes: string[]
+  userIds: string[]
+  note?: string | null
+}) {
+  const { data, error } = await supabase.rpc('asset_grant_add_many', {
+    p_codes: args.codes,
+    p_users: args.userIds,
+    p_note: args.note ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+  return data as {
+    assets: number
+    people: number
+    pairs: number
+    added: number
+    updated: number
+    skipped_codes: number
+    skipped_users: number
+  }
+}
+
+/** เอาสิทธิ์ออกทีละหลายคู่ · คู่ที่ไม่มีอยู่แล้วข้ามไปเฉย ๆ */
+export async function removeAssetGrants(codes: string[], userIds: string[]) {
+  const { data, error } = await supabase.rpc('asset_grant_remove_many', {
+    p_codes: codes,
+    p_users: userIds,
+  })
+  if (error) throw new Error(readableError(error))
+  return (data as { removed: number }).removed
 }
 
 export async function removeAssetGrant(code: string, userId: string) {

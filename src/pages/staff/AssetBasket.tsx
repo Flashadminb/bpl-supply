@@ -27,6 +27,7 @@ import { canProxy } from '../../lib/roles'
 import { LOST, isLost, symptomsFor } from '../../lib/symptoms'
 import type { ProxyTarget } from '../../lib/api'
 import type { AssetIssueInput, AssetPhotoStep } from '../../lib/types'
+import { deptName } from '../../lib/deptNames'
 
 /**
  * เบิกอุปกรณ์แบบตะกร้า — เลือกข้ามประเภทได้ในรอบเดียว
@@ -463,7 +464,7 @@ export default function AssetBasket() {
                         stamp={stampLines(
                           forUser?.full_name ?? profile?.full_name ?? '',
                           forUser?.employee_code ?? profile?.employee_code ?? '',
-                          profile?.dept_code ?? 'BPL',
+                          deptName(profile?.dept_code, 'BPL'),
                           `เบิก ${t?.name ?? code}`,
                         )}
                         shots={shots}

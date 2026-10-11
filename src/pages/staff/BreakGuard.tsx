@@ -11,6 +11,7 @@ import { StaffPage, TopBar } from '../../components/Shell'
 import { BreakBanBar } from '../../components/BreakBanBar'
 import { ErrorBox, Sheet, Spinner, EmptyState } from '../../components/ui'
 import { fmtDateTime } from '../../lib/format'
+import { deptName } from '../../lib/deptNames'
 import {
   breakGateOut,
   breakProblem,
@@ -258,7 +259,7 @@ export default function BreakGuard() {
   const stamp = stampLines(
     profile?.full_name ?? '',
     profile?.employee_code ?? '',
-    profile?.dept_code ?? profile?.hub_code ?? 'BPL',
+    deptName(profile?.dept_code, profile?.hub_code ?? 'BPL'),
     'รับกลับเบรค OS',
   )
 

@@ -42,7 +42,11 @@ export function MeetingWindowCard({ win }: { win: MeetingWindow }) {
         {fmtDateTime(win.meet_at)}
         {win.place ? ` · ${win.place}` : ''}
       </p>
-      {win.audience && <p className="text-xs text-ink-400">ผู้เข้าร่วม: {win.audience}</p>}
+      {/*
+        ไม่โชว์รายชื่อผู้เข้าร่วมซ้ำตรงนี้
+        การ์ดประกาศที่อยู่ใต้ใบนี้บอกจำนวนไว้แล้ว · ใบนี้มีหน้าที่เดียวคือเช็คชื่อ
+        ของเดิมโชว์เป็นข้อความยาวไล่ชื่อแผนก ซึ่งกินสองบรรทัดและไม่ได้ช่วยให้ใครกดปุ่มถูกขึ้น
+      */}
     </>
   )
 

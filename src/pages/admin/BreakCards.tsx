@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import QRCode from 'qrcode'
 import { useAsync } from '../../lib/useAsync'
+import { useAuth } from '../../lib/auth'
+import { withoutOwner } from '../../lib/roles'
 import { listProfiles, updateProfile } from '../../lib/api'
 import { PeoplePicker } from '../../components/PeoplePicker'
 import { BreakBanBar } from '../../components/BreakBanBar'
@@ -141,6 +143,19 @@ type Crd = { code: string; group_code: string; active: boolean; busy: boolean; u
 type Run = (fn: () => Promise<unknown>, ok: string) => void
 
 export default function BreakCards() {
+  const { can, profile: me } = useAuth()
+  /**
+   * สามชั้นของหน้านี้ · ตรงกับด่านในฐานข้อมูลตัวต่อตัว (migration 138)
+   *
+   *   บัตรและสิทธิ์ + พิมพ์     ทุกคนที่เข้าหน้านี้ได้        break_card_guard()
+   *   แจ้งเตือน                 ผู้ดูแลระบบ · แอดมิน          break_alert_guard()
+   *   ห้ามเบรคและนาที           ผู้ดูแลระบบเท่านั้น            break_admin_guard()
+   *
+   * ห้ามเบรคแคบสุดเพราะเป็นเครื่องมือคุมหัวหน้างานโดยตรง และนาทีของเหตุผล
+   * คือตัวเลขที่ตัดสินว่าใบไหนเกินเวลาในสถิติทุกใบ ขยับทีเดียวประวัติเปลี่ยนทั้งกอง
+   */
+  const mayAlert = can('admin', 'supervisor')
+  const mayBan = can('admin')
   const [tab, setTab] = useState<Tab>('cards')
   const settings = useAsync(() => getBreakSettings(), [])
   const people = useAsync(() => listProfiles(), [])
@@ -157,16 +172,29 @@ export default function BreakCards() {
   const [err, setErr] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [sel, setSel] = useState<string[]>([])
-  const [printGroup, setPrintGroup] = useState('')
+  /**
+   * แผนกที่จะพิมพ์ · ว่าง = ทุกแผนก
+   *
+   * ของเดิมเป็นดรอปดาวน์เลือกได้ทีละแผนก ซึ่งแปลว่าถ้าจะพิมพ์สามแผนก
+   * ต้องสั่งพิมพ์สามรอบ และได้กระดาษที่พิมพ์ไม่เต็มแผ่นสามใบ
+   * บัตรหนึ่งแผ่นวางได้เก้าใบ แผนกที่มีสี่ใบจึงเสียกระดาษไปครึ่งแผ่นทุกครั้ง
+   */
+  const [printGroups, setPrintGroups] = useState<string[]>([])
 
   const s = settings.data
   const groups = s?.groups ?? []
   const cards = s?.cards ?? []
-  const staff = useMemo(() => (people.data ?? []).filter((p) => p.is_active), [people.data])
+  const staff = useMemo(
+    () => withoutOwner((people.data ?? []).filter((p) => p.is_active), me),
+    [people.data, me],
+  )
 
   const printable = useMemo(
-    () => cards.filter((c) => c.active && (!printGroup || c.group_code === printGroup)),
-    [cards, printGroup],
+    () =>
+      cards.filter(
+        (c) => c.active && (printGroups.length === 0 || printGroups.includes(c.group_code)),
+      ),
+    [cards, printGroups],
   )
 
   const run: Run = (fn, ok) => {
@@ -195,8 +223,10 @@ export default function BreakCards() {
 
   const TABS: [Tab, string][] = [
     ['cards', `บัตรและสิทธิ์ (${cards.length})`],
-    ['ban', ban.data ? 'ห้ามเบรค 🔴' : 'ห้ามเบรคและนาที'],
-    ['alerts', 'แจ้งเตือน'],
+    ...(mayBan
+      ? ([['ban', ban.data ? 'ห้ามเบรค 🔴' : 'ห้ามเบรคและนาที']] as [Tab, string][])
+      : []),
+    ...(mayAlert ? ([['alerts', 'แจ้งเตือน']] as [Tab, string][]) : []),
     ['print', `พิมพ์ (${printable.length})`],
   ]
 
@@ -324,7 +354,7 @@ export default function BreakCards() {
       )}
 
       {/* ═══════════════ ห้ามเบรคและนาที ═══════════════ */}
-      {tab === 'ban' && s && (
+      {tab === 'ban' && s && mayBan && (
         <div className="space-y-5">
           <section className="rounded-card border border-line p-4">
             <h2 className="mb-1 font-display text-md">ห้ามเบรค</h2>
@@ -407,7 +437,7 @@ export default function BreakCards() {
       )}
 
       {/* ═══════════════ แจ้งเตือน ═══════════════ */}
-      {tab === 'alerts' && s && (
+      {tab === 'alerts' && s && mayAlert && (
         <div className="space-y-5">
           <section className="rounded-card border border-line p-4">
             <h2 className="font-display text-md">ใครได้แจ้งเตือนเรื่องเบรค</h2>
@@ -430,6 +460,7 @@ export default function BreakCards() {
             />
           </section>
 
+          {mayBan && (
           <section className="rounded-card border border-line p-4">
             <h2 className="font-display text-md">ใครกดห้ามเบรคได้</h2>
             <p className="mb-3 text-xs text-ink-500">
@@ -449,35 +480,71 @@ export default function BreakCards() {
               }
             />
           </section>
+          )}
         </div>
       )}
 
       {/* ═══════════════ พิมพ์ ═══════════════ */}
       {tab === 'print' && (
         <div>
-          <div className="no-print mb-4 flex flex-wrap items-center gap-2">
-            <select
-              className="input w-auto"
-              value={printGroup}
-              aria-label="เลือกแผนกที่จะพิมพ์"
-              onChange={(e) => setPrintGroup(e.target.value)}
-            >
-              <option value="">ทุกแผนก</option>
-              {groups.map((g) => (
-                <option key={g.code} value={g.code}>
-                  {g.code}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              className="btn-primary px-4 py-2 text-sm"
-              disabled={printable.length === 0}
-              onClick={() => window.print()}
-            >
-              พิมพ์ {printable.length} ใบ
-            </button>
-            <p className="w-full text-xs text-ink-500">
+          <div className="no-print mb-4">
+            <p className="label">เลือกแผนกที่จะพิมพ์</p>
+            {/*
+              ชิปกดเลือกได้หลายแผนก ไม่ใช่ดรอปดาวน์ทีละอัน
+              บอกจำนวนใบไว้บนชิปด้วย จะได้คำนวณกระดาษก่อนกดพิมพ์
+              ไม่ใช่กดแล้วค่อยรู้ว่าได้สองแผ่นครึ่ง
+            */}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className={`chip ${printGroups.length === 0 ? 'chip-on' : ''}`}
+                onClick={() => setPrintGroups([])}
+              >
+                ทุกแผนก
+                <span className="ml-1 text-xs opacity-70">
+                  {cards.filter((c) => c.active).length}
+                </span>
+              </button>
+              {groups.map((g) => {
+                const n = cards.filter((c) => c.active && c.group_code === g.code).length
+                const on = printGroups.includes(g.code)
+                return (
+                  <button
+                    key={g.code}
+                    type="button"
+                    className={`chip ${on ? 'chip-on' : ''} ${n === 0 ? 'opacity-50' : ''}`}
+                    onClick={() =>
+                      setPrintGroups((p) =>
+                        p.includes(g.code) ? p.filter((x) => x !== g.code) : [...p, g.code],
+                      )
+                    }
+                  >
+                    {g.name || g.code}
+                    <span className="ml-1 text-xs opacity-70">{n}</span>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="btn-primary px-4 py-2 text-sm"
+                disabled={printable.length === 0}
+                onClick={() => window.print()}
+              >
+                พิมพ์ {printable.length} ใบ
+              </button>
+              <span className="text-sm text-ink-500">
+                {printGroups.length === 0
+                  ? 'กำลังจะพิมพ์ทุกแผนก'
+                  : `เลือกไว้ ${printGroups.length} แผนก`}
+                {' · '}
+                {Math.ceil(printable.length / 9)} แผ่น
+              </span>
+            </div>
+
+            <p className="mt-2 text-xs text-ink-500">
               กระดาษ A4 ได้แผ่นละ 3×3 = 9 ใบ · ขนาดเท่าบัตรพนักงาน 54×86 มม.
               <br />
               เปิด &ldquo;กราฟิกพื้นหลัง&rdquo; ในหน้าต่างพิมพ์ด้วย ไม่งั้นได้กระดาษขาวกับตัวหนังสือ

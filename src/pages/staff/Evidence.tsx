@@ -16,6 +16,7 @@ import type { CreateReqResult } from '../../lib/types'
 import { StaffPage, TopBar } from '../../components/Shell'
 import { SyncBar, type SyncMap } from '../../components/SyncBar'
 import { Spinner } from '../../components/ui'
+import { deptSuffix } from '../../lib/deptNames'
 
 /** รูป 1 ใบพร้อมสถานะการอัปของตัวเอง กดส่งซ้ำเฉพาะใบที่พลาดได้ */
 interface Shot {
@@ -287,7 +288,7 @@ export default function Evidence() {
             </p>
             <p className="mt-[2px] text-xs text-warn-txt">
               <span className="font-mono">{cart.forUser.employee_code}</span>
-              {cart.forUser.dept_code ? ` · ${cart.forUser.dept_code}` : ''} ·
+              {deptSuffix(cart.forUser.dept_code)} ·
               ของจะไปค้างชื่อเขา ไม่ใช่ชื่อคุณ
             </p>
             <button

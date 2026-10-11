@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Profile } from '../lib/types'
+import { deptName, positionSuffix } from '../lib/deptNames'
 
 /**
  * เลือกคนจากรายชื่อพนักงาน — พิมพ์ค้นหาได้
@@ -99,7 +100,10 @@ export function PeoplePicker({
               >
                 <span className="min-w-0 flex-1">{p.full_name}</span>
                 <span className="font-mono text-xs text-ink-400">{p.employee_code}</span>
-                <span className="text-xs text-ink-400">{p.dept_code ?? '—'}</span>
+                <span className="text-xs text-ink-400">
+                  {deptName(p.dept_code)}
+                  {positionSuffix(p.position_code)}
+                </span>
               </button>
             ))
           )}

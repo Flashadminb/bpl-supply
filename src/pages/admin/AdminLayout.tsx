@@ -9,6 +9,7 @@ import { Icon, type IconName } from '../../components/icons'
 import { MANAGER_ROLES } from '../../lib/roles'
 
 // adminOnly = เห็นเฉพาะ "ผู้ดูแลระบบ" (role admin) ส่วน "แอดมิน" (supervisor) เห็นที่เหลือทั้งหมด
+// audit     = "ผู้ตรวจสอบ" เห็นเมนูนี้ · เป็นรายการขาว อ่านคู่กับ visible() ท้ายไฟล์
 //
 // ลำดับเมนูเรียงตามความถี่ที่เปิดจริง ไม่ได้เรียงตามโครงสร้างระบบ
 //   หน้าแรกกับหลักฐาน เปิดแทบทุกวัน
@@ -24,7 +25,7 @@ interface Link {
   adminOnly?: boolean
   /** เลขค้างท้ายเมนู ดึงจากตัวนับคนละตัวกัน */
   badge?: 'approvals' | 'exports' | 'meetings'
-  /** ผู้ตรวจสอบเห็นเมนูนี้ด้วย — นอกนั้นเห็นเฉพาะแอดมินขึ้นไป */
+  /** ผู้ตรวจสอบเห็นเมนูนี้ · ธงนี้ไม่เกี่ยวกับ adminOnly ทั้งสองอันคุมคนละเส้น */
   audit?: boolean
 }
 
@@ -57,7 +58,7 @@ const GROUPS: Group[] = [
     links: [
       { to: '/admin/meetings', label: 'รายชื่อประชุม', icon: 'clipboard', audit: true, badge: 'meetings' },
       { to: '/admin/meeting-evidence', label: 'หลักฐานการเข้าประชุม', icon: 'photo', audit: true },
-      { to: '/admin/report/meeting', label: 'แดชบอร์ดประชุม', icon: 'pie', audit: true },
+      { to: '/admin/report/meeting', label: 'แดชบอร์ดประชุม', icon: 'pie' },
       { to: '/admin/supply-history', label: 'ประวัติเบิกสิ้นเปลือง', icon: 'history', audit: true },
       // สองอันนี้อยู่ในงาน STANDARD ด้วย ตั้งใจให้ซ้ำ
       // เพราะเปิดบ่อยพอ ๆ กับประวัติเบิก แต่ไปจมอยู่ในกลุ่มที่พับเก็บไว้
@@ -83,13 +84,17 @@ const GROUPS: Group[] = [
   },
   {
     title: 'Asset',
-    links: [{ to: '/admin/assets', label: 'ทะเบียนเครื่อง', icon: 'device', audit: true }],
+    links: [
+      /* กระดานมาก่อนทะเบียน เพราะคำถามที่ถามทุกวันคือ "เครื่องอยู่กับใคร" ไม่ใช่ "มีเครื่องอะไรบ้าง" */
+      { to: '/admin/asset-board', label: 'กระดานเครื่อง', icon: 'device-clock' },
+      { to: '/admin/assets', label: 'ทะเบียนเครื่อง', icon: 'device' },
+    ],
   },
   {
     title: 'รายงาน',
     links: [
       { to: '/admin/report/supply', label: 'รายงานสิ้นเปลือง', icon: 'chart' },
-      { to: '/admin/report/asset', label: 'รายงาน Asset', icon: 'pie' },
+      { to: '/admin/report/asset', label: 'รายงาน Asset', icon: 'pie', audit: true },
     ],
   },
   {
@@ -109,7 +114,7 @@ const GROUPS: Group[] = [
         title: 'บัตรเบรค',
         links: [
           { to: '/admin/break/history', label: 'ประวัติเบรค', icon: 'history', audit: true },
-          { to: '/admin/break/cards', label: 'จัดการบัตรเบรค', icon: 'qr', adminOnly: true },
+          { to: '/admin/break/cards', label: 'จัดการบัตรเบรค', icon: 'qr', audit: true },
         ],
       },
     ],
@@ -117,8 +122,8 @@ const GROUPS: Group[] = [
   {
     title: 'การปล่อยรถ',
     links: [
-      { to: '/trucks', label: 'กระดานปล่อยรถ', icon: 'clipboard', adminOnly: true },
-      { to: '/admin/trucks', label: 'ส่งชีต สาขา แจ้งเตือน', icon: 'sheet', adminOnly: true },
+      { to: '/trucks', label: 'กระดานปล่อยรถ', icon: 'clipboard', audit: true },
+      { to: '/admin/trucks', label: 'ส่งชีต สาขา แจ้งเตือน', icon: 'sheet', adminOnly: true, audit: true },
       { to: '/wait', label: 'กระดานรถรอลงงาน', icon: 'clock', audit: true },
       { to: '/wait/stats', label: 'แดชบอร์ดรถรอลงงาน', icon: 'pie', audit: true },
       { to: '/admin/wait', label: 'ตั้งเกณฑ์เวลารถรอลงงาน', icon: 'clock', adminOnly: true },
@@ -131,10 +136,10 @@ const GROUPS: Group[] = [
       { to: '/admin/qr', label: 'พิมพ์ QR', icon: 'qr' },
       { to: '/admin/export', label: 'ส่งออก Google Sheet', icon: 'sheet', badge: 'exports' },
       { to: '/admin/users', label: 'ผู้ใช้และสิทธิ์', icon: 'users' },
-      { to: '/admin/access', label: 'สิทธิ์เข้าถึง', icon: 'lock', adminOnly: true },
+      { to: '/admin/access', label: 'สิทธิ์เข้าถึง', icon: 'lock' },
       { to: '/admin/links', label: 'ลิงก์งาน', icon: 'sheet' },
       { to: '/admin/notices', label: 'ประกาศและแจ้งเตือน', icon: 'clipboard', audit: true },
-      { to: '/admin/health', label: 'สถานะระบบ', icon: 'chart', audit: true },
+      { to: '/admin/health', label: 'สถานะระบบ', icon: 'chart' },
     ],
   },
 ]
@@ -142,6 +147,8 @@ const GROUPS: Group[] = [
 export default function AdminLayout() {
   const { profile, signOut, can } = useAuth()
   const isManager = can(...MANAGER_ROLES)
+  /** ผู้ตรวจสอบล้วน · ไม่ใช่แอดมินที่ติดธงนี้มาด้วย */
+  const isAudit = !isManager && Boolean(profile?.can_dispatch)
   const [menu, setMenu] = useState(false)
   // null = ยังไม่เคยกด ให้ตัดสินจากหน้าที่ยืนอยู่ · true/false = คนกดเลือกเอง
   const [openStd, setOpenStd] = useState<boolean | null>(null)
@@ -151,11 +158,18 @@ export default function AdminLayout() {
   const meetings = usePendingMeetings()
   const badgeOf = { approvals: pending.count, exports: exports.count, meetings: meetings.count }
 
+  /**
+   * ผู้ตรวจสอบตัดสินด้วยธง audit ตัวเดียว ไม่ต้องผ่านด่าน adminOnly ก่อน
+   *
+   * เดิมกรองสองชั้นต่อกัน ซึ่งทำให้เขียน "เห็นเฉพาะเจ้าของระบบกับผู้ตรวจสอบ
+   * แต่แอดมินไม่เห็น" ไม่ได้เลย — ซึ่งเป็นรูปที่เจ้าของระบบสั่งมาจริงสองหน้า
+   * คือกระดานปล่อยรถกับรายชื่อสาขา
+   *
+   *   adminOnly  คุมเส้นแบ่งระหว่างผู้ดูแลระบบกับแอดมิน
+   *   audit      คุมว่าผู้ตรวจสอบเห็นไหม เป็นรายการขาวล้วน ไม่ติดอะไรโดยบังเอิญ
+   */
   const visible = (links: Link[]) =>
-    links
-      .filter((l) => !l.adminOnly || can('admin'))
-      // ผู้ตรวจสอบเข้าได้แค่สองหน้า ที่เหลือไม่ต้องขึ้นให้เห็นด้วยซ้ำ
-      .filter((l) => isManager || l.audit)
+    links.filter((l) => (isAudit ? Boolean(l.audit) : !l.adminOnly || can('admin')))
 
   const item = (l: Link) => (
     <NavLink

@@ -12,17 +12,19 @@ import { readableError } from '../../lib/supabase'
 import { EmptyState, ErrorBox, Loading, Spinner } from '../../components/ui'
 import { fmtDateTime } from '../../lib/format'
 import { MeetingPlanner } from '../../components/MeetingPlanner'
+import { PushReach } from '../../components/PushReach'
 import { AudiencePicker, EMPTY_AUDIENCE, type Audience } from '../../components/AudiencePicker'
 import { describeWindow } from '../../lib/meetingWindow'
 import type { NoticeLevel } from '../../lib/types'
+import { MANAGER_ROLES } from '../../lib/roles'
 
 /**
  * ประกาศและแจ้งเตือน
  *
  * สามแท็บที่เปิดสิทธิ์ไม่เท่ากัน ตามที่เจ้าของระบบกำหนด
  *   ป้ายประกาศ — เจ้าของ แอดมิน ผู้ตรวจสอบ
- *   นัดประชุม  — เจ้าของ ผู้ตรวจสอบ (แอดมินไม่เห็น)
- *   กฎเวลา     — เจ้าของ ผู้ตรวจสอบ (แอดมินไม่เห็น)
+ *   นัดประชุม  — เจ้าของ แอดมิน ผู้ตรวจสอบ
+ *   กฎเวลา     — เจ้าของ แอดมิน ผู้ตรวจสอบ
  *
  * กฎเวลาเป็นค่าตั้งต้นกลาง ใช้ตอนสร้างนัดใหม่เท่านั้น
  * นัดที่ประกาศไปแล้วถือกติกาของตัวเองติดตัวไว้ ไม่เปลี่ยนตามทีหลัง
@@ -35,12 +37,24 @@ const LEVELS: { key: NoticeLevel; label: string; hint: string }[] = [
   { key: 'info', label: 'ทั่วไป', hint: 'ขาว · แจ้งให้ทราบ' },
 ]
 
-type Tab = 'board' | 'meet' | 'rules'
+type Tab = 'board' | 'meet' | 'rules' | 'reach'
 
 export default function Notices() {
   const { can, profile } = useAuth()
-  // แอดมินเห็นเฉพาะป้ายประกาศ ส่วนนัดประชุมกับกฎเวลาเป็นของเจ้าของกับผู้ตรวจสอบ
-  const mayMeet = can('admin') || Boolean(profile?.can_dispatch)
+  /**
+   * ใครใช้แท็บนัดประชุมกับกฎเวลาได้
+   *
+   * เดิมซ่อนจากแอดมิน ทั้งที่ฐานข้อมูลเปิดให้มาตลอด
+   * create_meeting_event กับ meeting_set_audience ตรวจด้วย my_can_audit()
+   * ซึ่งรวม supervisor อยู่แล้ว · หน้าจอจึงเข้มกว่าของจริงโดยไม่มีเหตุผล
+   * หน้าจอที่ห้ามในสิ่งที่ระบบอนุญาต คือหน้าจอที่ทำให้คนคิดว่าตัวเองทำไม่ได้
+   */
+  const mayMeet = can(...MANAGER_ROLES) || Boolean(profile?.can_dispatch)
+  /**
+   * กฎเวลาเช็คชื่อกับหน้าใครรับแจ้งเตือนได้ เป็นงานตั้งค่าของแอดมินขึ้นไป
+   * เจ้าของระบบสั่งว่าในกลุ่มทั่วไป ผู้ตรวจสอบเห็นแค่ป้ายประกาศกับนัดประชุม
+   */
+  const isSetup = can(...MANAGER_ROLES)
 
   const [tab, setTab] = useState<Tab>('board')
   const feed = useAsync(() => listAnnouncements(true), [])
@@ -143,7 +157,9 @@ export default function Notices() {
   const tabs: { key: Tab; label: string; show: boolean }[] = [
     { key: 'board', label: 'ป้ายประกาศ', show: true },
     { key: 'meet', label: 'นัดประชุม', show: mayMeet },
-    { key: 'rules', label: 'กฎเวลาเช็คชื่อ', show: mayMeet },
+    { key: 'rules', label: 'กฎเวลาเช็คชื่อ', show: mayMeet && isSetup },
+    /* ใครรับแจ้งเตือนได้ · ใครเข้าหน้านี้ได้ก็ควรเห็น เพราะทุกแท็บที่เหลือคือการส่งของออกไป */
+    { key: 'reach', label: 'ใครรับแจ้งเตือนได้', show: isSetup },
   ]
 
   return (
@@ -354,6 +370,9 @@ export default function Notices() {
         </>
       )}
 
+      {/* ============================================ ใครรับแจ้งเตือนได้ */}
+      {tab === 'reach' && isSetup && <PushReach />}
+
       {/* ====================================================== นัดประชุม */}
       {tab === 'meet' && mayMeet && (
         <section className="panel p-4">
@@ -362,7 +381,7 @@ export default function Notices() {
       )}
 
       {/* ==================================================== กฎเวลาเช็คชื่อ */}
-      {tab === 'rules' && mayMeet && (
+      {tab === 'rules' && mayMeet && isSetup && (
         <section className="panel p-4">
           <h2 className="mb-1 font-display text-md">กฎเวลาเช็คชื่อ</h2>
           <p className="mb-3 text-sm text-ink-500">

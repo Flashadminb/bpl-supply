@@ -4,6 +4,7 @@ import { useAsync } from '../../lib/useAsync'
 import { listAllItemsForAdmin, listAssetTypes, listAssets, listCategories } from '../../lib/api'
 import { ErrorBox, Loading } from '../../components/ui'
 import type { Item } from '../../lib/types'
+import { deptName } from '../../lib/deptNames'
 
 type Size = 'sm' | 'md' | 'lg'
 
@@ -100,7 +101,7 @@ export default function QrLabels() {
           payload: a.code,
           title: a.asset_types?.name ?? a.type_code,
           code: a.code,
-          tag: a.dept_code && a.dept_code !== 'ALL' ? a.dept_code : 'ส่วนกลาง',
+          tag: a.dept_code && a.dept_code !== 'ALL' ? deptName(a.dept_code) : 'ส่วนกลาง',
           note: a.is_enabled ? 'เปิดให้เบิก' : 'ปิดซ่อม',
         }))
     }

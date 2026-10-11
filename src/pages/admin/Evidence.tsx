@@ -15,6 +15,7 @@ import { EmptyState, ErrorBox, Loading, Modal, Spinner } from '../../components/
 import { EvidenceImg, ThumbStrip } from '../../components/EvidenceThumbs'
 import { DateRangePicker } from '../../components/DateRangePicker'
 import { fmtDateTime } from '../../lib/format'
+import { deptSuffix } from '../../lib/deptNames'
 
 /**
  * 2 แท็บแยกกันชัดเจน
@@ -346,7 +347,7 @@ export default function Evidence() {
                     <p className="truncate">{r.who}</p>
                     <p className="text-xs text-ink-400">
                       <span className="font-mono">{r.employee_code}</span>
-                      {r.dept_code ? ` · ${r.dept_code}` : ''}
+                      {deptSuffix(r.dept_code)}
                       {r.sub_dept ? ` · ${r.sub_dept}` : ''}
                     </p>
                     {/* กะช่วยตอบว่าของออกไปรอบไหน ตอนไล่ของค้างข้ามกะจะได้ไม่ต้องเปิดอีกหน้า */}

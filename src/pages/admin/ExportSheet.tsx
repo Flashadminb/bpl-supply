@@ -16,6 +16,7 @@ import { PickBox } from '../../components/BulkDeleteBar'
 import { skipExportLines } from '../../lib/api'
 import { DateRangePicker } from '../../components/DateRangePicker'
 import { fmtDateTime } from '../../lib/format'
+import { deptName } from '../../lib/deptNames'
 
 function isoDay(offsetDays: number): string {
   const d = new Date(Date.now() + offsetDays * 864e5)
@@ -586,7 +587,7 @@ export default function ExportSheet() {
                           <span className="ml-1 font-mono text-xs text-ink-400">
                             {r.employee_code}
                           </span>
-                          {r.dept_code && <p className="text-xs text-ink-400">{r.dept_code}</p>}
+                          {r.dept_code && <p className="text-xs text-ink-400">{deptName(r.dept_code)}</p>}
                         </td>
                         <td className="p-2">
                           <span className="font-mono">{r.asset_code}</span>

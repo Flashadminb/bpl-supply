@@ -15,7 +15,7 @@ import { readableError } from '../../lib/supabase'
 import { useAlarmPref, useTruckAlarm } from '../trucks/alarm'
 import { AlarmGate, EdgeGlow, worstStage } from '../trucks/alert-ui'
 import { playWaitAlarm, WAIT_ALARM_PREF, waitKit } from './waitAlarm'
-import { SoundPicker } from '../../components/SoundPicker'
+import { SoundPicker, WAIT_STAGES } from '../../components/SoundPicker'
 import { DAY_TH, dmy, p2 } from '../trucks/parts'
 import {
   BG,
@@ -191,7 +191,13 @@ export default function WaitTv() {
         <StatsPage live={live} counts={counts.data} done={done.data ?? []} />
       )}
 
-      {pickSound && <SoundPicker kit={waitKit} title="เลือกเสียงเตือนรถรอลงงาน" onClose={() => setPickSound(false)} />}
+      {pickSound && <SoundPicker
+          kit={waitKit}
+          title="เลือกเสียงเตือนรถรอลงงาน"
+          stages={WAIT_STAGES}
+          lastLabel="ถึงเวลาต้องลงงาน"
+          onClose={() => setPickSound(false)}
+        />}
 
       {askRow && (
         <ActSheet
@@ -273,8 +279,8 @@ function TvHead({
       </div>
 
       <div className="flex gap-3">
-        <TvChip label="เกินเวลา" n={over} color="#E5484D" />
-        <TvChip label="เฝ้าระวัง" n={warn} color="#E8B931" />
+        <TvChip label="ต้องลงงาน" n={over} color="#E5484D" />
+        <TvChip label="ใกล้ถึงเวลา" n={warn} color="#E8B931" />
         {/* ชื่อเดิมคือ "กำลังรอทั้งหมด" ซึ่งอ่านแล้วนึกว่านับเฉพาะคันที่ยังไม่ถึงเวลา
             จริง ๆ มันคือรถที่รอลงงานทั้งกระดาน · กดลงงานเสร็จแล้วเลขนี้จะลด */}
         <TvChip label="รถรอลงงานทั้งหมด" n={live.length} color="#2F7FE0" />
@@ -662,7 +668,7 @@ function TvCard({
           <Cell label="ทะเบียนรถ" value={r.plate ?? '—'} size={px(38)} mono />
           <Cell label="รถถึงจริง" value={clock(r.arrived_at)} size={px(32)} mono />
           <Cell
-            label="ต้องเสร็จก่อน"
+            label="ต้องลงงานก่อน"
             value={clock(r.due_at)}
             size={px(32)}
             mono
@@ -817,7 +823,7 @@ function StatsPage({
         <BigStat label="ยังรอลงงาน" value={live.length} sub="บนกระดานตอนนี้" icon="⏳" color="#2563EB" />
         <BigStat label="ลงงานแล้ว" value={doneN} sub="นับตั้งแต่ตีสาม" icon="✅" color="#0E9F6E" />
         <BigStat
-          label="ลงแล้วแต่เกินเวลา"
+          label="ลงงานช้ากว่าเวลา"
           value={late}
           sub={doneN > 0 ? `${pct(late, doneN)} ของที่ลงแล้ว` : 'ยังไม่มีคันที่ลงเสร็จ'}
           icon="⚠"
@@ -857,7 +863,7 @@ function StatsPage({
                   </span>
 
                   <div className="min-w-0 flex-1">
-                    {/* แท่งยาวตามจำนวนคัน · ส่วนแดงคือคันที่เกินเวลาไปแล้ว */}
+                    {/* แท่งยาวตามจำนวนคัน · ส่วนแดงคือคันที่ถึงเวลาต้องลงงานแล้ว */}
                     <div className="h-7 overflow-hidden rounded-lg" style={{ background: INSET }}>
                       <div
                         className="flex h-full"
@@ -874,7 +880,7 @@ function StatsPage({
                         DO {v.known > 0 ? nf(v.doJob) : '—'}
                       </span>
                       {v.over > 0 && <span style={{ color: '#FF8A8A' }}>เกิน {v.over}</span>}
-                      {v.warn > 0 && <span style={{ color: '#E8B931' }}>เฝ้าระวัง {v.warn}</span>}
+                      {v.warn > 0 && <span style={{ color: '#E8B931' }}>ใกล้ถึงเวลา {v.warn}</span>}
                     </div>
                   </div>
                 </div>
@@ -1019,7 +1025,7 @@ function DoneTable({ rows }: { rows: WaitTruckRow[] }) {
   if (rows.length === 0) {
     return <p style={{ color: DIM }}>ยังไม่มีคันที่กดลงงานเสร็จ</p>
   }
-  const head = ['ประเภท', 'ทะเบียน', 'สถานีก่อนหน้า', 'ถึง', 'ต้องเสร็จ', 'เสร็จจริง', 'ผล', 'ชิ้น', 'DO', 'ไม่ DO', 'คนกด']
+  const head = ['ประเภท', 'ทะเบียน', 'สถานีก่อนหน้า', 'ถึง', 'ต้องลงงาน', 'เสร็จจริง', 'ผล', 'ชิ้น', 'DO', 'ไม่ DO', 'คนกด']
   return (
     <div className="max-h-[30vh] overflow-auto">
       <table className="w-full text-[14px]">

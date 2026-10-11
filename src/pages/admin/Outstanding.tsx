@@ -5,6 +5,8 @@ import { adminCloseBorrow, listOpenBorrowings } from '../../lib/api'
 import { EmptyState, ErrorBox, Loading, Modal, Spinner } from '../../components/ui'
 import { fmtDateTime, relativeAge } from '../../lib/format'
 import type { OpenBorrowing } from '../../lib/types'
+import { useAuth } from '../../lib/auth'
+import { canProxy } from '../../lib/roles'
 
 /** เกินกี่ชั่วโมงถึงถือว่าค้างนานผิดปกติ — 1 กะทำงานคือ 9 ชั่วโมง */
 const SHIFT_HOURS = 9
@@ -15,6 +17,15 @@ const hoursSince = (iso: string) => (Date.now() - Date.parse(iso)) / 3_600_000
 type SortKey = 'oldest' | 'newest' | 'person' | 'item'
 
 export default function Outstanding() {
+  const { profile } = useAuth()
+  /**
+   * ใครกดคืนแทนได้ — ตรงกับ my_can_proxy() ในฐานข้อมูลเป๊ะ ๆ
+   *
+   * ผู้ตรวจสอบเห็นหน้านี้เพื่อตามของค้าง แต่ไม่ได้คืนแทน
+   * เว้นแต่เจ้าของระบบเปิดธงเบิก-คืนแทนให้เป็นรายคน ซึ่งฐานข้อมูลก็ยอมตามนั้น
+   * ไม่ซ่อนปุ่มในสิ่งที่ระบบอนุญาต และไม่โชว์ปุ่มที่กดแล้วเจอ error
+   */
+  const mayClose = canProxy(profile)
   const feed = useAsync(() => listOpenBorrowings(false), [])
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortKey>('oldest')
@@ -150,7 +161,7 @@ export default function Outstanding() {
                   <th className="p-2 font-medium">ค้างมาแล้ว</th>
                   <th className="p-2 font-medium">เบิก / คืนแล้ว / ค้าง</th>
                   <th className="p-2 font-medium">เลขที่</th>
-                  <th className="p-2 font-medium" />
+                  {mayClose && <th className="p-2 font-medium" />}
                 </tr>
               </thead>
               <tbody>
@@ -190,20 +201,22 @@ export default function Outstanding() {
                         <b className={isLate ? 'text-danger-txt' : 'text-warn-txt'}>{b.qty_open}</b> {b.unit}
                       </td>
                       <td className="p-2 font-mono text-xs">{b.ref_no}</td>
-                      <td className="p-2 text-right">
-                        <button
-                          type="button"
-                          className="btn-soft h-tap px-3 text-sm"
-                          onClick={() => {
-                            setErr(null)
-                            setCloseNote('')
-                            setAlso([])
-                            setClosing(b)
-                          }}
-                        >
-                          คืนแทน
-                        </button>
-                      </td>
+                      {mayClose && (
+                        <td className="p-2 text-right">
+                          <button
+                            type="button"
+                            className="btn-soft h-tap px-3 text-sm"
+                            onClick={() => {
+                              setErr(null)
+                              setCloseNote('')
+                              setAlso([])
+                              setClosing(b)
+                            }}
+                          >
+                            คืนแทน
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   )
                 })}

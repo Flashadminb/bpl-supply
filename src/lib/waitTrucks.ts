@@ -63,9 +63,9 @@ export interface WaitTruckKpi {
 }
 
 export const STATE_TH: Record<WaitState, string> = {
-  waiting: 'กำลังรอ',
-  warn: 'เฝ้าระวัง',
-  overdue: 'เกินเวลา',
+  waiting: 'ยังมีเวลา',
+  warn: 'ใกล้ถึงเวลาลงงาน',
+  overdue: 'ถึงเวลาต้องลงงาน',
   done_ontime: 'ลงงานเสร็จ ทันเวลา',
   done_late: 'ลงงานเสร็จ ไม่ทัน',
   cancelled: 'ยกเลิก',

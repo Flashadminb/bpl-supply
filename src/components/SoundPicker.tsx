@@ -22,14 +22,27 @@ const STAGES: { k: Stage; label: string }[] = [
   { k: 'late', label: 'เลยเวลาแล้ว' },
 ]
 
+/** ชื่อขั้นของกระดานรถรอลงงาน · เส้นที่นับถึงคือเวลาที่ต้องเริ่มลงของ */
+export const WAIT_STAGES: { k: Stage; label: string }[] = [
+  { k: 'm20', label: 'อีก 20 นาทีต้องลงงาน' },
+  { k: 'm10', label: 'อีก 10 นาทีต้องลงงาน' },
+  { k: 'late', label: 'ถึงเวลาต้องลงงาน' },
+]
+
 export function SoundPicker({
   kit,
   title,
   onClose,
+  stages = STAGES,
+  lastLabel = 'เลยเวลา',
 }: {
   kit: AlarmKit
   title: string
   onClose: () => void
+  /** ชื่อขั้นที่จะโชว์ · ส่ง WAIT_STAGES มาถ้าเป็นกระดานรถรอลงงาน */
+  stages?: { k: Stage; label: string }[]
+  /** คำเรียกขั้นสุดท้ายในบรรทัดตัวอย่างประโยค */
+  lastLabel?: string
 }) {
   const [pick, setPick] = useState(kit.getKey)
   /**
@@ -94,14 +107,14 @@ export function SoundPicker({
                   <span className="block text-sm text-ink-500">{p.hint}</span>
                   {p.say && (
                     <span className="mt-1 block text-[12px] text-ink-400">
-                      เลยเวลาพูดว่า “{p.say('late')}”
+                      {lastLabel}พูดว่า “{p.say('late')}”
                     </span>
                   )}
                 </span>
               </button>
 
               <div className="mt-2 flex flex-wrap gap-2 pl-8">
-                {STAGES.map((s) => (
+                {stages.map((s) => (
                   <button
                     key={s.k}
                     onClick={() => kit.previewStage(p.key, s.k)}

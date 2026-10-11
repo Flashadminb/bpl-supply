@@ -23,6 +23,7 @@ import { stampLines } from '../lib/image'
 import { fmtDateTime, relativeAge } from '../lib/format'
 import { LOST, isLost, symptomsFor } from '../lib/symptoms'
 import type { AssetIssueInput, AssetPhotoStep } from '../lib/types'
+import { deptName } from '../lib/deptNames'
 
 /**
  * คืนอุปกรณ์ — ตะกร้าแบบเดียวกับหน้าเบิก
@@ -378,7 +379,7 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
                       stamp={stampLines(
                         profile?.full_name ?? '',
                         profile?.employee_code ?? '',
-                        profile?.dept_code ?? 'BPL',
+                        deptName(profile?.dept_code, 'BPL'),
                         `คืน ${nameOf(code)}`,
                       )}
                       shots={shots}

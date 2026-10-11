@@ -23,10 +23,12 @@ import { AssetTransfer, type TransferCandidate } from '../../components/AssetTra
 import { createAsset, deleteAsset, updateAsset } from '../../lib/api'
 import { readableError } from '../../lib/supabase'
 import { DepartmentManager } from '../../components/DepartmentManager'
+import { AssetGrants } from '../../components/AssetGrants'
 import { MANAGER_ROLES, canProxy } from '../../lib/roles'
 import { IssueFixSheet } from '../../components/IssueFixSheet'
 import { PhotoSteps, shotsToPhotos, type Shot } from '../../components/PhotoSteps'
 import { stampLines } from '../../lib/image'
+import { deptName as deptLabel } from '../../lib/deptNames'
 
 type Filter = 'all' | 'free' | 'out' | 'issue' | 'off'
 
@@ -576,7 +578,7 @@ export default function AssetRegistry() {
               <>
                 <p className="text-sm text-ink-500">
                   {kill.asset_types?.name ?? kill.type_code}
-                  {kill.dept_code ? ` · แผนก ${kill.dept_code}` : ' · ส่วนกลาง'}
+                  {kill.dept_code ? ` · แผนก ${deptLabel(kill.dept_code)}` : ' · ส่วนกลาง'}
                 </p>
                 <p className="mt-3 rounded-card bg-danger-bg px-3 py-2 text-sm text-danger-txt">
                   ลบเครื่องนี้จะลบ <b>ประวัติการเบิก-คืนทั้งหมด</b> ของมันไปด้วย
@@ -713,6 +715,8 @@ function AssetSheet({
   const [symptom, setSymptom] = useState('')
   const [note, setNote] = useState<string | null>(null)
   const { profile } = useAuth()
+  /* สิทธิ์เฉพาะคนตั้งได้เฉพาะเจ้าของระบบ · ฐานข้อมูลกันซ้ำอีกชั้นใน asset_grant_add */
+  const isOwner = profile?.role === 'admin'
   // รูปอาการที่เจอ · ฐานข้อมูลบังคับอย่างน้อยหนึ่งใบ ปุ่มจึงต้องรอให้รูปขึ้นเสร็จก่อน
   const [shots, setShots] = useState<Shot[]>([])
   const reportReady =
@@ -980,7 +984,7 @@ function AssetSheet({
             stamp={stampLines(
               profile?.full_name ?? '',
               profile?.employee_code ?? '',
-              profile?.dept_code ?? profile?.hub_code ?? 'BPL',
+              deptLabel(profile?.dept_code, profile?.hub_code ?? 'BPL'),
               'แจ้งเสีย',
             )}
             shots={shots}
@@ -1016,6 +1020,9 @@ function AssetSheet({
           </div>
           {note && <p className="mt-2 text-sm text-ink-700">{note}</p>}
         </div>
+
+        {/* สิทธิ์เฉพาะคน · วางไว้ก่อนอาการค้าง เพราะเป็นเรื่องว่าใครแตะเครื่องนี้ได้ */}
+        <AssetGrants code={asset.code} canEdit={isOwner} />
 
         <div>
           <div className="mb-2 flex items-center justify-between gap-2">

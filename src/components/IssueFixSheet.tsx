@@ -4,6 +4,7 @@ import { stampLines } from '../lib/image'
 import { PhotoSteps, shotsToPhotos, type Shot } from './PhotoSteps'
 import { Sheet, Spinner } from './ui'
 import type { IssuePhotoIn } from '../lib/api'
+import { deptName } from '../lib/deptNames'
 
 /**
  * กล่องเคลียร์ใบแจ้งชำรุด — ต้องมีอย่างน้อยหนึ่งอย่าง รูปหรือข้อความ
@@ -48,7 +49,7 @@ export function IssueFixSheet({
   const stamp = stampLines(
     profile?.full_name ?? '',
     profile?.employee_code ?? '',
-    profile?.dept_code ?? profile?.hub_code ?? 'BPL',
+    deptName(profile?.dept_code, profile?.hub_code ?? 'BPL'),
     'ซ่อมเสร็จ',
   )
 

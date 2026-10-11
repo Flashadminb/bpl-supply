@@ -29,6 +29,7 @@ import type { ProxyTarget } from '../../lib/api'
 import { ProxyPicker } from '../../components/ProxyPicker'
 import { canProxy } from '../../lib/roles'
 import { TransferNotices } from '../../components/TransferNotices'
+import { deptName as deptLabel } from '../../lib/deptNames'
 
 /* ------------------------------------------------------------ เลือกประเภท */
 
@@ -449,7 +450,7 @@ export default function AssetPick() {
               stamp={stampLines(
                 profile?.full_name ?? '',
                 profile?.employee_code ?? '',
-                profile?.dept_code ?? 'BPL',
+                deptLabel(profile?.dept_code, 'BPL'),
                 `เบิก ${type?.name ?? ''}`,
               )}
               shots={shots}
@@ -467,7 +468,7 @@ export default function AssetPick() {
                 <p className="font-display text-warn-txt">เบิกแทน {forUser.full_name}</p>
                 <p className="text-sm text-warn-txt">
                   <span className="font-mono">{forUser.employee_code}</span>
-                  {forUser.dept_code ? ` · ${forUser.dept_code}` : ''} — ของจะไปค้างชื่อเขา
+                  {forUser.dept_code ? ` · ${deptLabel(forUser.dept_code)}` : ''} — ของจะไปค้างชื่อเขา
                   และเขาเป็นคนต้องเอามาคืน
                 </p>
               </div>

@@ -9,6 +9,7 @@ import { ErrorBox, Spinner } from '../../components/ui'
 import { PhotoSteps, shotsToPhotos, type Shot } from '../../components/PhotoSteps'
 import { stampLines } from '../../lib/image'
 import { fmtDateTime } from '../../lib/format'
+import { deptName, deptSuffix } from '../../lib/deptNames'
 
 /**
  * ส่งบาร์โค้ดจาก BY
@@ -77,7 +78,7 @@ export default function BySend() {
             <p className="font-display text-xl">✓ ส่งบาร์โค้ดแล้ว</p>
             <p className="mt-1 text-sm">
               {profile?.full_name} · {profile?.employee_code}
-              {profile?.dept_code ? ` · ${profile.dept_code}` : ''}
+              {deptSuffix(profile?.dept_code)}
             </p>
             <p className="font-mono text-xs">
               {fmtDateTime(new Date().toISOString())} · {done.ref}
@@ -124,7 +125,7 @@ export default function BySend() {
             stamp={stampLines(
               profile?.full_name ?? '',
               profile?.employee_code ?? '',
-              profile?.dept_code ?? 'BPL',
+              deptName(profile?.dept_code, 'BPL'),
               'บาร์โค้ด BY',
             )}
             shots={shots}

@@ -12,7 +12,7 @@
 //       { action: 'reset',  user_id, password }
 // =====================================================================
 
-const VERSION = 'admin-parity-v8'
+const VERSION = 'owner-guard-v9'
 const MIN_PASSWORD = 8
 
 const cors = {
@@ -104,8 +104,8 @@ async function authAdmin<T>(path: string, init: RequestInit): Promise<T> {
   return data as T
 }
 
-/** ตรวจว่าผู้เรียกเป็นเจ้าของระบบ (role admin) ที่ยังใช้งานอยู่ */
-async function requireOwner(req: Request): Promise<string> {
+/** ตรวจว่าผู้เรียกมีสิทธิ์จัดการบัญชี และบอกมาด้วยว่าเป็นเจ้าของระบบตัวจริงไหม */
+async function requireOwner(req: Request): Promise<{ id: string; role: string; owner: boolean }> {
   const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
   if (!jwt) throw new Error('ต้องเข้าสู่ระบบก่อน')
 
@@ -116,28 +116,45 @@ async function requireOwner(req: Request): Promise<string> {
   const user = (await res.json()) as { id?: string }
   if (!user.id) throw new Error('ไม่พบผู้ใช้')
 
-  const rows = await db<{ role: string; is_active: boolean }[]>(
-    `profiles?id=eq.${user.id}&select=role,is_active`,
+  const rows = await db<{ role: string; is_active: boolean; is_owner: boolean }[]>(
+    `profiles?id=eq.${user.id}&select=role,is_active,is_owner`,
   )
   const me = rows[0]
   if (!me || !me.is_active || (me.role !== 'admin' && me.role !== 'supervisor')) {
     throw new Error('เฉพาะเจ้าของระบบและแอดมินเท่านั้นที่เพิ่มบัญชีหรือรีเซ็ตรหัสผ่านได้')
   }
-  return { id: user.id, role: me.role }
+  return { id: user.id, role: me.role, owner: me.is_owner === true }
 }
 
 /**
- * แอดมินแตะบัญชีเจ้าของระบบไม่ได้
+ * ใครแตะบัญชีใครได้
  *
- * เจ้าของเปิดสิทธิ์ให้แอดมินทำงานแทนได้ทุกอย่าง แต่ "ทุกอย่าง" ต้องไม่รวม
- * การรีเซ็ตรหัสผ่านของเจ้าของเอง ไม่งั้นแอดมินคนเดียวยึดระบบได้ในสองคลิก
+ * เจ้าของเปิดสิทธิ์ให้คนอื่นทำงานแทนได้ทุกอย่าง แต่ "ทุกอย่าง" ต้องไม่รวม
+ * การรีเซ็ตรหัสผ่านของเจ้าของเอง ไม่งั้นคนคนเดียวยึดระบบได้ในสองคลิก
  * คือตั้งรหัสใหม่ให้บัญชีเจ้าของ แล้วล็อกอินเป็นเจ้าของเลย
+ *
+ * ต้องดูที่ธง is_owner ไม่ใช่ที่ role เพราะ "ผู้ดูแลระบบ" ใช้ role = admin
+ * ตัวเดียวกับเจ้าของ (ตั้งใจ จะได้ไม่ต้องไล่แก้ policy เป็นสิบจุดให้รู้จักบทบาทใหม่)
+ * ถ้ายังเช็ค role อยู่ ผู้ดูแลระบบจะผ่านด่านนี้ไปรีเซ็ตรหัสเจ้าของได้
+ *
+ * trigger guard_owner_row ในฐานข้อมูลกันไม่ถึงตรงนี้ เพราะรหัสผ่านอยู่ใน auth.users
+ * และฟังก์ชันนี้ยิงด้วยคีย์ service role ซึ่งข้าม RLS ทั้งก้อน
  */
-async function guardTarget(caller: { role: string }, userId: string) {
+async function guardTarget(caller: { role: string; owner: boolean }, userId: string) {
+  /* เจ้าของระบบแตะได้ทุกบัญชี รวมของตัวเอง */
+  if (caller.owner) return
+
+  const t = await db<{ role: string; is_owner: boolean }[]>(
+    `profiles?id=eq.${userId}&select=role,is_owner`,
+  )
+  if (t[0]?.is_owner === true) {
+    throw new Error('บัญชีนี้เป็นเจ้าของระบบ แก้ได้เฉพาะเจ้าของระบบเท่านั้น')
+  }
+  /* ผู้ดูแลระบบแตะคนที่เหลือได้หมด */
   if (caller.role === 'admin') return
-  const t = await db<{ role: string }[]>(`profiles?id=eq.${userId}&select=role`)
+  /* แอดมินแตะผู้ดูแลระบบไม่ได้ · คนที่ต่ำกว่าแก้คนที่สูงกว่าไม่ได้ */
   if (t[0]?.role === 'admin') {
-    throw new Error('บัญชีนี้เป็นเจ้าของระบบ แอดมินแก้ไม่ได้')
+    throw new Error('บัญชีนี้เป็นผู้ดูแลระบบ แอดมินแก้ไม่ได้')
   }
 }
 

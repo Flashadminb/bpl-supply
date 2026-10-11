@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { describeWindow } from '../lib/meetingWindow'
 import { AudiencePicker, EMPTY_AUDIENCE, type Audience } from './AudiencePicker'
 import { useAsync } from '../lib/useAsync'
@@ -46,29 +46,97 @@ const whenTH = (iso: string) =>
     minute: '2-digit',
   }).format(new Date(iso))
 
-/** แถบประกาศที่ทุกคนเห็น — ขึ้นในกล่องเช็คอิน */
+/**
+ * นับถอยหลังเป็นข้อความ
+ *
+ * ไม่โชว์วินาที เพราะประชุมไม่ใช่งานที่วัดกันเป็นวินาที
+ * และตัวเลขที่ขยับทุกวินาทีบนหน้าแรกคือสิ่งที่ดึงสายตาไปจากทุกอย่างที่เหลือ
+ */
+function countdownTH(ms: number): string {
+  const late = ms < 0
+  const t = Math.abs(ms)
+  const d = Math.floor(t / 86400000)
+  const h = Math.floor((t % 86400000) / 3600000)
+  const m = Math.floor((t % 3600000) / 60000)
+
+  let s: string
+  if (d > 0) s = `${d} วัน ${h} ชม.`
+  else if (h > 0) s = `${h} ชม. ${m} นาที`
+  else if (m > 0) s = `${m} นาที`
+  else s = 'ไม่ถึงนาที'
+
+  return late ? `เลยเวลามา ${s}` : `อีก ${s}`
+}
+
+/** เส้นตายใกล้แค่ไหนแล้ว · ใช้เลือกสีให้สายตาจับได้โดยไม่ต้องอ่าน */
+function heat(ms: number): { bg: string; txt: string } {
+  if (ms < 0) return { bg: '#E5484D', txt: '#fff' }
+  if (ms <= 30 * 60000) return { bg: '#E5484D', txt: '#fff' }
+  if (ms <= 3 * 3600000) return { bg: '#E8B931', txt: '#1A1405' }
+  return { bg: '#1A1712', txt: '#fff' }
+}
+
+/**
+ * แถบประกาศประชุม — ขึ้นเฉพาะคนที่ถูกเรียก
+ *
+ * ฐานข้อมูลคิด for_me มาให้แล้ว ที่นี่แค่เชื่อ
+ * เผื่อวิวรุ่นเก่าที่ยังไม่มีคอลัมน์นี้ ให้ถือว่าเห็นได้ ดีกว่าหายไปทั้งแถบ
+ */
 export function MeetingNotices({ rows }: { rows: MeetingEvent[] }) {
-  const live = rows.filter((e) => !e.cancelled_at)
+  const live = rows.filter((e) => !e.cancelled_at && e.for_me !== false)
+
+  /* เดินนาฬิกาทุก 20 วินาที · ละเอียดพอสำหรับตัวเลขที่เป็นหน่วยนาที */
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (live.length === 0) return
+    const t = setInterval(() => setNow(Date.now()), 20_000)
+    return () => clearInterval(t)
+  }, [live.length])
+
   if (live.length === 0) return null
 
   return (
     <section className="mb-3 space-y-2">
-      {live.map((e) => (
-        <div key={e.id} className="rounded-card border border-brand-300 bg-brand-50 p-3">
-          <p className="font-display text-ink">{e.title}</p>
-          <p className="text-sm text-ink-700">
-            {whenTH(e.meet_at)}
-            {e.place ? ` · ${e.place}` : ''}
-          </p>
-          {e.audience && (
-            <p className="mt-1 rounded-btn bg-ink px-2 py-1 text-sm text-white">
-              ผู้เข้าร่วม: {e.audience}
+      {live.map((e) => {
+        const left = new Date(e.meet_at).getTime() - now
+        const tone = heat(left)
+        return (
+          <div key={e.id} className="rounded-card border border-brand-300 bg-brand-50 p-3">
+            <div className="flex items-start gap-2">
+              <p className="min-w-0 flex-1 font-display text-ink">{e.title}</p>
+              {/* นับถอยหลังอยู่ขวาบน เพราะเป็นสิ่งเดียวบนการ์ดที่เปลี่ยนตลอดเวลา */}
+              <span
+                className="shrink-0 rounded-pill px-2 py-[3px] text-xs font-extrabold leading-none"
+                style={{ background: tone.bg, color: tone.txt }}
+              >
+                {countdownTH(left)}
+              </span>
+            </div>
+            <p className="text-sm text-ink-700">
+              {whenTH(e.meet_at)}
+              {e.place ? ` · ${e.place}` : ''}
             </p>
-          )}
-          {e.note && <p className="mt-1 text-sm text-ink-500">{e.note}</p>}
-          <p className="mt-1 text-xs text-ink-400">ประกาศโดย {e.created_by_name}</p>
-        </div>
-      ))}
+            {/*
+              บอกแค่จำนวน ไม่ไล่ชื่อแผนก
+              คนอ่านอยากรู้ว่าตัวเองต้องไปไหม ซึ่งตอบไปแล้วด้วยการที่การ์ดนี้ขึ้นมา
+              โหมดพิมพ์เองไม่มีรายชื่อ จึงยังต้องโชว์ข้อความที่คนประกาศพิมพ์ไว้
+            */}
+            {e.audience_mode === 'free'
+              ? e.audience && (
+                  <p className="mt-1 rounded-btn bg-ink px-2 py-1 text-sm text-white">
+                    ผู้เข้าร่วม: {e.audience}
+                  </p>
+                )
+              : (e.member_count ?? 0) > 0 && (
+                  <p className="mt-1 inline-block rounded-btn bg-ink px-2 py-1 text-sm text-white">
+                    ผู้เข้าร่วม {e.member_count} คน
+                  </p>
+                )}
+            {e.note && <p className="mt-1 text-sm text-ink-500">{e.note}</p>}
+            <p className="mt-1 text-xs text-ink-400">ประกาศโดย {e.created_by_name}</p>
+          </div>
+        )
+      })}
     </section>
   )
 }

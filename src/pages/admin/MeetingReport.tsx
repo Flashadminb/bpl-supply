@@ -5,6 +5,7 @@ import { listMeetingEvents, meetingByDept, meetingDaily, meetingStats } from '..
 import { ErrorBox, Loading } from '../../components/ui'
 import { BarsH, Columns, DataTable, Stat, type Datum } from '../../components/charts'
 import { fmtDateTime } from '../../lib/format'
+import { deptName } from '../../lib/deptNames'
 
 /**
  * แดชบอร์ดประชุม
@@ -82,7 +83,7 @@ export default function MeetingReport() {
     sub: dayShort(d.day),
   }))
 
-  const deptChart: Datum[] = depts.map((d) => ({ label: d.dept_code, value: d.confirmed }))
+  const deptChart: Datum[] = depts.map((d) => ({ label: deptName(d.dept_code), value: d.confirmed }))
 
   /** คนที่ยังไม่เคยเช็คอินเลยในเดือนนี้ — เรียงขึ้นก่อน เพราะเป็นคนที่ต้องตาม */
   const missing = useMemo(
@@ -203,7 +204,7 @@ export default function MeetingReport() {
                 <td className="px-3 py-2">{s.full_name}</td>
                 <td className="px-3 py-2 font-mono text-xs">{s.employee_code}</td>
                 <td className="px-3 py-2 text-ink-500">
-                  {s.dept_code ?? '—'}
+                  {deptName(s.dept_code)}
                   {s.sub_dept ? ` · ${s.sub_dept}` : ''}
                 </td>
                 <td className="px-3 py-2">

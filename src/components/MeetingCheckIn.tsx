@@ -10,6 +10,7 @@ import { PhotoSteps, shotsToPhotos, type Shot } from './PhotoSteps'
 import { stampLines } from '../lib/image'
 import { MeetingNotices, MeetingPlanner } from './MeetingPlanner'
 import { canAudit } from '../lib/roles'
+import { deptName } from '../lib/deptNames'
 
 /**
  * เช็คอินเข้าประชุม — ไอคอนเล็ก ๆ ข้างกระดิ่ง ทุกคนเห็น
@@ -67,7 +68,7 @@ export function MeetingCheckIn() {
   const stamp = stampLines(
     profile?.full_name ?? '',
     profile?.employee_code ?? '',
-    profile?.dept_code ?? profile?.hub_code ?? 'BPL',
+    deptName(profile?.dept_code, profile?.hub_code ?? 'BPL'),
     'เช็คอินประชุม',
   )
 

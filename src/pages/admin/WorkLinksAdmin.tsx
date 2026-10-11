@@ -11,6 +11,8 @@ import { readableError } from '../../lib/supabase'
 import { EmptyState, ErrorBox, Loading, Modal, Spinner } from '../../components/ui'
 import { fmtDateTime } from '../../lib/format'
 import type { LinkAudience, LinkRoleKey, WorkLinkFull } from '../../lib/types'
+import { useAuth } from '../../lib/auth'
+import { isOwner, withoutOwner } from '../../lib/roles'
 
 /**
  * ลิงก์งาน — เจ้าของระบบใส่ไว้ให้กดจากปุ่มสายฟ้าในแอพ
@@ -55,10 +57,30 @@ const ROLES: { key: LinkRoleKey; label: string; hint: string }[] = [
   { key: 'staff', label: 'หน้างาน', hint: 'พนักงานทั่วไปที่เบิกของ' },
   { key: 'dispatch', label: 'ผู้ตรวจสอบ', hint: 'คนที่เปิดสิทธิ์จ่ายของแทนไว้' },
   { key: 'supervisor', label: 'แอดมิน', hint: 'ดูแลสต็อกและอนุมัติ' },
-  { key: 'admin', label: 'เจ้าของระบบ', hint: 'คุณ — เห็นทุกลิงก์อยู่แล้ว' },
+  { key: 'admin', label: 'ผู้ดูแลระบบ', hint: 'รวมเจ้าของระบบด้วย เพราะใช้บทบาทเดียวกัน' },
 ]
 
+/**
+ * ตัวเลือกที่เจ้าของระบบเห็นเพิ่มอีกอัน
+ *
+ * ของเดิมติ๊ก "เจ้าของระบบ" แล้วหมายถึง role = admin ซึ่งตอนนั้นมีคนเดียว
+ * พอมีผู้ดูแลระบบที่ใช้ role เดียวกัน ลิงก์เหล่านั้นก็เปิดให้เขาเห็นไปด้วย
+ * จึงต้องมีคีย์ที่ผูกกับบัญชีเจ้าของตัวจริง ไม่ใช่ผูกกับบทบาท
+ *
+ * ติ๊กอันนี้แล้วลิงก์หายไปจากทุกคนทันที รวมผู้ดูแลระบบ — ทั้งหน้าดูและหน้าแก้
+ * ฐานข้อมูลกันซ้ำสามชั้น ไม่ได้กันแค่ที่หน้าจอ
+ */
+const OWNER_ROLE: { key: LinkRoleKey; label: string; hint: string } = {
+  key: 'owner',
+  label: 'เฉพาะเจ้าของระบบ',
+  hint: 'คุณคนเดียว · ผู้ดูแลระบบและแอดมินไม่เห็นและแก้ไม่ได้',
+}
+
 export default function WorkLinksAdmin() {
+  const { profile: me } = useAuth()
+  const iAmOwner = isOwner(me)
+  /** คนอื่นไม่เห็นตัวเลือก "เฉพาะเจ้าของระบบ" เพราะตั้งไม่ได้อยู่ดี */
+  const roleOptions = iAmOwner ? [OWNER_ROLE, ...ROLES] : ROLES
   const feed = useAsync(() => listWorkLinksFull(), [])
   const depts = useAsync(listDepartments, [])
   const people = useAsync(listProfiles, [])
@@ -82,7 +104,7 @@ export default function WorkLinksAdmin() {
 
   /** คนที่เลือกได้ — ปิดใช้งานแล้วไม่ต้องโผล่ ไม่งั้นรายชื่อจะรกขึ้นทุกเดือน */
   const pickable = useMemo(
-    () => (people.data ?? []).filter((p) => p.is_active),
+    () => withoutOwner((people.data ?? []).filter((p) => p.is_active), me),
     [people.data],
   )
 
@@ -161,7 +183,11 @@ export default function WorkLinksAdmin() {
     if (l.audience === 'managers') return 'แอดมินและผู้ตรวจสอบ'
     const parts: string[] = []
     if (l.role_keys.length > 0)
-      parts.push(l.role_keys.map((k) => ROLES.find((r) => r.key === k)?.label ?? k).join(', '))
+      parts.push(
+        l.role_keys
+          .map((k) => (k === 'owner' ? OWNER_ROLE.label : ROLES.find((r) => r.key === k)?.label ?? k))
+          .join(', '),
+      )
     if (l.dept_codes.length > 0)
       parts.push(l.dept_codes.map((c) => deptName.get(c) ?? c).join(', '))
     if (l.user_ids.length > 0) parts.push(`รายคน ${l.user_ids.length} คน`)
@@ -368,7 +394,7 @@ export default function WorkLinksAdmin() {
               <div className="mt-3 rounded-card border border-line p-3">
                 <p className="label">ตำแหน่งที่เห็น</p>
                 <div className="flex flex-wrap gap-2">
-                  {ROLES.map((r) => (
+                  {roleOptions.map((r) => (
                     <button
                       key={r.key}
                       type="button"
@@ -381,6 +407,10 @@ export default function WorkLinksAdmin() {
                   ))}
                 </div>
                 <p className="mt-1 text-xs text-ink-400">
+                  {iAmOwner
+                    ? 'ติ๊ก “เฉพาะเจ้าของระบบ” แล้วลิงก์นี้หายไปจากผู้ดูแลระบบและแอดมินทันที ทั้งหน้าดูและหน้าแก้'
+                    : 'ลิงก์ที่เจ้าของระบบตั้งว่าเฉพาะตัวเอง จะไม่ขึ้นในหน้านี้เลย'}
+                  <br />
                   คุณเห็นทุกลิงก์อยู่แล้วไม่ว่าจะติ๊กหรือไม่ เพราะต้องเข้ามาแก้ได้
                   <br />
                   ผู้ตรวจสอบส่วนใหญ่มีตำแหน่งเป็นหน้างานด้วย ถ้าติ๊ก “หน้างาน” เขาจะเห็นด้วย

@@ -3,6 +3,8 @@ import { Suspense, lazy, useEffect, type ReactNode } from 'react'
 import { useAuth } from './lib/auth'
 import type { UserRole } from './lib/types'
 import { MANAGER_ROLES, canSeeSacks, canBreakIssue, canBreakGuard } from './lib/roles'
+import { useDeptNames } from './lib/deptNames'
+import { PushNag } from './components/PushNag'
 import { Loading } from './components/ui'
 
 import Login from './pages/staff/Login'
@@ -75,6 +77,7 @@ const WaitLog = lazy(() => import('./pages/wait/WaitLog'))
 const WaitStats = lazy(() => import('./pages/wait/WaitStats'))
 const TruckAdmin = lazy(() => import('./pages/admin/TruckAdmin'))
 const WaitAdmin = lazy(() => import('./pages/admin/WaitAdmin'))
+const AssetBoard = lazy(() => import('./pages/admin/AssetBoard'))
 
 function Guard({
   children,
@@ -215,9 +218,14 @@ function ScrollToTop() {
 }
 
 export default function App() {
+  /* พจนานุกรมชื่อแผนก · โหลดครั้งเดียวที่ราก แล้วทุกหน้าเรียก deptName ได้เลย */
+  useDeptNames()
+
   return (
     <Suspense fallback={<Fallback />}>
     <ScrollToTop />
+    {/* เด้งขอเปิดแจ้งเตือนถ้าบัญชีนี้ยังไม่มีเครื่องไหนเปิดไว้ · เงียบเองถ้าเปิดแล้ว */}
+    <PushNag />
     <Routes>
       <Route path="/login" element={<Login />} />
 
@@ -263,16 +271,16 @@ export default function App() {
       <Route path="/trucks/stats" element={<Guard><TruckStats /></Guard>} />
       <Route path="/trucks/history" element={<Guard><TruckLog /></Guard>} />
       {/*
-        รถรอลงงาน · รอบแรกเปิดให้เจ้าของระบบกับผู้ตรวจสอบเท่านั้นตามที่สั่งไว้ เพื่อทดสอบก่อนปล่อยหน้างาน
-        ด่านจริงอยู่ที่ my_can_wait_truck() ใน RLS · เส้นทางนี้แค่ไม่ให้กดเข้ามาเจอหน้าว่าง
-        วันเปิดให้หน้างานจริง แก้ฟังก์ชันตัวนั้นกับสามบรรทัดนี้
+        รถรอลงงาน · เปิดให้หน้างานทุกคนแล้ว รอบทดสอบผ่านแล้วตามที่เจ้าของระบบสั่ง
+        ด่านจริงอยู่ที่ my_can_wait_truck() ใน RLS ซึ่งเปิดให้ทุกบัญชีที่ยังใช้งานอยู่
+        ที่ยังไม่เปิดให้ทุกคนคือการแก้เกณฑ์เวลา อยู่ที่ /admin/wait และคุมด้วย policy แยกของ wait_truck_kpi
       */}
-      <Route path="/wait" element={<Guard roles={['admin']} allowDispatch><WaitBoard /></Guard>} />
+      <Route path="/wait" element={<Guard><WaitBoard /></Guard>} />
       {/* เส้นทางเดิมของหน้าอัปไฟล์ · ตอนนี้เป็นป็อปอัพบนกระดานแล้ว พาไปที่กระดานพร้อมเปิดช่องเลือกไฟล์ */}
       <Route path="/wait/upload" element={<Navigate to="/wait?upload=1" replace />} />
-      <Route path="/wait/tv" element={<Guard roles={['admin']} allowDispatch><WaitTv /></Guard>} />
-      <Route path="/wait/history" element={<Guard roles={['admin']} allowDispatch><WaitLog /></Guard>} />
-      <Route path="/wait/stats" element={<Guard roles={['admin']} allowDispatch><WaitStats /></Guard>} />
+      <Route path="/wait/tv" element={<Guard><WaitTv /></Guard>} />
+      <Route path="/wait/history" element={<Guard><WaitLog /></Guard>} />
+      <Route path="/wait/stats" element={<Guard><WaitStats /></Guard>} />
       <Route path="/assets" element={<Guard><AssetBasket /></Guard>} />
       <Route path="/assets/done/:refNo" element={<Guard><AssetDone /></Guard>} />
       <Route path="/assets/:typeCode" element={<Guard><AssetPick /></Guard>} />
@@ -293,15 +301,14 @@ export default function App() {
         <Route path="stock" element={<Guard roles={MANAGER_ROLES}><Stock /></Guard>} />
         <Route path="outstanding" element={<Guard roles={MANAGER_ROLES} allowDispatch><Outstanding /></Guard>} />
         {/*
-          ผู้ตรวจสอบเข้าทะเบียนได้ แต่ทำได้อย่างเดียวคือกดโอน
-          ปุ่มเพิ่ม แก้ ลบ และจัดการแผนก ผูกกับ MANAGER_ROLES อยู่แล้วในหน้านั้น
-          และฐานข้อมูลก็กันซ้ำอีกชั้น (write_assets กับ delete_asset เปิดให้แค่แอดมินขึ้นไป)
-          เปิดสิทธิ์ตรงนี้จึงไม่ได้เพิ่มอำนาจอะไรให้เขานอกจากได้เห็นและได้โอน
+          ทะเบียนเครื่องเป็นของแอดมินขึ้นไป · ผู้ตรวจสอบไม่เห็นตามที่เจ้าของระบบสั่ง
+          เขายังโอนเครื่องได้จากหน้า "Asset ที่ยังไม่คืน" ซึ่งเป็นหน้าที่เห็นเครื่องที่ถูกยืมอยู่
+          จึงไม่ได้ตัดงานโอนทิ้ง แค่ย้ายให้เหลือทางเดียวที่ตรงกับงานเขา
         */}
         <Route
           path="assets"
           element={
-            <Guard roles={MANAGER_ROLES} allowDispatch>
+            <Guard roles={MANAGER_ROLES}>
               <AssetRegistry />
             </Guard>
           }
@@ -318,10 +325,15 @@ export default function App() {
         <Route path="os" element={<Guard roles={MANAGER_ROLES} allowDispatch><OsPeople /></Guard>} />
         <Route path="os/print" element={<Guard roles={MANAGER_ROLES} allowDispatch><OsCards /></Guard>} />
         <Route path="os/scans" element={<Guard roles={MANAGER_ROLES} allowDispatch><OsScans /></Guard>} />
-        {/* บัตรเบรค — แผนก บัตร และการพิมพ์ เป็นของเจ้าของระบบคนเดียว
-            เพราะเพดานปล่อยพร้อมกันกับช่วงห้ามเบรคเป็นเครื่องมือคุมหัวหน้างานโดยตรง
-            ฐานข้อมูลปฏิเสธคนอื่นอยู่แล้วใน break_admin_guard() เส้นทางนี้แค่ไม่ให้กดเข้ามาเจอ error */}
-        <Route path="break/cards" element={<Guard roles={['admin']}><BreakCards /></Guard>} />
+        {/* บัตรเบรค · สามชั้น คุมที่ฐานข้อมูลใน migration 138 แล้วหน้าจอซ่อนแท็บตามให้ตรงกัน
+              บัตร แผนกบัตร และพิมพ์   ผู้ดูแลระบบ · แอดมิน · ผู้ตรวจสอบ   break_card_guard()
+              คนรับแจ้งเตือนเรื่องเบรค  ผู้ดูแลระบบ · แอดมิน               break_alert_guard()
+              ห้ามเบรค และนาทีของเหตุผล ผู้ดูแลระบบเท่านั้น                break_admin_guard()
+            ห้ามเบรคยังแคบสุด เพราะเป็นเครื่องมือคุมหัวหน้างานโดยตรง */}
+        <Route
+          path="break/cards"
+          element={<Guard roles={MANAGER_ROLES} allowDispatch><BreakCards /></Guard>}
+        />
         {/* ประวัติเป็นหน้าอ่านอย่างเดียว ผู้ตรวจสอบเข้าได้ด้วย
             RLS ของ break_passes เปิดให้เขาเห็นทุกใบอยู่แล้ว */}
         <Route
@@ -329,7 +341,11 @@ export default function App() {
           element={<Guard roles={MANAGER_ROLES} allowDispatch><BreakHistory /></Guard>}
         />
         <Route path="report/supply" element={<Guard roles={MANAGER_ROLES}><SupplyReport /></Guard>} />
-        <Route path="report/asset" element={<Guard roles={MANAGER_ROLES}><AssetReport /></Guard>} />
+        {/* รายงาน Asset · ผู้ตรวจสอบดูได้ เป็นรายงานล้วน ไม่มีปุ่มคืนแทนหรือปุ่มสั่งการ */}
+        <Route
+          path="report/asset"
+          element={<Guard roles={MANAGER_ROLES} allowDispatch><AssetReport /></Guard>}
+        />
         <Route path="export" element={<Guard roles={MANAGER_ROLES}><ExportSheet /></Guard>} />
         <Route path="evidence" element={<Guard roles={MANAGER_ROLES}><AdminEvidence /></Guard>} />
         <Route
@@ -342,9 +358,9 @@ export default function App() {
           path="asset-moves"
           element={<Guard roles={MANAGER_ROLES} allowDispatch><AssetMoves /></Guard>}
         />
-        {/* สิทธิ์เข้าถึงเป็นของเจ้าของระบบคนเดียว ไม่ใช่ของแอดมินทั่วไป
-            คนที่ยกสิทธิ์ให้คนอื่นได้ ต้องยกสิทธิ์ให้ตัวเองได้ด้วย */}
-        <Route path="access" element={<Guard roles={['admin']}><Access /></Guard>} />
+        {/* สิทธิ์เข้าถึง · เจ้าของระบบเปิดให้แอดมินด้วยแล้ว เพื่อให้ทำงานแทนได้จริง
+            บัญชีเจ้าของระบบยังแก้ไม่ได้ ซึ่งบังคับที่ trigger guard_owner_row ในฐานข้อมูล */}
+        <Route path="access" element={<Guard roles={MANAGER_ROLES}><Access /></Guard>} />
         <Route path="qr" element={<Guard roles={MANAGER_ROLES}><QrLabels /></Guard>} />
         {/* สองหน้านี้ผู้ตรวจสอบเข้าได้ด้วย นอกนั้นเป็นของแอดมินล้วน */}
         <Route path="meetings" element={<Guard roles={MANAGER_ROLES} allowDispatch><Meetings /></Guard>} />
@@ -352,10 +368,8 @@ export default function App() {
           path="meeting-evidence"
           element={<Guard roles={MANAGER_ROLES} allowDispatch><MeetingEvidence /></Guard>}
         />
-        <Route
-          path="report/meeting"
-          element={<Guard roles={MANAGER_ROLES} allowDispatch><MeetingReport /></Guard>}
-        />
+        {/* แดชบอร์ดประชุมเป็นของแอดมินขึ้นไป · ผู้ตรวจสอบดูใบเช็คอินกับหลักฐานได้ แต่ไม่ดูสรุปรวม */}
+        <Route path="report/meeting" element={<Guard roles={MANAGER_ROLES}><MeetingReport /></Guard>} />
         <Route
           path="supply-history"
           element={<Guard roles={MANAGER_ROLES} allowDispatch><SupplyHistory /></Guard>}
@@ -363,6 +377,8 @@ export default function App() {
         {/* เพิ่มบัญชี / รีเซ็ตรหัสผ่านคนอื่น เป็นของผู้ดูแลระบบคนเดียว */}
         <Route path="users" element={<Guard roles={MANAGER_ROLES}><Users /></Guard>} />
         <Route path="links" element={<Guard roles={MANAGER_ROLES}><WorkLinksAdmin /></Guard>} />
+        {/* กระดานเครื่อง Asset · เจ้าของระบบกับแอดมิน · ด่านจริงอยู่ที่ asset_board() ใน RLS */}
+        <Route path="asset-board" element={<Guard roles={MANAGER_ROLES}><AssetBoard /></Guard>} />
         {/* ป้ายประกาศเปิดให้แอดมินด้วย ส่วนแท็บนัดประชุมกับกฎเวลาซ่อนในหน้านั้นเอง */}
         <Route
           path="notices"
@@ -375,16 +391,23 @@ export default function App() {
         <Route
           path="health"
           element={
-            <Guard roles={['admin', 'supervisor']} allowDispatch>
+            <Guard roles={['admin', 'supervisor']}>
               <SystemHealth />
             </Guard>
           }
         />
         {/* การปล่อยรถ — งานตั้งค่าและเก็บประวัติ แยกจากกระดานที่หน้างานเปิดค้างไว้ทั้งกะ
             ด่านจริงอยู่ที่ RLS เส้นทางนี้แค่ไม่ให้กดเข้ามาเจอหน้าว่าง */}
-        <Route path="trucks" element={<Guard roles={['admin']}><TruckAdmin /></Guard>} />
-        {/* สถิติรถรอลงงาน · ผู้ตรวจสอบดูได้ แต่แก้เกณฑ์ไม่ได้ ซึ่งบังคับที่ RLS ของ wait_truck_kpi */}
-        <Route path="wait" element={<Guard roles={['admin']} allowDispatch><WaitAdmin /></Guard>} />
+        {/* ผู้ตรวจสอบเข้าได้ แต่เห็นแค่แท็บรายชื่อสาขาและเป็นหน้าอ่าน · แท็บคุมในหน้านั้นเอง
+            ส่วนแอดมิน (supervisor) ยังไม่เห็นหน้านี้เหมือนเดิม */}
+        <Route
+          path="trucks"
+          element={<Guard roles={['admin']} allowDispatch><TruckAdmin /></Guard>}
+        />
+        {/* ตั้งเกณฑ์เวลารถรอลงงาน · ของผู้ดูแลระบบคนเดียว
+            ผู้ตรวจสอบดูกระดาน แดชบอร์ด และประวัติได้ แต่ไม่ตั้งเกณฑ์
+            ด่านจริงอยู่ที่ policy ของ wait_truck_kpi เส้นทางนี้แค่ไม่ให้กดเข้ามาเจอ error */}
+        <Route path="wait" element={<Guard roles={['admin']}><WaitAdmin /></Guard>} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

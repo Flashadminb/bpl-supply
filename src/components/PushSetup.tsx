@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import { pushSubscribe, pushTest, pushUnsubscribe } from '../lib/api'
+import { isMyPushEndpoint, pushTest, pushUnsubscribe } from '../lib/api'
+import { useAuth } from '../lib/auth'
+import { enablePush, iosNeedsInstall, pushSupported } from '../lib/push'
 import { readableError } from '../lib/supabase'
 import { Spinner } from './ui'
 
@@ -13,31 +15,8 @@ import { Spinner } from './ui'
  * Android ไม่มีเงื่อนไข กดอนุญาตครั้งเดียวจบ
  */
 
-// กุญแจสาธารณะ ไม่ใช่ความลับ อยู่ใน bundle อยู่แล้ว เขียนติดไว้เลยจะได้ไม่ต้องตั้ง env ที่ Cloudflare
-const VAPID_FALLBACK =
-  'BOtpVFURNNqB-UbLcZaSquNCw0atxGz1kSliIWJYCXhk0LO45Ch5nI0jZ3PFOffce_zPsCg97JL5hg7fgXmiTm4'
-const VAPID_PUBLIC =
-  (import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined) || VAPID_FALLBACK
-
-function urlBase64ToUint8Array(base64: string): ArrayBuffer {
-  const padded = (base64 + '='.repeat((4 - (base64.length % 4)) % 4))
-    .replace(/-/g, '+')
-    .replace(/_/g, '/')
-  const raw = atob(padded)
-  const out = new Uint8Array(raw.length)
-  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i)
-  return out.buffer
-}
-
-const isIOS = () =>
-  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-
-const isStandalone = () =>
-  window.matchMedia('(display-mode: standalone)').matches ||
-  (navigator as unknown as { standalone?: boolean }).standalone === true
-
 export function PushSetup() {
+  const { profile } = useAuth()
   const [supported, setSupported] = useState(true)
   const [permission, setPermission] = useState<NotificationPermission>('default')
   const [on, setOn] = useState(false)
@@ -45,48 +24,35 @@ export function PushSetup() {
   const [msg, setMsg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const iosNeedsInstall = isIOS() && !isStandalone()
+  const needsInstall = iosNeedsInstall()
 
   useEffect(() => {
-    const ok = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+    const ok = pushSupported()
     setSupported(ok)
     if (!ok) return
     setPermission(Notification.permission)
+    // ต้องเช็คว่าเครื่องนี้ลงทะเบียนไว้ในชื่อเราจริง ไม่ใช่แค่ว่ามี subscription อยู่
+    // เครื่องที่คนก่อนหน้าเคยเปิดไว้ จะขึ้นว่า "เปิดอยู่" ทั้งที่เจ้าตัวไม่ได้รับอะไรเลย
     void navigator.serviceWorker.ready
       .then((reg) => reg.pushManager.getSubscription())
-      .then((sub) => setOn(Boolean(sub)))
+      .then(async (sub) => {
+        if (!sub || !profile?.id) return setOn(false)
+        setOn(await isMyPushEndpoint(profile.id, sub.endpoint).catch(() => false))
+      })
       .catch(() => undefined)
-  }, [])
+  }, [profile?.id])
 
   async function enable() {
     setBusy(true)
     setError(null)
     setMsg(null)
     try {
-      if (!VAPID_PUBLIC) throw new Error('ยังไม่ได้ตั้งค่ากุญแจแจ้งเตือนของระบบ แจ้งผู้ดูแล')
-
-      const perm = await Notification.requestPermission()
-      setPermission(perm)
-      if (perm !== 'granted') {
-        throw new Error('ยังไม่ได้กดอนุญาต — ถ้าเผลอกดปฏิเสธไปแล้ว ต้องไปเปิดในตั้งค่าเบราว์เซอร์')
-      }
-
-      const reg = await navigator.serviceWorker.ready
-      const existing = await reg.pushManager.getSubscription()
-      const sub =
-        existing ??
-        (await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
-        }))
-
-      const raw = sub.toJSON() as { endpoint?: string; keys?: { p256dh: string; auth: string } }
-      if (!raw.endpoint || !raw.keys) throw new Error('เบราว์เซอร์ให้ข้อมูลไม่ครบ ลองใหม่อีกครั้ง')
-
-      await pushSubscribe({ endpoint: raw.endpoint, keys: raw.keys })
+      await enablePush()
+      setPermission(Notification.permission)
       setOn(true)
       setMsg('เปิดแจ้งเตือนบนเครื่องนี้แล้ว')
     } catch (e) {
+      setPermission(typeof Notification !== 'undefined' ? Notification.permission : 'default')
       setError(readableError(e))
     } finally {
       setBusy(false)
@@ -145,7 +111,7 @@ export function PushSetup() {
         </p>
       )}
 
-      {supported && iosNeedsInstall && (
+      {supported && needsInstall && (
         <div className="mt-3 rounded-card border border-brand-300 bg-brand-50 p-3 text-sm">
           <p className="font-display text-base">iPhone ต้องติดตั้งลงหน้าจอโฮมก่อน</p>
           <p className="mt-1 text-ink-700">
@@ -178,7 +144,7 @@ export function PushSetup() {
         <p className="mt-3 rounded-card bg-danger-bg px-3 py-2 text-sm text-danger-txt">{error}</p>
       )}
 
-      {supported && !iosNeedsInstall && (
+      {supported && !needsInstall && (
         <div className="mt-3 flex flex-wrap gap-2">
           {on ? (
             <>

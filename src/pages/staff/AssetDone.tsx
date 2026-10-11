@@ -3,6 +3,7 @@ import { useAuth } from '../../lib/auth'
 import { StaffPage } from '../../components/Shell'
 import { fmtDateTime } from '../../lib/format'
 import type { AssetIssueInput } from '../../lib/types'
+import { deptSuffix } from '../../lib/deptNames'
 
 /**
  * ใบสรุปหลังเบิกหรือคืนสำเร็จ
@@ -52,7 +53,7 @@ export default function AssetDone() {
           </p>
           <p className="mt-1 text-sm">
             {profile?.full_name} · {profile?.employee_code}
-            {profile?.dept_code ? ` · ${profile.dept_code}` : ''}
+            {deptSuffix(profile?.dept_code)}
             {profile?.shift_start && profile?.shift_end
               ? ` · กะ ${profile.shift_start.slice(0, 5)}–${profile.shift_end.slice(0, 5)}`
               : ''}
