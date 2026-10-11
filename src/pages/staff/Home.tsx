@@ -180,7 +180,7 @@ export default function Home() {
             */}
             {isOwner(profile) && (
               <Link
-                to="/admin/outbox"
+                to="/outbox"
                 aria-label="ของค้างส่งออก"
                 className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink/10"
               >
@@ -354,7 +354,7 @@ export default function Home() {
             */}
             {isOwner(profile) && (
               <Link
-                to="/admin/outbox"
+                to="/outbox"
                 aria-label="ของค้างส่งออก"
                 className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink/10"
               >

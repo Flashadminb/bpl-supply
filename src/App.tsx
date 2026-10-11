@@ -280,6 +280,11 @@ export default function App() {
         ด่านจริงอยู่ที่ my_can_wait_truck() ใน RLS ซึ่งเปิดให้ทุกบัญชีที่ยังใช้งานอยู่
         ที่ยังไม่เปิดให้ทุกคนคือการแก้เกณฑ์เวลา อยู่ที่ /admin/wait และคุมด้วย policy แยกของ wait_truck_kpi
       */}
+      {/* ของค้างส่งออก · หน้าเต็มจอของตัวเอง ไม่ใช้กรอบหลังบ้าน
+          แบบเดียวกับกระดานปล่อยรถและรถรอลงงาน เพราะเป็นจอที่เปิดค้างไว้ดู
+          ไม่ใช่หน้าตั้งค่าที่เข้าไปทำแล้วออก · เจ้าของระบบคนเดียว
+          ด่านจริงอยู่ที่ RLS ของ hub_out_* ซึ่งตรวจ my_is_owner() ทุกตารางและทุก RPC */}
+      <Route path="/outbox" element={<Guard needsOwner><OutBox /></Guard>} />
       <Route path="/wait" element={<Guard><WaitBoard /></Guard>} />
       {/* เส้นทางเดิมของหน้าอัปไฟล์ · ตอนนี้เป็นป็อปอัพบนกระดานแล้ว พาไปที่กระดานพร้อมเปิดช่องเลือกไฟล์ */}
       <Route path="/wait/upload" element={<Navigate to="/wait?upload=1" replace />} />
@@ -409,10 +414,6 @@ export default function App() {
           path="trucks"
           element={<Guard roles={['admin']} allowDispatch><TruckAdmin /></Guard>}
         />
-        {/* ของค้างส่งออก · เจ้าของระบบคนเดียวตามที่สั่ง
-            ด่านจริงอยู่ที่ RLS ของ hub_out_* ซึ่งตรวจ my_is_owner() ทุกตารางและทุก RPC
-            เส้นทางนี้แค่ไม่ให้คนอื่นกดเข้ามาเจอหน้าว่าง */}
-        <Route path="outbox" element={<Guard needsOwner><OutBox /></Guard>} />
         {/* ตั้งเกณฑ์เวลารถรอลงงาน · ของผู้ดูแลระบบคนเดียว
             ผู้ตรวจสอบดูกระดาน แดชบอร์ด และประวัติได้ แต่ไม่ตั้งเกณฑ์
             ด่านจริงอยู่ที่ policy ของ wait_truck_kpi เส้นทางนี้แค่ไม่ให้กดเข้ามาเจอ error */}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import { ErrorBox, Loading, Spinner } from '../../components/ui'
 import { readableError } from '../../lib/supabase'
@@ -181,10 +182,19 @@ export default function OutBox() {
     ageMin < 60 ? `${ageMin} นาทีที่แล้ว` : ageMin < 1440 ? `${Math.floor(ageMin / 60)} ชั่วโมงที่แล้ว` : `${Math.floor(ageMin / 1440)} วันที่แล้ว`
 
   return (
-    <div className="mx-auto max-w-[1400px]">
+    <div className="min-h-dvh bg-canvas p-4 lg:p-6">
+      <div className="mx-auto max-w-[1400px]">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-lg">ของค้างส่งออก</h1>
+          <div className="mb-1 flex flex-wrap items-center gap-3 text-sm">
+            <Link to="/" className="btn-soft h-tap px-3">
+              ← หน้าแรก
+            </Link>
+            <Link to="/admin" className="text-ink-500 underline">
+              หน้าแอดมิน
+            </Link>
+          </div>
+          <h1 className="font-display text-xl">ของค้างส่งออก</h1>
           <p className="text-sm text-ink-500">
             ของที่ต้องออกจากฮับไปสาขาปลายทาง ตอนนี้ค้างอยู่ตรงไหน · เห็นเฉพาะเจ้าของระบบ
           </p>
@@ -312,6 +322,7 @@ export default function OutBox() {
       )}
 
       {snap && mode === 'tv' && <TvView rows={rows} snapAt={snap.snap_at} tick={tick} />}
+      </div>
     </div>
   )
 }

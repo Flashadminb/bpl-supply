@@ -130,7 +130,7 @@ const GROUPS: Group[] = [
       { to: '/wait/stats', label: 'แดชบอร์ดรถรอลงงาน', icon: 'pie', audit: true },
       { to: '/admin/wait', label: 'ตั้งเกณฑ์เวลารถรอลงงาน', icon: 'clock', adminOnly: true },
       { to: '/wait/history', label: 'ประวัติรถรอลงงาน', icon: 'history', audit: true },
-      { to: '/admin/outbox', label: 'ของค้างส่งออก', icon: 'box', ownerOnly: true },
+      { to: '/outbox', label: 'ของค้างส่งออก', icon: 'box', ownerOnly: true },
     ],
   },
   {
