@@ -2,7 +2,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Suspense, lazy, useEffect, type ReactNode } from 'react'
 import { useAuth } from './lib/auth'
 import type { UserRole } from './lib/types'
-import { MANAGER_ROLES, canSeeSacks, canBreakIssue, canBreakGuard } from './lib/roles'
+import { MANAGER_ROLES, canSeeSacks, canBreakIssue, canBreakGuard, isOwner } from './lib/roles'
 import { useDeptNames } from './lib/deptNames'
 import { PushNag } from './components/PushNag'
 import { Loading } from './components/ui'
@@ -21,6 +21,7 @@ import { Privacy, Terms } from './pages/Legal'
 
 // หน้าที่ลากไลบรารีหนัก (zxing) หรือใช้เฉพาะแอดมิน — โหลดเมื่อเปิดจริงเท่านั้น
 // เน็ตในฮับไม่นิ่ง หน้าแรกต้องเบาที่สุด
+const OutBox = lazy(() => import('./pages/admin/OutBox'))
 const Scan = lazy(() => import('./pages/staff/Scan'))
 const Returns = lazy(() => import('./pages/staff/Returns'))
 const AssetPick = lazy(() => import('./pages/staff/AssetPick'))
@@ -85,6 +86,7 @@ function Guard({
   allowDispatch,
   allowGuard,
   needsSack,
+  needsOwner,
   needsBreak,
 }: {
   children: ReactNode
@@ -95,6 +97,8 @@ function Guard({
   allowGuard?: boolean
   /** ต้องมีสิทธิ์เห็นงานกระสอบ — ซ่อนไทล์อย่างเดียวไม่พอ คนรู้ URL ยังเข้าได้ */
   needsSack?: boolean
+  /** เจ้าของระบบคนเดียว · ผู้ดูแลระบบก็เข้าไม่ได้ เพราะใช้ธง is_owner ไม่ใช่ role */
+  needsOwner?: boolean
   /**
    * ต้องมีสิทธิ์เรื่องบัตรเบรค
    *   issue  ปล่อยบัตรได้ · guard สแกนได้ · any อย่างใดอย่างหนึ่งก็เข้าได้
@@ -138,6 +142,7 @@ function Guard({
     (allowGuard && profile.can_guard)
   if (!roleOk) return <Navigate to="/" replace />
   if (needsSack && !canSeeSacks(profile)) return <Navigate to="/" replace />
+  if (needsOwner && !isOwner(profile)) return <Navigate to="/" replace />
   if (needsBreak) {
     const ok =
       needsBreak === 'issue'
@@ -404,6 +409,10 @@ export default function App() {
           path="trucks"
           element={<Guard roles={['admin']} allowDispatch><TruckAdmin /></Guard>}
         />
+        {/* ของค้างส่งออก · เจ้าของระบบคนเดียวตามที่สั่ง
+            ด่านจริงอยู่ที่ RLS ของ hub_out_* ซึ่งตรวจ my_is_owner() ทุกตารางและทุก RPC
+            เส้นทางนี้แค่ไม่ให้คนอื่นกดเข้ามาเจอหน้าว่าง */}
+        <Route path="outbox" element={<Guard needsOwner><OutBox /></Guard>} />
         {/* ตั้งเกณฑ์เวลารถรอลงงาน · ของผู้ดูแลระบบคนเดียว
             ผู้ตรวจสอบดูกระดาน แดชบอร์ด และประวัติได้ แต่ไม่ตั้งเกณฑ์
             ด่านจริงอยู่ที่ policy ของ wait_truck_kpi เส้นทางนี้แค่ไม่ให้กดเข้ามาเจอ error */}

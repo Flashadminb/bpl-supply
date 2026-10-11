@@ -20,6 +20,7 @@ import {
   canSeeSacks,
   roleLabel,
   showsOsScanTile,
+  isOwner,
 } from '../../lib/roles'
 import { usePendingApprovals } from '../../lib/usePendingApprovals'
 import { NotifyBell } from '../../components/NotifyBell'
@@ -172,6 +173,37 @@ export default function Home() {
               </svg>
             </Link>
 
+            {/*
+              ของค้างส่งออก · เจ้าของระบบคนเดียว ตามที่สั่งไว้รอบแรก
+              ไอคอนเป็นกล่องซ้อนกันมีลูกศรชี้ออก สื่อว่าของกองรอออก ไม่ใช่รถ
+              ต้องไม่ซ้ำกับสองอันซ้ายมือ ซึ่งเป็นรูปตู้รถทั้งคู่
+            */}
+            {isOwner(profile) && (
+              <Link
+                to="/admin/outbox"
+                aria-label="ของค้างส่งออก"
+                className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink/10"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="26"
+                  height="26"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M3 14h8v6H3z" />
+                  <path d="M3 8h8v5H3z" />
+                  <path d="M5 5h8v2H5z" />
+                  <path d="M14 10h7" />
+                  <path d="M18 7l3 3-3 3" />
+                </svg>
+              </Link>
+            )}
+
             {/* ลิงก์งาน — เห็นเฉพาะแอดมิน เจ้าของระบบ และผู้ตรวจสอบ */}
             <WorkLinks />
             {can(...MANAGER_ROLES) && <NotifyBell />}
@@ -314,6 +346,37 @@ export default function Home() {
                 <path d="M17.3 13.2v2.6l1.8 1" />
               </svg>
             </Link>
+
+            {/*
+              ของค้างส่งออก · เจ้าของระบบคนเดียว ตามที่สั่งไว้รอบแรก
+              ไอคอนเป็นกล่องซ้อนกันมีลูกศรชี้ออก สื่อว่าของกองรอออก ไม่ใช่รถ
+              ต้องไม่ซ้ำกับสองอันซ้ายมือ ซึ่งเป็นรูปตู้รถทั้งคู่
+            */}
+            {isOwner(profile) && (
+              <Link
+                to="/admin/outbox"
+                aria-label="ของค้างส่งออก"
+                className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink/10"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="26"
+                  height="26"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M3 14h8v6H3z" />
+                  <path d="M3 8h8v5H3z" />
+                  <path d="M5 5h8v2H5z" />
+                  <path d="M14 10h7" />
+                  <path d="M18 7l3 3-3 3" />
+                </svg>
+              </Link>
+            )}
 
             {/* ลิงก์งาน — เห็นเฉพาะแอดมิน เจ้าของระบบ และผู้ตรวจสอบ */}
             <WorkLinks />

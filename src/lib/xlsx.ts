@@ -241,3 +241,47 @@ export function maybeDate(v: string): string {
   if (n < 36526 || n > 73050) return s
   return serialToText(n)
 }
+
+/**
+ * อ่านทุกแผ่นงานในไฟล์ ไม่ใช่แค่แผ่นแรก
+ *
+ * ไฟล์ตรวจสอบการปล่อยรถของ HUB เก็บของที่ต้องใช้ไว้คนละแผ่น
+ * เวลาที่ระบบถ่ายข้อมูลอยู่แผ่นแรก ส่วนตารางรายสาขาอยู่แผ่นที่สาม
+ * อ่านแผ่นเดียวจึงไม่พอ และเดาเลขแผ่นก็ไม่ได้ เพราะไฟล์รุ่นหน้าอาจสลับลำดับ
+ */
+export async function readXlsxSheets(file: File): Promise<XlsxSheet[]> {
+  if (file.size > MAX_BYTES) throw new Error('ไฟล์ใหญ่เกิน 10 MB')
+
+  const buf = new Uint8Array(await file.arrayBuffer())
+  const entries = zipEntries(buf)
+  const pick = (name: string) => entries.find((e) => e.name === name) ?? null
+
+  const wbEntry = pick('xl/workbook.xml')
+  if (!wbEntry) throw new Error('ไฟล์นี้ไม่ใช่ไฟล์ Excel (.xlsx)')
+  const wb = await inflate(buf, wbEntry)
+
+  const relsEntry = pick('xl/_rels/workbook.xml.rels')
+  const rels = relsEntry ? await inflate(buf, relsEntry) : ''
+
+  const ssEntry = pick('xl/sharedStrings.xml')
+  const ss = sharedStrings(ssEntry ? await inflate(buf, ssEntry) : null)
+
+  const out: XlsxSheet[] = []
+  const tags = wb.match(/<sheet\s[^>]*>/g) ?? []
+  for (let i = 0; i < tags.length; i++) {
+    const tag = tags[i]
+    const name = dec(/name="([^"]*)"/.exec(tag)?.[1] ?? 'แผ่น ' + (i + 1))
+    const rid = /r:id="([^"]*)"/.exec(tag)?.[1] ?? ''
+    let target = 'worksheets/sheet' + (i + 1) + '.xml'
+    if (rels && rid) {
+      const m =
+        new RegExp(`Id="${rid}"[^>]*?Target="([^"]*)"`).exec(rels) ??
+        new RegExp(`Target="([^"]*)"[^>]*?Id="${rid}"`).exec(rels)
+      if (m) target = m[1].replace(/^\/?xl\//, '').replace(/^\//, '')
+    }
+    const ws = pick('xl/' + target)
+    // แผ่นที่อ่านไม่ออกข้ามไป ดีกว่าล้มทั้งไฟล์เพราะแผ่นที่ไม่ได้ใช้
+    out.push({ name, rows: ws ? sheetRows(await inflate(buf, ws), ss) : [] })
+  }
+  return out
+}

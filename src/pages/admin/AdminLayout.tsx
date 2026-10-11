@@ -6,7 +6,7 @@ import { usePendingApprovals } from '../../lib/usePendingApprovals'
 import { usePendingExports } from '../../lib/usePendingExports'
 import { usePendingMeetings } from '../../lib/usePendingMeetings'
 import { Icon, type IconName } from '../../components/icons'
-import { MANAGER_ROLES } from '../../lib/roles'
+import { MANAGER_ROLES, isOwner } from '../../lib/roles'
 
 // adminOnly = เห็นเฉพาะ "ผู้ดูแลระบบ" (role admin) ส่วน "แอดมิน" (supervisor) เห็นที่เหลือทั้งหมด
 // audit     = "ผู้ตรวจสอบ" เห็นเมนูนี้ · เป็นรายการขาว อ่านคู่กับ visible() ท้ายไฟล์
@@ -27,6 +27,8 @@ interface Link {
   badge?: 'approvals' | 'exports' | 'meetings'
   /** ผู้ตรวจสอบเห็นเมนูนี้ · ธงนี้ไม่เกี่ยวกับ adminOnly ทั้งสองอันคุมคนละเส้น */
   audit?: boolean
+  /** เจ้าของระบบคนเดียว · แคบกว่า adminOnly เพราะผู้ดูแลระบบก็ไม่เห็น */
+  ownerOnly?: boolean
 }
 
 interface Group {
@@ -128,6 +130,7 @@ const GROUPS: Group[] = [
       { to: '/wait/stats', label: 'แดชบอร์ดรถรอลงงาน', icon: 'pie', audit: true },
       { to: '/admin/wait', label: 'ตั้งเกณฑ์เวลารถรอลงงาน', icon: 'clock', adminOnly: true },
       { to: '/wait/history', label: 'ประวัติรถรอลงงาน', icon: 'history', audit: true },
+      { to: '/admin/outbox', label: 'ของค้างส่งออก', icon: 'box', ownerOnly: true },
     ],
   },
   {
@@ -169,7 +172,9 @@ export default function AdminLayout() {
    *   audit      คุมว่าผู้ตรวจสอบเห็นไหม เป็นรายการขาวล้วน ไม่ติดอะไรโดยบังเอิญ
    */
   const visible = (links: Link[]) =>
-    links.filter((l) => (isAudit ? Boolean(l.audit) : !l.adminOnly || can('admin')))
+    links
+      .filter((l) => !l.ownerOnly || isOwner(profile))
+      .filter((l) => (isAudit ? Boolean(l.audit) : !l.adminOnly || can('admin')))
 
   const item = (l: Link) => (
     <NavLink
