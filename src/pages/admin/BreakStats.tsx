@@ -43,6 +43,9 @@ export function BreakStats({ from, to }: { from: string; to: string }) {
   const [grace, setGrace] = useState(0)
   const s = useAsync(() => breakStats(from, to, grace), [from, to, grace])
   const [tab, setTab] = useState<'cards' | 'groups' | 'issuers' | 'reasons' | 'time'>('cards')
+  /** แดชบอร์ด · ดูตามมุมไหน และเจาะไปที่ใครคนเดียวหรือดูรวมทั้งฮับ */
+  const [dim, setDim] = useState<'groups' | 'cards' | 'issuers'>('groups')
+  const [focus, setFocus] = useState('')
 
   const d = s.data
   const t = d?.total
@@ -101,6 +104,8 @@ export function BreakStats({ from, to }: { from: string; to: string }) {
             />
           </div>
 
+          <Dashboard d={d} dim={dim} setDim={setDim} focus={focus} setFocus={setFocus} />
+
           <div className="mb-3 flex flex-wrap gap-2">
             {(
               [
@@ -130,6 +135,174 @@ export function BreakStats({ from, to }: { from: string; to: string }) {
         </>
       )}
     </div>
+  )
+}
+
+/* ───────────────────────────── แดชบอร์ด ───────────────────────────── */
+
+type Dim = 'groups' | 'cards' | 'issuers'
+
+const DIM_TH: Record<Dim, string> = { groups: 'แผนก', cards: 'บัตร', issuers: 'คนปล่อย' }
+
+/** ชื่อที่ใช้เรียกแถวของแต่ละมุมมอง · สามตารางใช้ชื่อคอลัมน์คนละชื่อกัน */
+function rowsOf(d: Stats, dim: Dim): { key: string; label: string; n: number; late: number; extra: string }[] {
+  if (dim === 'groups')
+    return d.groups.map((r) => ({
+      key: r.grp,
+      label: r.grp,
+      n: r.n,
+      late: r.late,
+      extra: `รอปล่อย ${mins(r.avg_wait)} · ข้างนอก ${mins(r.avg_out)}`,
+    }))
+  if (dim === 'cards')
+    return d.cards.map((r) => ({
+      key: r.card,
+      label: `${r.card} · ${r.grp}`,
+      n: r.n,
+      late: r.late,
+      extra: `ข้างนอก ${mins(r.avg_out)} · เกินนานสุด ${mins(r.worst)}`,
+    }))
+  return d.issuers.map((r) => ({
+    key: r.name,
+    label: r.name,
+    n: r.n,
+    late: r.late,
+    extra: `ปิดแทน ${nf(r.forced)} · รอปล่อย ${mins(r.avg_wait)}`,
+  }))
+}
+
+/**
+ * แดชบอร์ด · การ์ดเปลี่ยนตามสิ่งที่เลือกในดรอปดาวน์
+ *
+ * เลือกทั้งฮับคือตัวเลขรวมเหมือนเดิม เลือกแผนกหรือบัตรหรือคนปล่อย
+ * การ์ดจะกลายเป็นของอันนั้นอันเดียว · เพราะคำถามจริงที่ถามกันคือ
+ * "แผนกนี้เกินเวลากี่ใบ" ไม่ใช่ "ทั้งฮับเกินกี่ใบ" ซึ่งตอบแล้วทำอะไรต่อไม่ได้
+ *
+ * กราฟเป็นแท่งนอน ไม่ใช่แท่งตั้ง เพราะชื่อแผนกกับชื่อคนเป็นข้อความยาว
+ * แท่งตั้งต้องเอียงตัวหนังสือจนอ่านไม่ออก ซึ่งเป็นกับดักที่เจอบ่อยในแดชบอร์ด
+ * กดที่แท่งแล้วเจาะเข้าไปดูอันนั้นได้เลย
+ */
+function Dashboard({
+  d,
+  dim,
+  setDim,
+  focus,
+  setFocus,
+}: {
+  d: Stats
+  dim: Dim
+  setDim: (v: Dim) => void
+  focus: string
+  setFocus: (v: string) => void
+}) {
+  const rows = useMemo(() => rowsOf(d, dim).sort((a, b) => b.n - a.n), [d, dim])
+  const hit = rows.find((r) => r.key === focus) ?? null
+  const top = rows.slice(0, 12)
+  const max = Math.max(1, ...top.map((r) => r.n))
+  const t = d.total
+
+  return (
+    <section className="mb-4 rounded-card border border-line p-3">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <h3 className="font-display text-base">แดชบอร์ด</h3>
+        <select
+          className="input h-tap max-w-[150px]"
+          aria-label="ดูตามอะไร"
+          value={dim}
+          onChange={(e) => {
+            setDim(e.target.value as Dim)
+            setFocus('')
+          }}
+        >
+          {(Object.keys(DIM_TH) as Dim[]).map((k) => (
+            <option key={k} value={k}>
+              ตาม{DIM_TH[k]}
+            </option>
+          ))}
+        </select>
+        <select
+          className="input h-tap max-w-[260px]"
+          aria-label={`เลือก${DIM_TH[dim]}`}
+          value={focus}
+          onChange={(e) => setFocus(e.target.value)}
+        >
+          <option value="">ทั้งฮับ · ทุก{DIM_TH[dim]}</option>
+          {rows.map((r) => (
+            <option key={r.key} value={r.key}>
+              {r.label} ({nf(r.n)})
+            </option>
+          ))}
+        </select>
+        {focus && (
+          <button type="button" className="btn-ghost h-tap px-3 text-sm" onClick={() => setFocus('')}>
+            ล้างที่เลือก
+          </button>
+        )}
+      </div>
+
+      {/* การ์ดชุดนี้เปลี่ยนตามดรอปดาวน์ด้านบน */}
+      {hit ? (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <Kpi n={nf(hit.n)} label={`ใบของ ${hit.label}`} />
+          <Kpi n={nf(hit.late)} label="เกินเวลา" tone={hit.late > 0 ? 'bad' : 'ok'} />
+          <Kpi n={pct(hit.n - hit.late, hit.n) + '%'} label="ไม่เกินเวลา" tone="ok" />
+          <Kpi n={pct(hit.n, t.passes) + '%'} label="คิดเป็นสัดส่วนของทั้งฮับ" />
+          <p className="col-span-2 self-center text-xs text-ink-500 sm:col-span-4">{hit.extra}</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <Kpi n={nf(t.passes)} label="ใบทั้งฮับ" />
+          <Kpi n={nf(t.late)} label="เกินเวลา" tone={t.late > 0 ? 'bad' : 'ok'} />
+          <Kpi n={nf(rows.length)} label={`${DIM_TH[dim]}ที่มีข้อมูล`} />
+          <Kpi
+            n={rows[0] ? rows[0].label : '—'}
+            label={`${DIM_TH[dim]}ที่ใช้มากสุด`}
+          />
+        </div>
+      )}
+
+      {/* กราฟแท่งนอน · แท่งเทาคือใบทั้งหมด แท่งแดงซ้อนคือส่วนที่เกินเวลา */}
+      <div className="mt-3">
+        <p className="mb-2 text-xs text-ink-500">
+          สิบสองอันดับแรกตามจำนวนใบ · แถบแดงคือส่วนที่เกินเวลา · กดที่แถวเพื่อเจาะดู
+        </p>
+        <ul className="space-y-[6px]">
+          {top.map((r) => {
+            const on = r.key === focus
+            return (
+              <li key={r.key}>
+                <button
+                  type="button"
+                  className={`flex w-full items-center gap-2 rounded-btn px-2 py-1 text-left ${on ? 'bg-surface-2' : 'hover:bg-ink/5'}`}
+                  onClick={() => setFocus(on ? '' : r.key)}
+                >
+                  <span className="w-[150px] shrink-0 truncate text-sm" title={r.label}>
+                    {r.label}
+                  </span>
+                  <span className="relative h-[18px] flex-1 overflow-hidden rounded-pill bg-ink/10">
+                    <span
+                      className="absolute inset-y-0 left-0 rounded-pill"
+                      style={{ width: `${Math.max(2, (r.n / max) * 100)}%`, background: '#3B82F6' }}
+                    />
+                    {r.late > 0 && (
+                      <span
+                        className="absolute inset-y-0 left-0 rounded-pill"
+                        style={{ width: `${Math.max(2, (r.late / max) * 100)}%`, background: '#DC2626' }}
+                      />
+                    )}
+                  </span>
+                  <span className="w-[86px] shrink-0 text-right font-mono text-sm">
+                    <b>{nf(r.n)}</b>
+                    {r.late > 0 && <span className="ml-1 text-danger-txt">เกิน {nf(r.late)}</span>}
+                  </span>
+                </button>
+              </li>
+            )
+          })}
+          {top.length === 0 && <li className="text-sm text-ink-400">ยังไม่มีข้อมูลในช่วงนี้</li>}
+        </ul>
+      </div>
+    </section>
   )
 }
 
