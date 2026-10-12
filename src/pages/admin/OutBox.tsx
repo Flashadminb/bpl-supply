@@ -140,15 +140,20 @@ function zoneOf(r: { zone: string | null; dir: 'LH' | 'FD' }): string | null {
  * สายหลักใช้ฟ้าของสายหลัก ส่วนโซน D0x ใช้ฟ้าเข้ม แยกให้เห็นว่าคนละชนิดกัน
  * อันหนึ่งคือสาย อีกอันคือสายพาน
  */
-function Zone({ z, dim, big }: { z: string | null; dim?: boolean; big?: boolean }) {
-  const box = big
-    ? 'shrink-0 rounded-lg px-3 py-[6px] text-center font-mono text-base font-extrabold'
-    : 'rounded px-[5px] py-[1px] font-mono text-[10px] font-bold'
-  const w = big ? { minWidth: 66 } : undefined
+function Zone({ z, dim, big, huge }: { z: string | null; dim?: boolean; big?: boolean; huge?: boolean }) {
+  const box = huge
+    ? 'shrink-0 self-center rounded-xl px-5 py-3 text-center font-mono text-4xl font-extrabold leading-none'
+    : big
+      ? 'shrink-0 rounded-lg px-3 py-[6px] text-center font-mono text-base font-extrabold'
+      : 'rounded px-[5px] py-[1px] font-mono text-[10px] font-bold'
+  const w = huge ? { minWidth: 126 } : big ? { minWidth: 66 } : undefined
 
   if (!z)
     return (
-      <span className={box} style={{ background: C.chip, color: C.faint, ...w }}>
+      <span
+        className={huge ? box.replace('text-4xl', 'text-base') : box}
+        style={{ background: C.chip, color: C.faint, ...w }}
+      >
         ไม่มีโซน
       </span>
     )
@@ -614,29 +619,33 @@ function TopOne({
   edge: string
 }) {
   return (
-    <div className="p-3" style={{ ...CARD, border: `2px solid ${edge}` }}>
-      <span className="block text-sm font-semibold" style={{ color: C.mute }}>
-        {label}
-      </span>
-      {r ? (
-        <>
-          <span className="mt-1 block break-words text-xl font-extrabold leading-tight">{r.station}</span>
-          <span className="flex items-center gap-2 font-mono text-xs" style={{ color: C.faint }}>
-            {r.dir === 'FD' && <Zone z={zoneOf(r)} />}
-            {LANE[r.dir]}
-          </span>
-          <div className="mt-1 flex items-baseline gap-3">
-            <span className="text-5xl font-extrabold leading-none" style={{ color, textShadow: `0 0 22px ${edge}44` }}>
-              {nf(value(r))}
-            </span>
-            <Delta now={value(r)} prev={prev(r)} big />
-          </div>
-        </>
-      ) : (
-        <span className="text-sm" style={{ color: C.faint }}>
-          ยังไม่มีข้อมูล
+    <div className="flex items-stretch gap-3 p-3" style={{ ...CARD, border: `2px solid ${edge}` }}>
+      <div className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold" style={{ color: C.mute }}>
+          {label}
         </span>
-      )}
+        {r ? (
+          <>
+            <span className="mt-1 block break-words text-xl font-extrabold leading-tight">{r.station}</span>
+            <span className="block font-mono text-xs" style={{ color: C.faint }}>
+              {LANE[r.dir]}
+            </span>
+            <div className="mt-1 flex items-baseline gap-3">
+              <span className="text-5xl font-extrabold leading-none" style={{ color, textShadow: `0 0 22px ${edge}44` }}>
+                {nf(value(r))}
+              </span>
+              <Delta now={value(r)} prev={prev(r)} big />
+            </div>
+          </>
+        ) : (
+          <span className="text-sm" style={{ color: C.faint }}>
+            ยังไม่มีข้อมูล
+          </span>
+        )}
+      </div>
+      {/* โซนตัวใหญ่อยู่ขวามือ · ที่ว่างข้างชื่อสาขาคือจุดที่ตาไปถึงอยู่แล้ว
+          และเป็นคำถามแรกที่คนดูถาม ว่าสาขาที่หนักสุดอยู่สายพานไหน */}
+      {r && <Zone z={zoneOf(r)} huge />}
     </div>
   )
 }
