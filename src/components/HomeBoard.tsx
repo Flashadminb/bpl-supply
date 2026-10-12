@@ -1,0 +1,403 @@
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useAsync } from '../lib/useAsync'
+import { listAssetTransferRows } from '../lib/api'
+import type { AssetHolding, AssetIssue, Item, OpenBorrowing } from '../lib/types'
+
+/**
+ * แถบบนสุดของหน้าแรกหลังบ้าน
+ *
+ * หน้าเดิมเป็นการ์ดใหญ่ห้าใบที่บอกแค่ตัวเลขรวม กินไปครึ่งจอ
+ * แล้วของที่ต้องลงมือจริง — เครื่องไหนอยู่กับใคร ใกล้ครบกำหนดแล้ว —
+ * ต้องเลื่อนลงไปหาเอง · ที่นี่กลับลำดับใหม่
+ * ตัวเลขรวมย่อให้เล็กที่สุด เอาที่ว่างไปให้รายตัว
+ *
+ * ข้อมูลทั้งหมดรับมาจากหน้าแม่ที่ขอไว้อยู่แล้ว ไม่ได้ยิงถามซ้ำ
+ * ยกเว้นรายการโอนซึ่งหน้าแม่ไม่เคยขอ
+ */
+
+const p2 = (n: number) => String(n).padStart(2, '0')
+
+function minsLeft(iso: string): number {
+  return Math.round((Date.parse(iso) - Date.now()) / 60000)
+}
+
+function leftText(m: number): string {
+  if (m < 0) {
+    const a = Math.abs(m)
+    return a >= 60 ? `เลย ${Math.floor(a / 60)} ชม ${a % 60} น.` : `เลย ${a} นาที`
+  }
+  return m >= 60 ? `เหลือ ${Math.floor(m / 60)} ชม ${m % 60} น.` : `เหลือ ${m} นาที`
+}
+
+/* ------------------------------------------------------------ นาฬิกา */
+
+function Clock({ next }: { next: { code: string; who: string; at: string } | null }) {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  const sec = next ? Math.max(0, Math.round((Date.parse(next.at) - now.getTime()) / 1000)) : 0
+
+  return (
+    <div className="rounded-card bg-dark p-3 text-white">
+      <p className="font-mono text-[10px] text-dark-muted">เวลาตอนนี้</p>
+      <p className="font-mono text-[32px] font-bold leading-none tracking-wide">
+        {p2(now.getHours())}:{p2(now.getMinutes())}:{p2(now.getSeconds())}
+      </p>
+      <p className="mt-1 text-xs text-dark-text">
+        {now.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'short' })}{' '}
+        {now.getFullYear() + 543}
+      </p>
+      {next && (
+        <div className="mt-2 border-t border-dark-3 pt-2">
+          <p className="text-[10px] text-dark-muted">ใกล้ครบกำหนดสุด</p>
+          <p className="truncate text-xs">
+            {next.code} · {next.who}
+          </p>
+          <p className="font-mono text-xl font-bold leading-tight text-brand-500">
+            {p2(Math.floor(sec / 3600))}:{p2(Math.floor(sec / 60) % 60)}:{p2(sec % 60)}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------ แถบวิ่ง */
+
+function Ticker({ lines }: { lines: { text: string; bad?: boolean }[] }) {
+  if (lines.length === 0) return null
+  /* วิ่งสองรอบต่อกัน เพื่อให้วนแล้วไม่มีช่องว่างโผล่ตรงรอยต่อ */
+  const run = [...lines, ...lines]
+  return (
+    <div className="mb-2 overflow-hidden rounded-card bg-dark py-[7px]">
+      <span className="inline-block animate-[hbTick_30s_linear_infinite] whitespace-nowrap">
+        {run.map((l, i) => (
+          <span
+            key={i}
+            className={`px-4 text-[12.5px] ${l.bad ? 'text-danger-txt' : 'text-brand-500'}`}
+          >
+            ● {l.text}
+          </span>
+        ))}
+      </span>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------ การ์ด */
+
+interface CardDef {
+  key: string
+  n: number
+  label: string
+  tone?: 'bad' | 'warn' | 'go'
+  blink?: boolean
+  to: string
+  head: string
+  note?: string
+  rows: string[]
+  more?: number
+}
+
+function Card({ c }: { c: CardDef }) {
+  const tone =
+    c.tone === 'bad'
+      ? 'bg-danger-bg text-danger-txt'
+      : c.tone === 'warn'
+        ? 'bg-warn-bg text-warn-txt'
+        : c.tone === 'go'
+          ? 'bg-brand-50 text-ink'
+          : 'bg-surface-2 text-ink'
+
+  return (
+    <Link
+      to={c.to}
+      className={`group relative block rounded-card border-2 border-transparent p-2 ${tone} ${
+        c.blink ? 'animate-[hbBlink_1.25s_ease-in-out_infinite]' : ''
+      }`}
+    >
+      <b className="block font-mono text-xl font-bold leading-none">{c.n.toLocaleString('th-TH')}</b>
+      <span className="mt-[2px] block text-[10.5px] opacity-80">{c.label}</span>
+
+      {/* กล่องรายละเอียด · ชี้หรือโฟกัสแล้วกาง เลื่อนในกล่องได้ถ้าของเยอะ */}
+      <span className="pointer-events-none absolute left-0 top-[calc(100%+6px)] z-20 hidden w-[264px] overflow-hidden rounded-card border border-line bg-surface text-ink shadow-lg group-hover:block group-focus-within:block">
+        <span className="block border-b border-line-2 px-3 py-2 text-xs font-bold">{c.head}</span>
+        {c.note && <span className="block px-3 pt-1 text-[10.5px] text-ink-400">{c.note}</span>}
+        <span className="block max-h-[188px] overflow-auto px-3 py-1">
+          {c.rows.map((r, i) => (
+            <span key={i} className="block border-b border-line-2 py-[3px] text-[11.5px] last:border-0">
+              {r}
+            </span>
+          ))}
+          {c.rows.length === 0 && <span className="block py-2 text-[11.5px] text-ink-400">ไม่มีรายการ</span>}
+        </span>
+        {c.more && c.more > 0 ? (
+          <span className="block border-t border-line-2 bg-surface-2 px-3 py-[6px] text-center text-[11.5px] text-ink-500">
+            และอีก {c.more} รายการ · กดเพื่อดูทั้งหมด
+          </span>
+        ) : null}
+      </span>
+    </Link>
+  )
+}
+
+/* ------------------------------------------------------------ ตัวหลัก */
+
+export function HomeBoard({
+  holdings,
+  issues,
+  items,
+  openBorrow,
+  pendingApprovals,
+  sheetRows,
+}: {
+  holdings: AssetHolding[]
+  issues: AssetIssue[]
+  items: Item[]
+  openBorrow: OpenBorrowing[]
+  pendingApprovals: number
+  sheetRows: { label: string; n: number }[]
+}) {
+  /* โอนที่ปลายทางยังไม่กดรับ · หน้าแม่ไม่เคยขอข้อมูลนี้ จึงขอเองที่นี่
+     ย้อนหลังเจ็ดวันพอ ของที่ค้างนานกว่านั้นไม่ได้แก้ด้วยการเตือนบนหน้าแรก */
+  const moves = useAsync(
+    () =>
+      listAssetTransferRows({
+        fromISO: new Date(Date.now() - 7 * 864e5).toISOString(),
+        toISO: new Date().toISOString(),
+        limit: 200,
+      }),
+    [],
+  )
+  const waiting = (moves.data ?? []).filter((m) => m.state === 'waiting')
+  const todayMoves = (moves.data ?? []).filter(
+    (m) => new Date(m.created_at).toDateString() === new Date().toDateString(),
+  )
+
+  const late = useMemo(
+    () =>
+      holdings
+        .filter((h) => h.due_at && Date.now() > Date.parse(h.due_at))
+        .sort((a, b) => Date.parse(a.due_at as string) - Date.parse(b.due_at as string)),
+    [holdings],
+  )
+
+  /** เรียงจากใกล้ครบกำหนดสุด · ของที่เลยแล้วขึ้นก่อน เพราะต้องตามก่อน */
+  const soon = useMemo(
+    () =>
+      holdings
+        .filter((h) => h.due_at)
+        .sort((a, b) => Date.parse(a.due_at as string) - Date.parse(b.due_at as string)),
+    [holdings],
+  )
+  const next = soon.find((h) => Date.parse(h.due_at as string) > Date.now())
+
+  const out = items.filter((i) => i.is_active && i.qty_on_hand === 0)
+  const low = items.filter((i) => i.is_active && i.qty_on_hand > 0 && i.qty_on_hand <= i.min_qty)
+  const fresh = issues.filter((i) => Date.now() - Date.parse(i.reported_at) < 24 * 3600_000)
+  const sheetTotal = sheetRows.reduce((n, r) => n + r.n, 0)
+
+  const cards: CardDef[] = [
+    {
+      key: 'late',
+      n: late.length,
+      label: 'เลยกำหนดคืน',
+      tone: 'bad',
+      to: '/admin/assets-out',
+      head: `เลยกำหนดคืน · ${new Set(late.map((h) => h.holder_code)).size} คน`,
+      rows: late.slice(0, 20).map((h) => `${h.asset_code} · ${h.holder_name ?? '—'} · ${leftText(minsLeft(h.due_at as string))}`),
+      more: Math.max(0, late.length - 20),
+    },
+    {
+      key: 'wait',
+      n: waiting.length,
+      label: 'โอนรอรับ',
+      tone: 'bad',
+      blink: waiting.length > 0,
+      to: '/admin/asset-moves',
+      head: 'โอนแล้วปลายทางยังไม่กดรับ',
+      note: 'ของยังนับเป็นของคนส่งจนกว่าปลายทางจะกดรับ',
+      rows: waiting
+        .slice(0, 20)
+        .map((m) => `${m.asset_code} · ${m.from_name ?? '—'} → ${m.to_name ?? '—'}`),
+      more: Math.max(0, waiting.length - 20),
+    },
+    {
+      key: 'today',
+      n: todayMoves.length,
+      label: 'โอนวันนี้',
+      to: '/admin/asset-moves',
+      head: 'การโอนของวันนี้',
+      rows: [
+        `รับแล้ว ${todayMoves.filter((m) => m.state === 'claimed').length} · รอรับ ${todayMoves.filter((m) => m.state === 'waiting').length}`,
+        `ยกเลิก ${todayMoves.filter((m) => m.state === 'cancelled').length}`,
+      ],
+    },
+    {
+      key: 'fresh',
+      n: fresh.length,
+      label: 'แจ้งซ่อมใหม่',
+      tone: fresh.length > 0 ? 'bad' : undefined,
+      to: '/admin/asset-moves',
+      head: 'แจ้งเข้ามาใน 24 ชม',
+      rows: fresh.slice(0, 20).map((i) => `${i.asset_code} · ${i.symptom}`),
+      more: Math.max(0, fresh.length - 20),
+    },
+    {
+      key: 'issue',
+      n: issues.length,
+      label: 'ชำรุดค้าง',
+      tone: issues.length > 0 ? 'warn' : undefined,
+      to: '/admin/asset-moves',
+      head: 'อาการที่ยังไม่เคลียร์',
+      rows: issues.slice(0, 20).map((i) => `${i.asset_code} · ${i.symptom}`),
+      more: Math.max(0, issues.length - 20),
+    },
+    {
+      key: 'out',
+      n: out.length,
+      label: 'หมดสต็อก',
+      tone: out.length > 0 ? 'bad' : undefined,
+      to: '/admin/stock',
+      head: 'หมดสต็อกแล้ว',
+      rows: out.slice(0, 20).map((i) => `${i.name} · ${i.sku}`),
+      more: Math.max(0, out.length - 20),
+    },
+    {
+      key: 'low',
+      n: low.length,
+      label: 'ใกล้หมด',
+      tone: low.length > 0 ? 'warn' : undefined,
+      to: '/admin/stock',
+      head: 'ต่ำกว่าจุดสั่งซื้อ',
+      rows: low.slice(0, 20).map((i) => `${i.name} · เหลือ ${i.qty_on_hand} ขั้นต่ำ ${i.min_qty}`),
+      more: Math.max(0, low.length - 20),
+    },
+    {
+      key: 'appr',
+      n: pendingApprovals,
+      label: 'คำขอรออนุมัติ',
+      tone: pendingApprovals > 0 ? 'warn' : undefined,
+      to: '/admin/approvals',
+      head: 'คำขอเบิกที่รออยู่',
+      rows: [`${pendingApprovals} ใบ`],
+    },
+    {
+      key: 'sheet',
+      n: sheetTotal,
+      label: 'ค้างส่งชีต',
+      tone: sheetTotal > 0 ? 'go' : undefined,
+      to: '/admin/export',
+      head: 'รอส่งเข้า Google Sheet',
+      rows: sheetRows.map((r) => `${r.label} ${r.n.toLocaleString('th-TH')} บรรทัด`),
+    },
+  ]
+
+  const ticker = [
+    fresh.length > 0 && { text: `แจ้งซ่อมใหม่ ${fresh.length} เรื่อง`, bad: true },
+    waiting.length > 0 && { text: `โอนรอปลายทางกดรับ ${waiting.length} เครื่อง`, bad: true },
+    late.length > 0 && { text: `เลยกำหนดคืน ${late.length} เครื่อง` },
+    out.length > 0 && { text: `ของหมดสต็อก ${out.length} รายการ` },
+    openBorrow.length > 0 && { text: `สิ้นเปลืองยืมค้าง ${openBorrow.length} รายการ` },
+    sheetTotal > 0 && { text: `ค้างส่งชีต ${sheetTotal} บรรทัด` },
+  ].filter(Boolean) as { text: string; bad?: boolean }[]
+
+  return (
+    <section className="mb-4">
+      <style>{`
+        @keyframes hbTick { from { transform: translateX(0) } to { transform: translateX(-50%) } }
+        @keyframes hbBlink { 0%,100% { border-color: transparent } 50% { border-color: #E24B4A } }
+      `}</style>
+
+      <Ticker lines={ticker} />
+
+      <div className="mb-3 grid gap-2 lg:grid-cols-[196px_minmax(0,1fr)]">
+        <Clock
+          next={
+            next
+              ? { code: next.asset_code, who: next.holder_name ?? '—', at: next.due_at as string }
+              : null
+          }
+        />
+        <div>
+          <p className="label mb-1">
+            ต้องจัดการตอนนี้ <span className="text-ink-400">ชี้ที่การ์ดเพื่อดูรายตัว</span>
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+            {cards.map((c) => (
+              <Card key={c.key} c={c} />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* แผงแจ้งซ่อม · ขึ้นเฉพาะตอนมีเรื่องใหม่ ไม่มีก็ไม่ขึ้นทั้งแผง */}
+      {fresh.length > 0 && (
+        <div className="mb-3 rounded-card border-2 border-danger bg-danger-bg p-3">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <span className="rounded-pill bg-danger px-3 text-xs text-white">แจ้งซ่อมใหม่</span>
+            <b className="text-danger-txt">{fresh.length} เรื่องเข้ามาใน 24 ชม</b>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            {fresh.slice(0, 4).map((i) => (
+              <div key={i.id} className="rounded-card bg-surface px-3 py-2">
+                <p className="text-sm">
+                  <b className="font-mono">{i.asset_code}</b> · {i.symptom}
+                </p>
+                <p className="text-xs text-ink-400">
+                  {i.reported_name ?? '—'} · {new Date(i.reported_at).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ตาราง Asset รายเครื่อง · หัวใจของหน้านี้ */}
+      <div className="rounded-card bg-surface-2 p-3">
+        <div className="mb-2 flex flex-wrap items-baseline gap-2">
+          <span className="font-display text-base">Asset ที่ออกไปอยู่กับคน</span>
+          <span className="text-xs text-ink-500">เรียงจากใกล้ครบกำหนดสุด · {soon.length} เครื่อง</span>
+          <span className="flex-1" />
+          <span className="text-[10.5px] text-ink-400">เขียว ยังเหลือเวลา · เหลือง ใกล้ครบ · แดง เลยแล้ว</span>
+        </div>
+        <ul className="space-y-1">
+          {soon.slice(0, 8).map((h) => {
+            const m = minsLeft(h.due_at as string)
+            const over = m < 0
+            const warn = !over && m <= 60
+            const col = over ? '#A32D2D' : warn ? '#BA7517' : '#0F6E56'
+            const bg = over ? 'bg-danger-bg text-danger-txt' : warn ? 'bg-warn-bg text-warn-txt' : 'bg-success-bg text-success-txt'
+            /* แถบยาวตามเวลาที่ใช้ไป · ไม่รู้เวลาเริ่มก็ประมาณจากกำหนดแปดชั่วโมง */
+            const pct = over ? 100 : Math.max(4, Math.min(100, 100 - (m / 480) * 100))
+            return (
+              <li key={h.out_item_id} className="grid grid-cols-[78px_minmax(0,1fr)_96px] items-center gap-2 rounded-card bg-surface px-2 py-[6px]">
+                <span className="font-mono text-xs font-bold">{h.asset_code}</span>
+                <span className="min-w-0">
+                  <span className="block truncate text-[12.5px]">{h.holder_name ?? '—'}</span>
+                  <span className="block text-[10px] text-ink-400">{h.type_name}</span>
+                  <span className="mt-1 block h-[7px] overflow-hidden rounded-pill bg-ink/10">
+                    <i className="block h-full rounded-pill" style={{ width: `${pct}%`, background: col }} />
+                  </span>
+                </span>
+                <span className={`rounded-pill px-2 py-[3px] text-center font-mono text-[12px] font-bold ${bg}`}>
+                  {leftText(m)}
+                </span>
+              </li>
+            )
+          })}
+          {soon.length === 0 && <li className="py-3 text-center text-sm text-ink-400">ไม่มีเครื่องที่ออกไป</li>}
+        </ul>
+        {soon.length > 8 && (
+          <Link to="/admin/assets-out" className="mt-2 block text-center text-xs text-ink-500 underline">
+            ดูทั้งหมดอีก {soon.length - 8} เครื่อง
+          </Link>
+        )}
+      </div>
+    </section>
+  )
+}

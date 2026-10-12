@@ -9,7 +9,6 @@ import {
   listAllItemsForAdmin,
   listAssetHoldings,
   listBadReturns,
-  listByRows,
   listDepartments,
   listOpenAssetIssues,
   listOpenBorrowings,
@@ -19,7 +18,8 @@ import {
 import { ErrorBox, Loading } from '../../components/ui'
 import { StockLevels } from '../../components/StockLevels'
 import { OutstandingNow } from '../../components/OutstandingNow'
-import { STATUS_TH, fmtDateTime, relativeAge, statusClass } from '../../lib/format'
+import { HomeBoard } from '../../components/HomeBoard'
+import { STATUS_TH, fmtDateTime, statusClass } from '../../lib/format'
 
 /**
  * หน้าแรก — ตอบคำถามเดียว: ตอนนี้มีอะไรต้องจัดการบ้าง
@@ -38,7 +38,6 @@ const RANGES = [
   { days: 90, label: '90 วัน' },
 ]
 
-const LATE_HOURS = 18
 
 const COND_TH: Record<string, string> = { damaged: 'ชำรุด', lost: 'สูญหาย', ok: 'ใช้ได้' }
 
@@ -67,7 +66,6 @@ export default function Dashboard() {
   const held = useAsync(() => listAssetHoldings(false), [])
   const assetIssues = useAsync(() => listOpenAssetIssues(50), [])
   const assetUnsent = useAsync(() => countAssetExportRows({ fromISO, toISO }), [fromISO])
-  const byPending = useAsync(() => listByRows({ status: 'pending', limit: 200 }), [])
 
   // แผนกอยู่ที่ตัวคน ไม่ได้อยู่ที่ใบเบิก จึงกรองหลังดึงมาแล้ว
   const rows = useMemo(() => {
@@ -80,125 +78,19 @@ export default function Dashboard() {
     const all = pendingReqs.data ?? []
     return dept ? all.filter((r) => r.profiles?.dept_code === dept) : all
   }, [pendingReqs.data, dept])
-  const oldestPending = pending[0]
 
-  const low = (items.data ?? []).filter((i) => i.is_active && i.qty_on_hand <= i.min_qty)
-  const outOfStock = low.filter((i) => i.qty_on_hand === 0)
   const openBorrow = borrow.data ?? []
-  const lateBorrow = openBorrow.filter(
-    (b) => Date.now() - Date.parse(b.created_at) >= LATE_HOURS * 3600_000,
-  )
   const pendingSheet = unsent.data?.pending ?? 0
   const bad = badReturns.data ?? []
 
   /* ----------------------------------------------------------- ฝั่ง Asset */
   const holdings = held.data ?? []
   const issues = assetIssues.data ?? []
-  const byCount = (byPending.data ?? []).length
   const assetPendingSheet = assetUnsent.data?.pending ?? 0
 
-  const lateAssets = holdings.filter((h) => h.due_at && Date.now() > Date.parse(h.due_at))
   const issueAssets = new Set(issues.map((i) => i.asset_code))
 
   /* ------------------------------------------------ เรื่องที่ต้องลงมือ */
-  /** แจ้งซ่อมที่เพิ่งแจ้งมาใน 24 ชั่วโมง — เร่งกว่ากองที่ค้างมานาน */
-  const freshIssues = issues.filter(
-    (i) => Date.now() - Date.parse(i.reported_at) < 24 * 3600_000,
-  )
-  const lost = bad.filter((b) => b.condition === 'lost')
-
-  // เรียงตามความเร่ง ของที่ไม่ได้คืนกับของหายมาก่อนเสมอ
-  const todo = [
-    lateAssets.length > 0 && {
-      key: 'lateasset',
-      tone: 'danger' as const,
-      to: '/admin/assets-out',
-      title: `ไม่ได้คืนเกินเวลา ${lateAssets.length} เครื่อง`,
-      detail: `${new Set(lateAssets.map((h) => h.holder_code)).size} คนที่ต้องตาม`,
-    },
-    lateBorrow.length > 0 && {
-      key: 'lateitem',
-      tone: 'danger' as const,
-      to: '/admin/outstanding',
-      title: `วัสดุยืม-คืนค้างเกิน ${LATE_HOURS} ชม. ${lateBorrow.length} รายการ`,
-      detail: 'ประมาณ 2 กะแล้ว',
-    },
-    lost.length > 0 && {
-      key: 'lost',
-      tone: 'danger' as const,
-      to: '/admin/evidence',
-      title: `แจ้งของสูญหาย ${lost.length} ครั้ง`,
-      detail: lost
-        .slice(0, 2)
-        .map((b) => b.requisition_items?.items?.name ?? '—')
-        .join(', '),
-    },
-    freshIssues.length > 0 && {
-      key: 'freshissue',
-      tone: 'danger' as const,
-      // พาไปหน้าสถานะแจ้งซ่อมโดยตรง ไม่ใช่ทะเบียนที่ต้องไล่หาเครื่องเองอีกที
-      to: '/admin/asset-moves?tab=issue',
-      title: `แจ้งซ่อมใหม่วันนี้ ${freshIssues.length} ใบ`,
-      detail: freshIssues[0] ? `${freshIssues[0].asset_code} · ${freshIssues[0].symptom}` : '',
-    },
-    outOfStock.length > 0 && {
-      key: 'out',
-      tone: 'danger' as const,
-      to: '/admin/stock',
-      title: `ของหมดสต็อก ${outOfStock.length} รายการ`,
-      detail: outOfStock.slice(0, 3).map((i) => i.name).join(', '),
-    },
-    pending.length > 0 && {
-      key: 'approve',
-      tone: 'warn' as const,
-      to: '/admin/approvals',
-      title: `รออนุมัติ ${pending.length} คำขอ`,
-      detail: oldestPending ? `เก่าสุดรอมาแล้ว ${relativeAge(oldestPending.created_at)}` : 'กดเพื่ออนุมัติ',
-    },
-    byCount > 0 && {
-      key: 'by',
-      tone: 'warn' as const,
-      to: '/admin/by',
-      title: `บาร์โค้ด BY รอตัดสต็อก ${byCount} รายการ`,
-      detail: 'หน้างานส่งรูปมาแล้ว รอไปตัดในระบบ BY',
-    },
-    low.length - outOfStock.length > 0 && {
-      key: 'low',
-      tone: 'warn' as const,
-      to: '/admin/stock',
-      title: `ของใกล้หมด ${low.length - outOfStock.length} รายการ`,
-      detail: 'ต่ำกว่าจุดสั่งซื้อแล้ว',
-    },
-    bad.length - lost.length > 0 && {
-      key: 'bad',
-      tone: 'warn' as const,
-      to: '/admin/evidence',
-      title: `คืนของแบบชำรุด ${bad.length - lost.length} ครั้ง`,
-      detail: `ใน ${days} วันที่ผ่านมา`,
-    },
-    // กองชำรุดที่ค้างสะสม เห็นเฉพาะเจ้าของระบบ
-    isOwner &&
-      issues.length > 0 && {
-        key: 'issue',
-        tone: 'mute' as const,
-        to: '/admin/assets',
-        title: `เครื่องชำรุดยังไม่เคลียร์ ${issueAssets.size} เครื่อง`,
-        detail: 'สะสมทั้งหมด — เคลียร์เมื่อซ่อมเสร็จ',
-      },
-    pendingSheet + assetPendingSheet > 0 && {
-      key: 'sheet',
-      tone: 'mute' as const,
-      to: '/admin/export',
-      title: `ค้างส่งเข้า Google Sheet ${pendingSheet + assetPendingSheet} บรรทัด`,
-      detail: `สิ้นเปลือง ${pendingSheet} · Asset ${assetPendingSheet}`,
-    },
-  ].filter(Boolean) as { key: string; tone: 'danger' | 'warn' | 'mute'; to: string; title: string; detail: string }[]
-
-  const toneClass = {
-    danger: 'border-danger/25 bg-danger-bg text-danger-txt',
-    warn: 'border-warn/30 bg-warn-bg text-warn-txt',
-    mute: 'border-line bg-surface text-ink-700',
-  }
 
   return (
     <div className="mx-auto max-w-[1180px]">
@@ -234,24 +126,24 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ---------------------------------------------- ต้องจัดการตอนนี้ */}
-      <section className="mb-5">
-        <h2 className="mb-2 font-display text-md">ต้องจัดการตอนนี้</h2>
-        {todo.length === 0 ? (
-          <p className="rounded-card border border-success/25 bg-success-bg px-4 py-3 text-sm text-success-txt">
-            ไม่มีอะไรค้าง ทุกอย่างเรียบร้อย
-          </p>
-        ) : (
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {todo.map((t) => (
-              <Link key={t.key} to={t.to} className={`rounded-card border px-4 py-3 ${toneClass[t.tone]}`}>
-                <p className="font-display text-base">{t.title}</p>
-                {t.detail && <p className="mt-[2px] truncate text-sm opacity-90">{t.detail}</p>}
-              </Link>
-            ))}
-          </div>
-        )}
+      {/*
+        แผงบนสุด · นาฬิกา แถบวิ่ง การ์ดชี้ได้ แผงแจ้งซ่อม และตาราง Asset รายเครื่อง
+        แทนการ์ดใหญ่ห้าใบของเดิมที่บอกแค่ตัวเลขรวมแล้วกินไปครึ่งจอ
+        ข้อมูลส่งต่อจากที่หน้านี้ขอไว้อยู่แล้ว ไม่ได้ยิงถามซ้ำ ยกเว้นรายการโอน
+      */}
+      <HomeBoard
+        holdings={holdings}
+        issues={issues}
+        items={items.data ?? []}
+        openBorrow={openBorrow}
+        pendingApprovals={pending.length}
+        sheetRows={[
+          { label: 'Asset', n: assetPendingSheet },
+          { label: 'สิ้นเปลือง', n: pendingSheet },
+        ]}
+      />
 
+      <section className="mb-5">
         {isOwner && issues.length > 0 && (
           <div className="mt-2 rounded-card border border-warn/30 bg-warn-bg p-3">
             <div className="mb-1 flex items-center justify-between gap-2">
