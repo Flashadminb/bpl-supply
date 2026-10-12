@@ -22,6 +22,8 @@ export interface BreakCardOption {
   busy: boolean
   busy_people: number | null
   busy_since: string | null
+  /** แผนกนี้ใช้กฎใบละคนไหม · ปิดอยู่ = ปล่อยใบละหลายคนได้เหมือนเดิม */
+  one_per_card: boolean
 }
 
 export interface BreakReason {
@@ -250,6 +252,67 @@ export async function issueBreak(args: {
     p_ban_reason: args.banReason ?? null,
     p_supplier: args.supplier ?? null,
   })
+}
+
+/* ─────────────────────── ปล่อยหลายใบรวดเดียว ─────────────────────── */
+
+export interface BreakIssueRow {
+  card: string
+  supplier?: string | null
+  /** ว่าง = ใช้นาทีรวมของรอบ */
+  minutes?: number | null
+  /** ว่าง = ใช้เหตุผลรวมของรอบ */
+  reason?: string | null
+  nickname?: string | null
+  photos: BreakPhotoIn[]
+}
+
+export interface BreakIssueManyResult {
+  ok: true
+  n: number
+  issued_at: string
+  in_ban: boolean
+  ban_note: string | null
+  rows: {
+    id: number
+    ref_no: string
+    card: string
+    minutes: number
+    reason: string
+    supplier: string | null
+    due_at: string
+  }[]
+}
+
+/**
+ * ปล่อยหลายใบในครั้งเดียว · ใบละหนึ่งคน
+ *
+ * ทั้งหมดขึ้นหรือไม่ขึ้นเลยสักใบ ฐานข้อมูลตรวจทุกแถวให้ครบก่อนค่อยเขียน
+ * ถ้ามีหัวหน้าอีกคนคว้าบัตรไปใบหนึ่งระหว่างนั้น จะล้มทั้งชุดแล้วบอกว่าใบไหนชน
+ * รูปอัปไว้แล้ว กดส่งใหม่จึงใช้เวลาแค่วินาทีเดียว
+ *
+ * เวลาเริ่มเดินพร้อมกันทุกใบตอนกดส่ง ไม่ใช่ตอนถ่ายรูปแต่ละคน
+ */
+export async function breakIssueMany(a: {
+  rows: BreakIssueRow[]
+  reason: string
+  minutes?: number | null
+  banReason?: string | null
+}) {
+  return rpc<BreakIssueManyResult>('break_issue_many', {
+    p_rows: a.rows,
+    p_reason: a.reason,
+    p_minutes: a.minutes ?? null,
+    p_ban_reason: a.banReason ?? null,
+  })
+}
+
+/** เปิด-ปิดกฎใบละคนรายแผนก · สวิตช์ของทั้งกฎ */
+export async function breakGroupOnePerCard(code: string, on: boolean) {
+  return rpc<{ ok: true; code: string; cards: number; cap: number }>(
+    'break_group_one_per_card',
+    { p_code: code, p_on: on },
+  )
 }
 
 /* ───────────────────────────── ซัพ ───────────────────────────── */
@@ -766,6 +829,8 @@ export interface BreakSettings {
     active: boolean
     cards: number
     users: string[]
+    /** แผนกนี้ใช้กฎใบละคนไหม */
+    one_per_card: boolean
   }[]
   cards: {
     code: string

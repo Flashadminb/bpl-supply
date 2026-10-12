@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { setTitleBadge } from './pageTitle'
 import { supabase } from './supabase'
 import { useAuth } from './auth'
 import { MANAGER_ROLES } from './roles'
@@ -74,13 +75,12 @@ export function usePendingApprovals(): Pending {
     }
   }, [isManager, check])
 
-  // ขึ้นตัวเลขบนแท็บด้วย เผื่อเปิดเว็บทิ้งไว้แล้วไปทำอย่างอื่น
+  /* ขึ้นตัวเลขบนแท็บด้วย เผื่อเปิดเว็บทิ้งไว้แล้วไปทำอย่างอื่น
+     ไม่ได้เขียน document.title เองแล้ว เพราะชื่อหน้าก็เขียนอยู่อีกที่
+     สองคนเขียนที่เดียวกันคือชื่อแท็บกระพริบไปมา · ส่งตัวเลขเข้าไปที่เดียวพอ */
   useEffect(() => {
-    const base = 'BPL SUPPLY'
-    document.title = count > 0 ? `(${count}) ${base}` : base
-    return () => {
-      document.title = base
-    }
+    setTitleBadge(count)
+    return () => setTitleBadge(0)
   }, [count])
 
   return { count, oldestAt, reload: () => void check() }

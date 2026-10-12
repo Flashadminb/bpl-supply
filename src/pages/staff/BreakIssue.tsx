@@ -5,6 +5,7 @@ import { useAsync } from '../../lib/useAsync'
 import { stampLines } from '../../lib/image'
 import { PhotoSteps, shotsToPhotos, type Shot } from '../../components/PhotoSteps'
 import { BreakBanBar } from '../../components/BreakBanBar'
+import { BreakIssueMany } from '../../components/BreakIssueMany'
 import { ErrorBox, Loading, EmptyState, Spinner } from '../../components/ui'
 import { StaffPage, TopBar } from '../../components/Shell'
 import { deptName } from '../../lib/deptNames'
@@ -244,10 +245,12 @@ export default function BreakIssue() {
       {done && (
         <div className="mb-4 rounded-card border border-success/30 bg-success-bg p-4 text-center">
           <p className="font-display text-md text-success-txt">
-            ยื่น {done.card} แล้ว · {done.people} คน
+            {done.minutes === 0 ? `ปล่อยแล้ว ${done.people} ใบ` : `ยื่น ${done.card} แล้ว · ${done.people} คน`}
           </p>
           <p className="mt-1 text-sm text-success-txt">
-            เวลาเริ่มเดินแล้ว · ครบกำหนดใน {done.minutes} นาที
+            {done.minutes === 0
+              ? 'เวลาเริ่มเดินพร้อมกันทุกใบแล้ว · แจกบัตรตามที่ถ่ายไว้'
+              : `เวลาเริ่มเดินแล้ว · ครบกำหนดใน ${done.minutes} นาที`}
           </p>
           <button type="button" className="btn-ghost mt-3 px-4 py-2 text-sm" onClick={() => setDone(null)}>
             ปล่อยใบถัดไป
@@ -462,6 +465,30 @@ export default function BreakIssue() {
             เวลาเริ่มเดินตอนกดยื่นบัตร ไม่ใช่ตอนถึง รปภ — เผื่อเวลาเดินไว้ในนาทีนี้แล้ว
           </p>
 
+          {/*
+            แผนกที่เปิดกฎใบละคนใช้หน้าถ่ายทีละคนแทนฟอร์มเดิมทั้งก้อน
+            แผนกที่ยังไม่เปิดไม่เห็นอะไรต่างจากเดิมเลยแม้แต่นิดเดียว
+            สวิตช์อยู่ที่หลังบ้าน แท็บบัตรและสิทธิ์
+          */}
+          {chosen?.one_per_card ? (
+            <BreakIssueMany
+              cards={list.filter((c) => c.group_code === chosen.group_code)}
+              reasons={rs}
+              suppliers={sups.data ?? []}
+              stampBase={stamp}
+              banOn={Boolean(banNow)}
+              banWhy={banWhy}
+              onCancel={() => setCard(null)}
+              onDone={(n) => {
+                setDone({ card: `${n} ใบ`, people: n, minutes: 0 })
+                setCard(null)
+                setTick((x) => x + 1)
+                cards.reload()
+              }}
+            />
+          ) : (
+          <>
+
           {/* ───────── ซัพ ───────── */}
           {/*
             วางไว้ก่อนชื่อเล่นและก่อนรูป เพราะเป็นช่องบังคับ
@@ -529,6 +556,8 @@ export default function BreakIssue() {
           <p className="mt-2 text-xs text-ink-500">
             รูปขึ้น Drive คนละโฟลเดอร์กับหลักฐานซัพพลาย · รปภ เห็นรูปใบแรกตอนสแกนบัตร
           </p>
+          </>
+          )}
 
           {err && (
             <p className="mt-3 rounded-btn bg-danger-bg px-3 py-2 text-sm text-danger-txt">{err}</p>

@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { usePageTitle } from '../../lib/pageTitle'
 import { WorkLinks } from '../../components/WorkLinks'
 import { useAuth } from '../../lib/auth'
 import { usePendingApprovals } from '../../lib/usePendingApprovals'
@@ -246,6 +247,19 @@ export default function AdminLayout() {
       return next
     })
   const here = useLocation().pathname
+
+  /* ชื่อแท็บเอาจากชื่อเมนูที่ตรงกับ path · เมนูเปลี่ยนชื่อเมื่อไหร่ แท็บก็เปลี่ยนตาม
+     เลือกอันที่ path ยาวสุดที่ยังตรง เพราะ /admin ตรงกับทุกหน้าในหลังบ้าน */
+  const pageName = useMemo(() => {
+    const all = GROUPS.flatMap((g) => [...(g.links ?? []), ...(g.subs ?? []).flatMap((x) => x.links)])
+    let best: { to: string; label: string } | null = null
+    for (const l of all) {
+      const hit = l.end ? here === l.to : here === l.to || here.startsWith(l.to + '/')
+      if (hit && (!best || l.to.length > best.to.length)) best = l
+    }
+    return best?.label ?? 'หลังบ้าน'
+  }, [here])
+  usePageTitle(pageName)
   const pending = usePendingApprovals()
   const exports = usePendingExports()
   const meetings = usePendingMeetings()

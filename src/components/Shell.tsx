@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { MANAGER_ROLES } from '../lib/roles'
 import { useCart } from '../lib/cart'
+import { usePageTitle } from '../lib/pageTitle'
 
 /** หัวหน้าจอฝั่งพนักงาน — พื้นเหลือง ตัวอักษรต้องเป็น ink เสมอ */
 export function TopBar({
@@ -17,6 +18,9 @@ export function TopBar({
   tone?: 'yellow' | 'plain'
 }) {
   const nav = useNavigate()
+  /* แถบหัวรู้ชื่อหน้าอยู่แล้ว เอาไปตั้งชื่อแท็บด้วยเลย
+     ไม่ต้องไล่แก้ทีละหน้า และไม่มีตารางชื่อหน้าอีกชุดให้ลืมอัป */
+  usePageTitle(title)
   const bg = tone === 'yellow' ? 'bg-brand-500 text-ink' : 'bg-surface text-ink border-b border-line'
   return (
     <header className={`safe-t sticky top-0 z-30 ${bg}`}>
