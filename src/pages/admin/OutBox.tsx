@@ -810,16 +810,14 @@ function ZoneTv({ rows, vs }: { rows: OutCalc[]; vs: string }) {
 
   return (
     <>
-      <p className="mb-2 text-[11px]" style={{ color: C.faint }}>
-        แยกตามโซนสายพาน · {vs} · ตัวเลขซ้ายคือเข้าคลังแต่ไม่สแกนออก ขวาคือสแกนออกแต่รถไม่ออก · ไม่รวมสายหลัก
-      </p>
+      <ZoneKey vs={vs} />
       {/* สองแถวสามช่อง ยืดเต็มความสูงจอ · วัดกับ 1920x1080 แล้วลงพอดีไม่มีแถบเลื่อน
           แถวเป็น minmax(min-content, 1fr) ไม่ใช่ 1fr เฉย ๆ เพราะถ้าเปิดบนจอเตี้ยกว่าทีวี
           ช่องจะบีบจนรายชื่อสาขาหาย · ยอมให้หน้าเลื่อนดีกว่าตัดของที่ค้างทิ้งเงียบ ๆ */}
       <div
         className="grid gap-3 md:grid-cols-2 xl:grid-cols-3"
         style={{
-          minHeight: 'calc(100vh - 190px)',
+          minHeight: 'calc(100vh - 212px)',
           gridTemplateRows: 'repeat(2, minmax(min-content, 1fr))',
           gridAutoRows: 'minmax(min-content, 1fr)',
         }}
@@ -834,6 +832,57 @@ function ZoneTv({ rows, vs }: { rows: OutCalc[]; vs: string }) {
         )}
       </div>
     </>
+  )
+}
+
+/**
+ * แถบบอกว่าสีไหนคืออะไร
+ *
+ * จอนี้ใช้สีสื่อความหมายสามชุดพร้อมกัน คือสีของตัวเลขสองชนิด สีของลูกศรขึ้นลง
+ * และสีเทาที่แปลว่าไม่มีของค้าง · คนที่เดินผ่านมาดูครั้งแรกไม่มีทางเดาถูกเอง
+ * จึงเขียนไว้บนจอเลย ไม่ใช่ไปอยู่ในคู่มือที่ไม่มีใครเปิด
+ */
+function ZoneKey({ vs }: { vs: string }) {
+  const item = (swatch: React.ReactNode, text: string) => (
+    <span className="flex items-center gap-1.5">
+      {swatch}
+      <span className="text-[12px]" style={{ color: C.mute }}>
+        {text}
+      </span>
+    </span>
+  )
+  const num = (color: string, text: string) => (
+    <span className="rounded px-1.5 py-[1px] font-mono text-[13px] font-bold" style={{ background: C.groove, color }}>
+      {text}
+    </span>
+  )
+
+  return (
+    <div
+      className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-[5px]"
+      style={{ borderRadius: 10, background: C.panel2, border: `1px solid ${C.line2}` }}
+    >
+      {item(num(C.lhHi, '1,190'), 'เข้าคลังแต่ไม่สแกนออก')}
+      {item(num(C.fdHi, '174'), 'สแกนออกแต่รถไม่ออก')}
+      {item(num(C.faint, '0'), 'ไม่มีของค้าง')}
+      <span className="h-[14px] w-px" style={{ background: C.line }} />
+      {item(
+        <span className="font-mono text-[13px] font-bold" style={{ color: C.green }}>
+          ▼
+        </span>,
+        'น้อยลงกว่ารอบก่อน',
+      )}
+      {item(
+        <span className="font-mono text-[13px] font-bold" style={{ color: C.red }}>
+          ▲
+        </span>,
+        'มากขึ้นกว่ารอบก่อน',
+      )}
+      <span className="flex-1" />
+      <span className="text-[11px]" style={{ color: C.faint }}>
+        {vs} · ไม่รวมสายหลัก
+      </span>
+    </div>
   )
 }
 
@@ -878,7 +927,7 @@ function ZonePanel({
 
       {/* ---- รายสาขา · สองคอลัมน์ ไล่ลงคอลัมน์ซ้ายให้ครบก่อนค่อยขึ้นคอลัมน์ขวา ---- */}
       <div
-        className="grid min-h-0 flex-1 gap-x-3 gap-y-[3px] p-2"
+        className="grid min-h-0 flex-1 gap-x-3 gap-y-[1px] px-2 py-1"
         style={{
           gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
           gridTemplateRows: `repeat(${Math.ceil(shown.length / 2)}, minmax(0, auto))`,
