@@ -4,6 +4,7 @@ import { useCart } from '../../lib/cart'
 import { useAsync } from '../../lib/useAsync'
 import {
   countAssetHoldings,
+  listPositions,
   listAssetHoldings,
   listMyHistory,
   listOpenBorrowings,
@@ -59,6 +60,14 @@ export default function Home() {
    * ไม่ถามฐานข้อมูลด้วยซ้ำถ้าเขาไม่ได้จะเห็น จะได้ไม่เปลืองโควต้าฟรี ๆ
    */
   const seesSacks = canSeeSacks(profile)
+
+  /**
+   * ชื่อตำแหน่งที่แอดมินตั้งไว้ · ตาราง positions เล็กมากและแทบไม่เปลี่ยน
+   * ดึงทั้งก้อนครั้งเดียวแล้วจับคู่เอง ถูกกว่าถามทีละคน
+   * ถ้าโหลดไม่สำเร็จก็ไม่โชว์อะไร ดีกว่าโชว์รหัสดิบที่คนอ่านไม่ออก
+   */
+  const positions = useAsync(() => (profile?.position_code ? listPositions() : Promise.resolve([])), [profile?.position_code])
+  const posName = positions.data?.find((p) => p.code === profile?.position_code)?.name ?? ''
   const sacks = useAsync(
     () => (seesSacks ? countPendingSacks() : Promise.resolve(0)),
     [seesSacks],
@@ -100,16 +109,39 @@ export default function Home() {
               <p className="font-display text-lg font-semibold leading-tight">
                 {profile?.full_name}
               </p>
+              {/* ชื่อตำแหน่งต่อท้ายไปเลย ไม่มีคำว่าตำแหน่งนำหน้า
+                  ใครยังไม่ได้ตั้งก็จบแค่บทบาท ไม่มีช่องว่างหรือขีดค้างไว้ให้ดูเหมือนข้อมูลหาย */}
               <p className="mt-[2px] font-mono text-xs">
                 {profile?.employee_code} · {hubName} · {profile ? roleLabel(profile) : ''}
+                {posName ? ' · ' + posName : ''}
               </p>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1">
-              {(can(...MANAGER_ROLES) || profile?.can_dispatch) && (
-                <Link to="/admin" className="rounded-btn bg-ink px-3 py-2 text-sm text-white">
-                  {can(...MANAGER_ROLES) ? 'หน้าแอดมิน' : 'หน้าตรวจสอบ'}
-                </Link>
-              )}
+              <div className="flex items-center gap-1">
+                {/* สแกน · วางไว้ข้างปุ่มหลังบ้านตามที่เจ้าของระบบสั่ง
+                    ปลายทางเลือกตามสิทธิ์ที่มีอยู่แล้ว ไม่ได้สร้างหน้าใหม่ในรอบนี้
+                    รปภ ไปหน้าสแกนบัตร ส่วนคนอื่นไปหน้าเครื่องซึ่งมีตัวสแกนอยู่ในนั้น */}
+                {(profile?.can_guard || profile?.can_assets || can(...MANAGER_ROLES)) && (
+                  <Link
+                    to={profile?.can_guard ? '/guard' : '/assets'}
+                    aria-label="สแกน"
+                    className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink text-white"
+                  >
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M4 8.5V6a2 2 0 0 1 2-2h2.5" />
+                      <path d="M15.5 4H18a2 2 0 0 1 2 2v2.5" />
+                      <path d="M20 15.5V18a2 2 0 0 1-2 2h-2.5" />
+                      <path d="M8.5 20H6a2 2 0 0 1-2-2v-2.5" />
+                      <path d="M3.5 12h17" />
+                    </svg>
+                  </Link>
+                )}
+                {(can(...MANAGER_ROLES) || profile?.can_dispatch) && (
+                  <Link to="/admin" className="rounded-btn bg-ink px-3 py-2 text-sm text-white">
+                    หลังบ้าน
+                  </Link>
+                )}
+              </div>
               <Link to="/account" className="min-h-tap px-1 py-2 text-sm underline">
                 บัญชีของฉัน
               </Link>
@@ -124,7 +156,7 @@ export default function Home() {
             <Link
               to="/trucks"
               aria-label="ตารางปล่อยรถ"
-              className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink/10"
+              className="flex h-tap w-tap items-center justify-center rounded-btn border border-ink/15 bg-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,.7)]"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -151,7 +183,7 @@ export default function Home() {
             <Link
               to="/wait"
               aria-label="รถรอลงงาน"
-              className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink/10"
+              className="flex h-tap w-tap items-center justify-center rounded-btn border border-ink/15 bg-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,.7)]"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -181,7 +213,7 @@ export default function Home() {
               <Link
                 to="/outbox"
                 aria-label="ของค้างส่งออก"
-                className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink/10"
+                className="flex h-tap w-tap items-center justify-center rounded-btn border border-ink/15 bg-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,.7)]"
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -212,7 +244,7 @@ export default function Home() {
               <Link
                 to="/parcel24"
                 aria-label="พัสดุค้างเกิน 24 ชม"
-                className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink/10"
+                className="flex h-tap w-tap items-center justify-center rounded-btn border border-ink/15 bg-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,.7)]"
               >
                 <svg viewBox="0 0 24 24" width="26" height="26" fill="none" aria-hidden>
                   <rect
@@ -310,16 +342,39 @@ export default function Home() {
               <p className="font-display text-lg font-semibold leading-tight">
                 {profile?.full_name}
               </p>
+              {/* ชื่อตำแหน่งต่อท้ายไปเลย ไม่มีคำว่าตำแหน่งนำหน้า
+                  ใครยังไม่ได้ตั้งก็จบแค่บทบาท ไม่มีช่องว่างหรือขีดค้างไว้ให้ดูเหมือนข้อมูลหาย */}
               <p className="mt-[2px] font-mono text-xs">
                 {profile?.employee_code} · {hubName} · {profile ? roleLabel(profile) : ''}
+                {posName ? ' · ' + posName : ''}
               </p>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1">
-              {(can(...MANAGER_ROLES) || profile?.can_dispatch) && (
-                <Link to="/admin" className="rounded-btn bg-ink px-3 py-2 text-sm text-white">
-                  {can(...MANAGER_ROLES) ? 'หน้าแอดมิน' : 'หน้าตรวจสอบ'}
-                </Link>
-              )}
+              <div className="flex items-center gap-1">
+                {/* สแกน · วางไว้ข้างปุ่มหลังบ้านตามที่เจ้าของระบบสั่ง
+                    ปลายทางเลือกตามสิทธิ์ที่มีอยู่แล้ว ไม่ได้สร้างหน้าใหม่ในรอบนี้
+                    รปภ ไปหน้าสแกนบัตร ส่วนคนอื่นไปหน้าเครื่องซึ่งมีตัวสแกนอยู่ในนั้น */}
+                {(profile?.can_guard || profile?.can_assets || can(...MANAGER_ROLES)) && (
+                  <Link
+                    to={profile?.can_guard ? '/guard' : '/assets'}
+                    aria-label="สแกน"
+                    className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink text-white"
+                  >
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M4 8.5V6a2 2 0 0 1 2-2h2.5" />
+                      <path d="M15.5 4H18a2 2 0 0 1 2 2v2.5" />
+                      <path d="M20 15.5V18a2 2 0 0 1-2 2h-2.5" />
+                      <path d="M8.5 20H6a2 2 0 0 1-2-2v-2.5" />
+                      <path d="M3.5 12h17" />
+                    </svg>
+                  </Link>
+                )}
+                {(can(...MANAGER_ROLES) || profile?.can_dispatch) && (
+                  <Link to="/admin" className="rounded-btn bg-ink px-3 py-2 text-sm text-white">
+                    หลังบ้าน
+                  </Link>
+                )}
+              </div>
               <Link to="/account" className="min-h-tap px-1 py-2 text-sm underline">
                 บัญชีของฉัน
               </Link>
@@ -334,7 +389,7 @@ export default function Home() {
             <Link
               to="/trucks"
               aria-label="ตารางปล่อยรถ"
-              className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink/10"
+              className="flex h-tap w-tap items-center justify-center rounded-btn border border-ink/15 bg-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,.7)]"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -361,7 +416,7 @@ export default function Home() {
             <Link
               to="/wait"
               aria-label="รถรอลงงาน"
-              className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink/10"
+              className="flex h-tap w-tap items-center justify-center rounded-btn border border-ink/15 bg-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,.7)]"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -391,7 +446,7 @@ export default function Home() {
               <Link
                 to="/outbox"
                 aria-label="ของค้างส่งออก"
-                className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink/10"
+                className="flex h-tap w-tap items-center justify-center rounded-btn border border-ink/15 bg-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,.7)]"
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -422,7 +477,7 @@ export default function Home() {
               <Link
                 to="/parcel24"
                 aria-label="พัสดุค้างเกิน 24 ชม"
-                className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink/10"
+                className="flex h-tap w-tap items-center justify-center rounded-btn border border-ink/15 bg-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,.7)]"
               >
                 <svg viewBox="0 0 24 24" width="26" height="26" fill="none" aria-hidden>
                   <rect
