@@ -26,6 +26,7 @@ export type IconName =
   | 'clipboard'
   | 'history'
   | 'lock'
+  | 'n24'
 
 const PATHS: Record<IconName, JSX.Element> = {
   // บ้าน — หน้าแรก
@@ -158,6 +159,30 @@ const PATHS: Record<IconName, JSX.Element> = {
     <>
       <path d="M6.5 10a5.5 5.5 0 0 1 11 0c0 4 1.5 5.5 1.5 5.5H5S6.5 14 6.5 10z" />
       <path d="M10 18.5a2 2 0 0 0 4 0" />
+    </>
+  ),
+  /**
+   * เลข 24 ในกรอบ · ไอคอนของหน้าพัสดุค้างเกิน 24 ชม
+   *
+   * วาดเป็นตัวเลขจริง ไม่ใช่รูปนาฬิกาหรือกล่อง เพราะเจ้าของระบบเรียกหน้านี้ว่า
+   * "ไอคอนเลข 24" และเลขคือสิ่งที่คนจำได้ก่อนรูป
+   * ใช้ fill ไม่ใช่ stroke เพราะตัวอักษรที่วาดด้วยเส้นขอบจะอ่านไม่ออกที่ 20px
+   */
+  n24: (
+    <>
+      <rect x="2.6" y="4.2" width="18.8" height="15.6" rx="3.4" />
+      <text
+        x="12"
+        y="16.1"
+        textAnchor="middle"
+        fontSize="9.6"
+        fontWeight="700"
+        fill="currentColor"
+        stroke="none"
+        fontFamily="ui-monospace, monospace"
+      >
+        24
+      </text>
     </>
   ),
 }

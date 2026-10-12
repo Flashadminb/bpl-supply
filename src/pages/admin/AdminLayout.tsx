@@ -131,6 +131,7 @@ const GROUPS: Group[] = [
       { to: '/admin/wait', label: 'ตั้งเกณฑ์เวลารถรอลงงาน', icon: 'clock', adminOnly: true },
       { to: '/wait/history', label: 'ประวัติรถรอลงงาน', icon: 'history', audit: true },
       { to: '/outbox', label: 'ของค้างส่งออก', icon: 'box', adminOnly: true },
+      { to: '/parcel24', label: 'พัสดุค้างเกิน 24 ชม', icon: 'n24', adminOnly: true },
       { to: '/admin/outbox-zones', label: 'โซน D0x ของสาขา', icon: 'lock', adminOnly: true },
     ],
   },

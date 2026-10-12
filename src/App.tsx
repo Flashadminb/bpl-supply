@@ -22,6 +22,7 @@ import { Privacy, Terms } from './pages/Legal'
 // หน้าที่ลากไลบรารีหนัก (zxing) หรือใช้เฉพาะแอดมิน — โหลดเมื่อเปิดจริงเท่านั้น
 // เน็ตในฮับไม่นิ่ง หน้าแรกต้องเบาที่สุด
 const OutBox = lazy(() => import('./pages/admin/OutBox'))
+const Parcel24 = lazy(() => import('./pages/admin/Parcel24'))
 const OutZones = lazy(() => import('./pages/admin/OutZones'))
 const Scan = lazy(() => import('./pages/staff/Scan'))
 const Returns = lazy(() => import('./pages/staff/Returns'))
@@ -283,6 +284,10 @@ export default function App() {
           เจ้าของระบบกับผู้ดูแลระบบ ซึ่งใช้ role = admin ร่วมกัน
           ด่านจริงอยู่ที่ RLS ของ hub_out_* ซึ่งตรวจ my_can_outbox() ทุกตารางและทุก RPC */}
       <Route path="/outbox" element={<Guard roles={['admin']}><OutBox /></Guard>} />
+
+      {/* พัสดุค้างเกิน 24 ชม · จอเต็มของตัวเองเหมือนของค้างส่งออก
+          เจ้าของระบบกับผู้ดูแลระบบ ด่านจริงอยู่ที่ RLS ของ parcel24_* ที่ตรวจ my_can_outbox() */}
+      <Route path="/parcel24" element={<Guard roles={['admin']}><Parcel24 /></Guard>} />
       <Route path="/wait" element={<Guard><WaitBoard /></Guard>} />
       {/* เส้นทางเดิมของหน้าอัปไฟล์ · ตอนนี้เป็นป็อปอัพบนกระดานแล้ว พาไปที่กระดานพร้อมเปิดช่องเลือกไฟล์ */}
       <Route path="/wait/upload" element={<Navigate to="/wait?upload=1" replace />} />
