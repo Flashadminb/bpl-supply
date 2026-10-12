@@ -8,10 +8,13 @@ import { PeoplePicker } from '../../components/PeoplePicker'
 import { BreakBanBar } from '../../components/BreakBanBar'
 import { ErrorBox, Loading, EmptyState } from '../../components/ui'
 import type { Profile } from '../../lib/types'
+import type { BreakSupplier } from '../../lib/breakPass'
 import {
   addBreakCards,
   breakBanNext,
   breakBanNow,
+  breakSupplierDelete,
+  breakSupplierSet,
   deleteBreakCards,
   deleteBreakGroup,
   getBreakSettings,
@@ -37,7 +40,7 @@ import {
 const NAVY = '#1B2A4A'
 const Y = '#F5B301'
 
-type Tab = 'cards' | 'ban' | 'alerts' | 'print'
+type Tab = 'cards' | 'ban' | 'alerts' | 'sup' | 'print'
 
 export function BreakCardStyles() {
   return (
@@ -156,6 +159,9 @@ export default function BreakCards() {
    */
   const mayAlert = can('admin', 'supervisor')
   const mayBan = can('admin')
+  /* ลบซัพเป็นของผู้ดูแลระบบขึ้นไป ตรงกับกติกาเดิมว่าแอดมินลบข้อมูลไม่ได้
+     ฐานข้อมูลกันซ้ำอีกชั้น ตัวนี้แค่ไม่เอาปุ่มที่กดไม่ได้ไปวางให้คนกด */
+  const mayDeleteSup = can('admin')
   const [tab, setTab] = useState<Tab>('cards')
   const settings = useAsync(() => getBreakSettings(), [])
   const people = useAsync(() => listProfiles(), [])
@@ -197,6 +203,7 @@ export default function BreakCards() {
   const s = settings.data
   const groups = s?.groups ?? []
   const cards = s?.cards ?? []
+  const suppliers: BreakSupplier[] = s?.suppliers ?? []
   const staff = useMemo(
     () => withoutOwner((people.data ?? []).filter((p) => p.is_active), me),
     [people.data, me],
@@ -249,6 +256,7 @@ export default function BreakCards() {
       ? ([['ban', ban.data ? 'ห้ามเบรค 🔴' : 'ห้ามเบรคและนาที']] as [Tab, string][])
       : []),
     ...(mayAlert ? ([['alerts', 'แจ้งเตือน']] as [Tab, string][]) : []),
+    ['sup', `ซัพ (${suppliers.filter((x) => x.active).length})`],
     ['print', `พิมพ์ (${printable.length})`],
   ]
 
@@ -506,6 +514,16 @@ export default function BreakCards() {
         </div>
       )}
 
+      {/* ═══════════════ ซัพ ═══════════════ */}
+      {tab === 'sup' && (
+        <SupplierTab
+          rows={suppliers}
+          isOwner={mayDeleteSup}
+          busy={busy}
+          run={run}
+        />
+      )}
+
       {/* ═══════════════ พิมพ์ ═══════════════ */}
       {tab === 'print' && (
         <div>
@@ -688,6 +706,148 @@ export default function BreakCards() {
             </div>
           )}
         </div>
+      )}
+    </div>
+  )
+}
+
+/* ───────────────────────────── ซัพ ───────────────────────────── */
+
+/**
+ * รายชื่อซัพ · เพิ่ม แก้ชื่อ ปิดใช้งาน และลบ
+ *
+ * ปิดใช้งาน กับ ลบ ไม่ใช่เรื่องเดียวกันโดยตั้งใจ
+ *   ปิดใช้งาน  หายจากหน้าปล่อยบัตร แต่ประวัติเดิมยังอ่านได้เหมือนเดิม
+ *   ลบ         หายจากระบบจริง ทำได้เฉพาะซัพที่ยังไม่เคยถูกใช้ในใบไหนเลย
+ *
+ * ที่ไม่ให้ลบซัพที่เคยใช้แล้ว เพราะถ้าลบทิ้งแล้ววันหนึ่งมีคนเพิ่มรหัสเดิมกลับมา
+ * โดยหมายถึงคนละเจ้า ประวัติสองช่วงจะถูกนับรวมกันเป็นเจ้าเดียวโดยไม่มีใครรู้
+ * ฐานข้อมูลเป็นคนกัน ไม่ได้กันแค่ที่ปุ่ม
+ */
+function SupplierTab({
+  rows,
+  isOwner,
+  busy,
+  run,
+}: {
+  rows: BreakSupplier[]
+  isOwner: boolean
+  busy: boolean
+  run: Run
+}) {
+  const [code, setCode] = useState('')
+  const [name, setName] = useState('')
+
+  const clean = code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12)
+  const dup = rows.some((r) => r.code === clean)
+
+  return (
+    <div>
+      <p className="mb-3 rounded-card border border-line bg-surface p-3 text-sm text-ink-500">
+        ชื่อซัพที่เปิดใช้งานจะขึ้นเป็นปุ่มให้หัวหน้ากดตอนปล่อยบัตร · เป็นช่องบังคับ
+        <br />
+        ปิดใช้งาน = หายจากหน้าปล่อยบัตร แต่ประวัติเดิมยังอ่านได้เหมือนเดิม
+      </p>
+
+      {/* ───────── เพิ่ม ───────── */}
+      <div className="mb-4 rounded-card border border-line p-3">
+        <p className="label">เพิ่มซัพใหม่</p>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="block">
+            <span className="label">รหัส · A-Z 0-9 ไม่มีเว้นวรรค</span>
+            <input
+              className="input h-tap w-[160px] font-mono"
+              placeholder="เช่น FN22"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+            />
+          </label>
+          <label className="block">
+            <span className="label">ชื่อที่โชว์ · เว้นว่างได้</span>
+            <input
+              className="input h-tap w-[200px]"
+              placeholder="เช่น FN 22"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="btn-primary h-tap px-4 text-sm"
+            disabled={busy || clean.length === 0 || dup}
+            onClick={() =>
+              run(async () => {
+                await breakSupplierSet({ code: clean, name: name.trim() || clean })
+                setCode('')
+                setName('')
+              }, `เพิ่มซัพ ${clean} แล้ว`)
+            }
+          >
+            เพิ่ม
+          </button>
+        </div>
+        {clean.length > 0 && (
+          <p className={`mt-1 text-xs ${dup ? 'text-danger-txt' : 'text-ink-400'}`}>
+            {dup ? `มีรหัส ${clean} อยู่แล้ว` : `จะบันทึกเป็นรหัส ${clean}`}
+          </p>
+        )}
+      </div>
+
+      {/* ───────── รายการ ───────── */}
+      {rows.length === 0 ? (
+        <EmptyState title="ยังไม่มีรายชื่อซัพ" hint="เพิ่มด้านบนก่อน แล้วหัวหน้าถึงจะปล่อยบัตรได้" />
+      ) : (
+        <ul className="overflow-hidden rounded-card border border-line bg-surface">
+          {rows.map((r) => (
+            <li key={r.code} className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2 last:border-0">
+              <span className="w-[86px] shrink-0 font-mono text-sm font-bold">{r.code}</span>
+              <input
+                className="input h-tap min-w-0 flex-1"
+                defaultValue={r.name}
+                onBlur={(e) => {
+                  const v = e.target.value.trim()
+                  if (!v || v === r.name) return
+                  run(() => breakSupplierSet({ code: r.code, name: v }), `แก้ชื่อ ${r.code} แล้ว`)
+                }}
+              />
+              <span
+                className={`shrink-0 rounded-pill px-2 py-[2px] text-[11px] font-bold ${
+                  r.active ? 'bg-success-bg text-success-txt' : 'bg-ink/10 text-ink-500'
+                }`}
+              >
+                {r.active ? 'เปิดใช้งาน' : 'ปิดอยู่'}
+              </span>
+              <button
+                type="button"
+                className="btn-soft h-tap shrink-0 px-3 text-sm"
+                disabled={busy}
+                onClick={() =>
+                  run(
+                    () => breakSupplierSet({ code: r.code, active: !r.active }),
+                    r.active ? `ปิด ${r.code} แล้ว` : `เปิด ${r.code} แล้ว`,
+                  )
+                }
+              >
+                {r.active ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
+              </button>
+              {/* ลบเป็นของเจ้าของระบบ ตรงกับกติกาเดิมว่าแอดมินลบข้อมูลไม่ได้
+                  และฐานข้อมูลจะปฏิเสธเองถ้าซัพนี้เคยถูกใช้ในใบไหนแล้ว */}
+              {isOwner && (
+                <button
+                  type="button"
+                  className="h-tap shrink-0 rounded-btn px-3 text-sm text-danger-txt underline"
+                  disabled={busy}
+                  onClick={() => {
+                    if (!window.confirm(`ลบซัพ ${r.code} ออกจากระบบ?`)) return
+                    run(() => breakSupplierDelete(r.code), `ลบ ${r.code} แล้ว`)
+                  }}
+                >
+                  ลบ
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   )

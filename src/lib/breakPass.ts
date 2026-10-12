@@ -73,6 +73,8 @@ export interface BreakRow extends BreakBoardRow {
   missing_people: number
   issue_shots: number
   return_shots: number
+  /** ชื่อซัพของคนที่ออกไป · ใบเก่าก่อนมีช่องนี้เป็น null */
+  supplier: string | null
 }
 
 /** ผลการสแกนของ รปภ · การสแกนไม่เปลี่ยนอะไร แค่บอกว่าเห็นอะไร */
@@ -94,6 +96,8 @@ export type BreakScan =
       reason: string
       minutes: number
       nickname: string | null
+      /** ชื่อซัพ · รปภ ใช้เทียบว่ากลุ่มที่ยืนอยู่ตรงหน้าเป็นคนของเจ้าไหน */
+      supplier: string | null
       issued_at: string
       issued_by: string
       due_at: string
@@ -223,6 +227,8 @@ export async function issueBreak(args: {
   photos: BreakPhotoIn[]
   nickname?: string | null
   banReason?: string | null
+  /** รหัสซัพ · หน้าจอบังคับเลือกแล้ว ฐานข้อมูลจะบังคับตามในไฟล์ 157 */
+  supplier?: string | null
 }) {
   return rpc<{
     id: number
@@ -242,7 +248,51 @@ export async function issueBreak(args: {
     p_photos: args.photos,
     p_nickname: args.nickname ?? null,
     p_ban_reason: args.banReason ?? null,
+    p_supplier: args.supplier ?? null,
   })
+}
+
+/* ───────────────────────────── ซัพ ───────────────────────────── */
+
+export interface BreakSupplier {
+  code: string
+  name: string
+  active: boolean
+  sort?: number
+}
+
+/**
+ * รายชื่อซัพที่ยังเปิดใช้งาน · ใช้ที่หน้าปล่อยบัตร
+ *
+ * เป็นตาราง ไม่ใช่รายการตายในโค้ด เพราะซัพเข้า-ออกเป็นเรื่องปกติ
+ * และเป็นชิปให้กด ไม่ใช่ช่องพิมพ์อิสระ เพราะถ้าพิมพ์เอง วันหนึ่งจะมี
+ * PW · pw · P.W. อยู่ในฐานเดียวกัน แล้วสรุปรายซัพไม่ได้อีกเลย
+ */
+export async function breakSuppliersList(): Promise<BreakSupplier[]> {
+  return rpc<BreakSupplier[]>('break_suppliers_list', {})
+}
+
+/** เพิ่มหรือแก้ซัพ · ปิดการใช้งานได้ แต่ลบทิ้งไม่ได้ เพราะใบเก่าอ้างชื่อไว้ */
+export async function breakSupplierSet(a: {
+  code: string
+  name?: string | null
+  active?: boolean
+  sort?: number | null
+}) {
+  return rpc<{ ok: true; code: string }>('break_supplier_set', {
+    p_code: a.code,
+    p_name: a.name ?? null,
+    p_active: a.active ?? true,
+    p_sort: a.sort ?? null,
+  })
+}
+
+/**
+ * ลบซัพออกจากระบบ · ฐานข้อมูลปฏิเสธเองถ้าซัพนี้เคยถูกใช้ในใบไหนแล้ว
+ * และเปิดให้เฉพาะผู้ดูแลระบบ ตรงกับกติกาเดิมว่าแอดมินลบข้อมูลไม่ได้
+ */
+export async function breakSupplierDelete(code: string) {
+  return rpc<{ ok: true; code: string }>('break_supplier_delete', { p_code: code })
 }
 
 /* ───────────────────────────── รปภ ───────────────────────────── */
@@ -358,7 +408,7 @@ export async function listBreakRows(args: {
   const needle = (args.q ?? '').replace(/[(),*]/g, ' ').trim()
   if (needle) {
     q = q.or(
-      ['card_code', 'ref_no', 'nickname', 'issued_by_name', 'issued_by_code']
+      ['card_code', 'ref_no', 'nickname', 'supplier', 'issued_by_name', 'issued_by_code']
         .map((c) => `${c}.ilike.*${needle}*`)
         .join(','),
     )
@@ -730,6 +780,8 @@ export interface BreakSettings {
   reasons: BreakReason[]
   bans: { id: number; start_min: number; end_min: number; note: string | null; active: boolean }[]
   alert_subs: string[]
+  /** รายชื่อซัพทั้งหมด รวมที่ปิดใช้งานแล้ว · หน้าหลังบ้านต้องเห็นครบถึงจะเปิดคืนได้ */
+  suppliers: BreakSupplier[]
   /** คนที่กดห้ามเบรคเดี๋ยวนี้ได้ · มาจากธง can_break_ban */
   ban_users: string[]
 }

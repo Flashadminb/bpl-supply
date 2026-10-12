@@ -722,6 +722,20 @@ function ScanResult({ hit, now }: { hit: BreakScan; now: number }) {
       >
         {hit.gate_out_people ?? hit.people} คน
       </p>
+      {/*
+        ชื่อซัพอยู่ใหญ่คู่กับจำนวนคน ไม่ได้ซ่อนอยู่ในบรรทัดเล็กข้างล่าง
+        ที่ประตูคนต่อแถว สิ่งที่ต้องตอบให้ได้คือ "กลุ่มนี้ใช่คนของใบนี้ไหม"
+        รูปบอกหน้า ชื่อซัพบอกว่าเป็นคนของเจ้าไหน สองอย่างรวมกันแม่นกว่าอย่างเดียว
+      */}
+      {hit.supplier && (
+        <p
+          className={`ml-2 mt-2 inline-block rounded-btn border bg-white px-4 py-1 text-md font-extrabold ${
+            green ? 'border-success/40 text-success-txt' : 'border-warn/40 text-warn-txt'
+          }`}
+        >
+          ซัพ {hit.supplier}
+        </p>
+      )}
       <p className={`mt-2 text-sm ${green ? 'text-success-txt' : 'text-warn-txt'}`}>
         {hit.reason} · {green ? `เหลือ ${cd.text}` : cd.over ? `เกินมา ${cd.text}` : `เหลือ ${cd.text}`}
         <br />

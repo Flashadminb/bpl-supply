@@ -627,6 +627,7 @@ export default function BreakHistory() {
                         />
                       </th>
                       <th className="p-2">บัตร</th>
+                      <th className="w-[74px] p-2">ซัพ</th>
                       <th className="p-2">เหตุผล · ปล่อยโดย</th>
                       <th className="p-2">ยื่น</th>
                       <th className="p-2">ผ่านประตู</th>
@@ -655,6 +656,7 @@ export default function BreakHistory() {
                             />
                           </td>
                           <td className="p-2 font-mono font-bold">{r.card_code}</td>
+                          <td className="p-2 font-mono text-xs">{r.supplier ?? '—'}</td>
                           <td className="p-2">
                             {r.reason_label}
                             {r.in_ban && <span className="ml-1 badge-dang">ช่วงห้าม</span>}
@@ -685,7 +687,7 @@ export default function BreakHistory() {
                         </tr>
                         {open === r.id && (
                           <tr className="border-b border-line-2 bg-ink/5">
-                            <td colSpan={10} className="p-3">
+                            <td colSpan={11} className="p-3">
                               <p className="mb-2 text-xs text-ink-500">
                                 {r.ref_no} · ขอ {r.minutes} นาที · {r.people} คน
                                 {r.returned_people !== null && ` · กลับ ${r.returned_people} คน`}

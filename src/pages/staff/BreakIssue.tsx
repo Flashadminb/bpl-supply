@@ -11,6 +11,7 @@ import { deptName } from '../../lib/deptNames'
 import {
   breakBanNext,
   breakBanNow,
+  breakSuppliersList,
   countdown,
   issueBreak,
   listBreakBoard,
@@ -56,6 +57,9 @@ export default function BreakIssue() {
         : Promise.resolve([]),
     [tick, profile?.employee_code],
   )
+  /* รายชื่อซัพ · ขอครั้งเดียวตอนเปิดหน้า ไม่ได้ขอซ้ำทุกนาทีเหมือนกระดาน
+     เพราะรายชื่อซัพเปลี่ยนปีละไม่กี่ครั้ง ไม่ใช่เปลี่ยนทุกนาที */
+  const sups = useAsync(() => breakSuppliersList(), [])
   const ban = useAsync(() => breakBanNow(), [tick])
   const banNext = useAsync(() => breakBanNext(), [tick])
 
@@ -64,6 +68,7 @@ export default function BreakIssue() {
   const [reason, setReason] = useState<string | null>(null)
   const [minutes, setMinutes] = useState<number | null>(null)
   const [nickname, setNickname] = useState('')
+  const [supplier, setSupplier] = useState<string | null>(null)
   const [banWhy, setBanWhy] = useState('')
   const [shots, setShots] = useState<Shot[]>([])
   const [busy, setBusy] = useState(false)
@@ -134,7 +139,11 @@ export default function BreakIssue() {
   const failed = shots.some((s) => s.state === 'failed')
   const shotsOk = photos.length >= 1 && !uploading && !failed
   const banOk = !banNow || banWhy.trim().length > 0
-  const ready = Boolean(card && reason && minutes && shotsOk && banOk && !capped)
+  /* ซัพบังคับเลือก · ถ้าไม่รู้ว่าเป็นคนของเจ้าไหน ตามตัวทีหลังไม่ได้เลย
+     ฐานข้อมูลจะบังคับตามในไฟล์ 157 หลังแอพตัวใหม่ขึ้นครบแล้ว
+     รอบนี้บังคับที่หน้าจออย่างเดียว เพื่อไม่ให้คนที่ยังไม่ได้อัปเดตแอพปล่อยบัตรไม่ได้ */
+  const supOk = Boolean(supplier)
+  const ready = Boolean(card && reason && minutes && shotsOk && banOk && supOk && !capped)
 
   const stamp = stampLines(
     profile?.full_name ?? '',
@@ -147,6 +156,8 @@ export default function BreakIssue() {
     setCard(null)
     setPeople(1)
     setNickname('')
+    /* ไม่ล้างซัพ · ปล่อยติด ๆ กันส่วนใหญ่เป็นคนของเจ้าเดิม
+       ล้างทุกครั้งคือบังคับให้กดซ้ำทุกใบโดยไม่ได้อะไรเพิ่ม */
     setBanWhy('')
     setShots([])
     setErr(null)
@@ -164,6 +175,7 @@ export default function BreakIssue() {
         minutes,
         photos: photos.map((p) => ({ file_id: p.file_id, web_link: p.web_link, bytes: p.bytes })),
         nickname: nickname.trim() || null,
+        supplier,
         banReason: banNow ? banWhy.trim() : null,
       })
       setDone({ card, people, minutes })
@@ -440,6 +452,41 @@ export default function BreakIssue() {
           <p className="mt-2 mb-4 rounded-btn bg-ink/5 px-3 py-2 text-xs text-ink-500">
             เวลาเริ่มเดินตอนกดยื่นบัตร ไม่ใช่ตอนถึง รปภ — เผื่อเวลาเดินไว้ในนาทีนี้แล้ว
           </p>
+
+          {/* ───────── ซัพ ───────── */}
+          {/*
+            วางไว้ก่อนชื่อเล่นและก่อนรูป เพราะเป็นช่องบังคับ
+            ของบังคับต้องอยู่เหนือของไม่บังคับเสมอ ไม่งั้นคนเลื่อนผ่านแล้วค่อยงง
+            ว่าทำไมปุ่มยังกดไม่ได้ทั้งที่ถ่ายรูปครบแล้ว
+          */}
+          <p className="label">
+            ซัพ (บังคับ)
+            {!supplier && <span className="ml-1 font-normal text-danger-txt">· ยังไม่ได้เลือก</span>}
+          </p>
+          {sups.loading ? (
+            <p className="mb-4 text-sm text-ink-400">กำลังโหลดรายชื่อซัพ…</p>
+          ) : (sups.data ?? []).length === 0 ? (
+            <p className="mb-4 rounded-btn bg-danger-bg px-3 py-2 text-sm text-danger-txt">
+              ยังไม่มีรายชื่อซัพในระบบ · ให้แอดมินเพิ่มที่หน้าจัดการบัตรเบรคก่อน
+            </p>
+          ) : (
+            <div className="mb-4 flex flex-wrap gap-2">
+              {(sups.data ?? []).map((sp) => (
+                <button
+                  key={sp.code}
+                  type="button"
+                  className={`rounded-btn border px-3.5 py-2 text-sm ${
+                    supplier === sp.code
+                      ? 'border-ink bg-ink font-semibold text-white'
+                      : 'border-line bg-surface text-ink-700'
+                  }`}
+                  onClick={() => setSupplier(sp.code)}
+                >
+                  {sp.name}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* ───────── ชื่อเล่น ───────── */}
           <label className="label" htmlFor="brk-nick">
