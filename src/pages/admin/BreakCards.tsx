@@ -738,15 +738,38 @@ function SupplierTab({
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
 
+  const on = rows.filter((r) => r.active).length
   const clean = code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12)
   const dup = rows.some((r) => r.code === clean)
 
   return (
     <div>
+{/*
+        แถบนี้คือสวิตช์ของทั้งกฎ ไม่ใช่แค่ป้ายบอกสถานะ
+        ปิดหมด = หน้าปล่อยบัตรไม่มีช่องซัพเลย เหมือนก่อนมีฟีเจอร์นี้ทุกอย่าง
+        เปิดรายแรกเมื่อไหร่ หัวหน้าทุกคนต้องเลือกซัพทันที
+        เขียนไว้ตรงนี้เพราะคนกดเปิดต้องรู้ว่ากำลังเปลี่ยนขั้นตอนของคนหน้างาน
+      */}
+      {on === 0 ? (
+        <p className="mb-3 rounded-card border-2 border-line bg-surface-2 p-3 text-sm">
+          <b>ตอนนี้ยังไม่เริ่มใช้</b> · หน้าปล่อยบัตรยังไม่มีช่องซัพ เหมือนเดิมทุกอย่าง
+          <br />
+          <span className="text-ink-500">
+            กดเปิดใช้งานรายแรกเมื่อไหร่ หัวหน้าทุกคนจะต้องเลือกซัพทุกครั้งที่ปล่อยบัตรทันที
+            · บอกหน้างานก่อนเปิดด้วย
+          </span>
+        </p>
+      ) : (
+        <p className="mb-3 rounded-card border-2 border-success bg-success-bg p-3 text-sm text-success-txt">
+          <b>เริ่มใช้แล้ว · เปิดอยู่ {on} ราย</b> · หัวหน้าต้องเลือกซัพทุกครั้งที่ปล่อยบัตร
+          <br />
+          <span className="opacity-80">ปิดหมดทุกรายเมื่อไหร่ ช่องซัพจะหายไปจากหน้าปล่อยบัตร</span>
+        </p>
+      )}
       <p className="mb-3 rounded-card border border-line bg-surface p-3 text-sm text-ink-500">
-        ชื่อซัพที่เปิดใช้งานจะขึ้นเป็นปุ่มให้หัวหน้ากดตอนปล่อยบัตร · เป็นช่องบังคับ
-        <br />
         ปิดใช้งาน = หายจากหน้าปล่อยบัตร แต่ประวัติเดิมยังอ่านได้เหมือนเดิม
+        <br />
+        ลบ = หายจากระบบจริง ทำได้เฉพาะซัพที่ยังไม่เคยถูกใช้ในใบไหนเลย
       </p>
 
       {/* ───────── เพิ่ม ───────── */}

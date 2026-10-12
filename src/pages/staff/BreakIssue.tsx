@@ -139,10 +139,19 @@ export default function BreakIssue() {
   const failed = shots.some((s) => s.state === 'failed')
   const shotsOk = photos.length >= 1 && !uploading && !failed
   const banOk = !banNow || banWhy.trim().length > 0
-  /* ซัพบังคับเลือก · ถ้าไม่รู้ว่าเป็นคนของเจ้าไหน ตามตัวทีหลังไม่ได้เลย
-     ฐานข้อมูลจะบังคับตามในไฟล์ 157 หลังแอพตัวใหม่ขึ้นครบแล้ว
-     รอบนี้บังคับที่หน้าจออย่างเดียว เพื่อไม่ให้คนที่ยังไม่ได้อัปเดตแอพปล่อยบัตรไม่ได้ */
-  const supOk = Boolean(supplier)
+  /**
+   * ช่องซัพเปิดใช้เมื่อหลังบ้านเปิดซัพไว้อย่างน้อยหนึ่งราย
+   *
+   * ไม่มีซัพเปิดอยู่เลย = ช่องนี้ไม่ขึ้นและไม่บังคับ หน้าปล่อยบัตรเหมือนเดิมทุกอย่าง
+   * เจ้าของระบบจึงเลือกเองได้ว่าจะเริ่มใช้กฎนี้วันไหน โดยไม่ต้องรอ deploy รอบใหม่
+   * สวิตช์อยู่ที่หลังบ้าน แท็บซัพ · เปิดรายแรกเมื่อไหร่ กฎก็เริ่มเมื่อนั้น
+   *
+   * ที่ต้องมีสวิตช์ เพราะเปลี่ยนขั้นตอนของคนหน้างานกลางกะคือเรื่องใหญ่
+   * ต้องบอกเขาก่อน ไม่ใช่จู่ ๆ ปุ่มที่เคยกดได้ก็กดไม่ได้
+   */
+  const supList = (sups.data ?? []).filter((x) => x.active)
+  const supOn = supList.length > 0
+  const supOk = !supOn || Boolean(supplier)
   const ready = Boolean(card && reason && minutes && shotsOk && banOk && supOk && !capped)
 
   const stamp = stampLines(
@@ -459,19 +468,17 @@ export default function BreakIssue() {
             ของบังคับต้องอยู่เหนือของไม่บังคับเสมอ ไม่งั้นคนเลื่อนผ่านแล้วค่อยงง
             ว่าทำไมปุ่มยังกดไม่ได้ทั้งที่ถ่ายรูปครบแล้ว
           */}
+          {supOn && (
+            <>
           <p className="label">
             ซัพ (บังคับ)
             {!supplier && <span className="ml-1 font-normal text-danger-txt">· ยังไม่ได้เลือก</span>}
           </p>
           {sups.loading ? (
             <p className="mb-4 text-sm text-ink-400">กำลังโหลดรายชื่อซัพ…</p>
-          ) : (sups.data ?? []).length === 0 ? (
-            <p className="mb-4 rounded-btn bg-danger-bg px-3 py-2 text-sm text-danger-txt">
-              ยังไม่มีรายชื่อซัพในระบบ · ให้แอดมินเพิ่มที่หน้าจัดการบัตรเบรคก่อน
-            </p>
           ) : (
             <div className="mb-4 flex flex-wrap gap-2">
-              {(sups.data ?? []).map((sp) => (
+              {supList.map((sp) => (
                 <button
                   key={sp.code}
                   type="button"
@@ -486,6 +493,8 @@ export default function BreakIssue() {
                 </button>
               ))}
             </div>
+          )}
+            </>
           )}
 
           {/* ───────── ชื่อเล่น ───────── */}
