@@ -28,7 +28,7 @@ import {
  *   จอทีวี    เวลาอัปเดต สาขาที่หนักสุดของแต่ละตัวเลข และบันไดรายสาขาแยกสาย
  *   ตาราง     ค้นหาเจาะสาขา แทนการ VLOOKUP ในไฟล์
  *
- * หน้าหลักกับจอทีวีสลับกันเองได้ เพื่อเปิดค้างบนจอในคลังโดยไม่ต้องมีคนกด
+ * หน้าหลัก จอทีวี และจอโซน D0 สลับกันเองได้ เพื่อเปิดค้างบนจอในคลังโดยไม่ต้องมีคนกด
  *
  * ชุดสีเดียวกับตารางปล่อยรถและรถรอลงงาน เพราะเป็นจอประเภทเดียวกัน
  * เปิดให้เจ้าของระบบกับผู้ดูแลระบบ · ด่านจริงอยู่ที่ RLS ของ hub_out_* ที่ตรวจ my_can_outbox()
@@ -208,7 +208,7 @@ function barStyle(lane: 'LH' | 'FD', side: 'l' | 'r', pct: number): React.CSSPro
 export default function OutBox() {
   const nav = useNavigate()
   const board = useAsync(() => outBoard(), [])
-  const [page, setPage] = useState<'main' | 'tv' | 'table'>('main')
+  const [page, setPage] = useState<'main' | 'tv' | 'zone' | 'table'>('main')
   const [swap, setSwap] = useState(true)
   const [swapSec, setSwapSec] = useState(20)
   const [clock, setClock] = useState(() => new Date())
@@ -230,11 +230,14 @@ export default function OutBox() {
     return () => clearInterval(t)
   }, [])
 
-  /* สลับหน้าหลักกับจอทีวีเอง · ไม่แตะหน้าตาราง เพราะหน้านั้นคนกำลังค้นอยู่
+  /* สลับสามหน้าจอวนไปเรื่อย ๆ · ไม่แตะหน้าตาราง เพราะหน้านั้นคนกำลังค้นอยู่
      ถ้าสลับทิ้งกลางคันตอนเขาพิมพ์ค้นหา คือแย่งงานจากมือคน */
   useEffect(() => {
     if (!swap || page === 'table') return
-    const t = setInterval(() => setPage((p) => (p === 'main' ? 'tv' : 'main')), swapSec * 1000)
+    const t = setInterval(
+      () => setPage((p) => (p === 'main' ? 'tv' : p === 'tv' ? 'zone' : 'main')),
+      swapSec * 1000,
+    )
     return () => clearInterval(t)
   }, [swap, swapSec, page])
 
@@ -392,6 +395,7 @@ export default function OutBox() {
             {([
               ['main', 'หน้าหลัก'],
               ['tv', 'จอทีวี'],
+              ['zone', 'จอโซน D0'],
               ['table', 'ตาราง'],
             ] as const).map(([k, label]) => (
               <button key={k} type="button" className="h-tap rounded-btn px-4 text-sm" style={page === k ? tabOn : tabOff} onClick={() => setPage(k)}>
@@ -472,6 +476,9 @@ export default function OutBox() {
             <Ladders rows={rows} />
           </>
         )}
+
+        {/* ═══════════════════════ จอโซน D0 */}
+        {snap && page === 'zone' && <ZoneTv rows={rows} vs={vs} />}
 
         {/* ═══════════════════════ ตาราง */}
         {snap && page === 'table' && (
@@ -764,6 +771,148 @@ function ZoneTop({ rows }: { rows: OutCalc[] }) {
           </li>
         )}
       </ul>
+    </section>
+  )
+}
+
+/* --------------------------------------------------------- จอโซน D0 */
+
+/**
+ * ทุกโซนอยู่ในจอเดียว ไม่มีเลื่อน ไม่มีสลับ
+ *
+ * เจ้าของระบบสั่งให้จบในจอเดียว เหตุผลคือคำถามของคนดูคือ "ตอนนี้โซนไหนหนัก"
+ * ซึ่งเป็นคำถามเปรียบเทียบ · ถ้าโชว์ทีละโซนสลับไปมา คนดูต้องจำตัวเลขโซนก่อนหน้า
+ * ไว้ในหัวเองถึงจะตอบได้ ซึ่งไม่มีใครทำ
+ *
+ * สายหลักไม่ขึ้นจอนี้ เพราะเป็นรถหลักที่ไม่ได้ขึ้นสายพานคัดแยก ไม่มีโซนให้แยก
+ * ส่วนสายรองที่ยังไม่ได้ตั้งโซนยังขึ้นเป็นช่องของตัวเอง ไม่ได้ถูกซ่อน
+ * ถ้าซ่อน ของค้างก้อนนั้นจะหายไปจากจอโดยไม่มีใครรู้ว่าหายไปไหน
+ */
+function ZoneTv({ rows, vs }: { rows: OutCalc[]; vs: string }) {
+  const zones = useMemo(() => {
+    const m = new Map<string, { zone: string | null; list: OutCalc[]; si: number; so: number; pi: number; po: number }>()
+    for (const r of rows) {
+      const z = zoneOf(r)
+      if (z === 'LH') continue
+      const k = z ?? ''
+      const cur = m.get(k) ?? { zone: z, list: [], si: 0, so: 0, pi: 0, po: 0 }
+      cur.list.push(r)
+      cur.si += r.in_wh
+      cur.so += r.on_truck
+      cur.pi += r.prev_in ?? 0
+      cur.po += r.prev_on ?? 0
+      m.set(k, cur)
+    }
+    const out = [...m.values()]
+    for (const z of out) z.list.sort((a, b) => b.in_wh + b.on_truck - (a.in_wh + a.on_truck))
+    return out.sort((a, b) => b.si + b.so - (a.si + a.so))
+  }, [rows])
+
+  return (
+    <>
+      <p className="mb-2 text-[11px]" style={{ color: C.faint }}>
+        แยกตามโซนสายพาน · {vs} · ตัวเลขซ้ายคือเข้าคลังแต่ไม่สแกนออก ขวาคือสแกนออกแต่รถไม่ออก · ไม่รวมสายหลัก
+      </p>
+      {/* สองแถวสามช่อง ยืดเต็มความสูงจอ · วัดกับ 1920x1080 แล้วลงพอดีไม่มีแถบเลื่อน
+          แถวเป็น minmax(min-content, 1fr) ไม่ใช่ 1fr เฉย ๆ เพราะถ้าเปิดบนจอเตี้ยกว่าทีวี
+          ช่องจะบีบจนรายชื่อสาขาหาย · ยอมให้หน้าเลื่อนดีกว่าตัดของที่ค้างทิ้งเงียบ ๆ */}
+      <div
+        className="grid gap-3 md:grid-cols-2 xl:grid-cols-3"
+        style={{
+          minHeight: 'calc(100vh - 190px)',
+          gridTemplateRows: 'repeat(2, minmax(min-content, 1fr))',
+          gridAutoRows: 'minmax(min-content, 1fr)',
+        }}
+      >
+        {zones.map((z) => (
+          <ZonePanel key={z.zone ?? 'none'} z={z} />
+        ))}
+        {zones.length === 0 && (
+          <p className="text-sm" style={{ color: C.faint }}>
+            ยังไม่มีข้อมูล
+          </p>
+        )}
+      </div>
+    </>
+  )
+}
+
+/** กี่สาขาที่ยอมให้ขึ้นในช่องเดียว · เกินกว่านี้ยุบเป็นบรรทัดสรุป ไม่ปล่อยให้ล้นออกนอกจอ */
+const ZONE_MAX = 24
+
+function ZonePanel({
+  z,
+}: {
+  z: { zone: string | null; list: OutCalc[]; si: number; so: number; pi: number; po: number }
+}) {
+  const shown = z.list.slice(0, ZONE_MAX)
+  const rest = z.list.slice(ZONE_MAX)
+  const restIn = rest.reduce((a, b) => a + b.in_wh, 0)
+  const restOn = rest.reduce((a, b) => a + b.on_truck, 0)
+
+  return (
+    <section className="flex min-h-0 flex-col overflow-hidden" style={CARD}>
+      {/* ---- หัวช่อง ---- */}
+      <div
+        className="flex items-center gap-2 px-3 py-2"
+        style={{ borderBottom: `1px solid ${C.line2}`, background: 'linear-gradient(180deg,#17202B,#121922)' }}
+      >
+        <Zone z={z.zone} big />
+        <span className="text-[11px]" style={{ color: C.faint }}>
+          {z.list.length} สาขา
+        </span>
+        <span className="flex-1" />
+        <span className="text-right">
+          <em className="block text-xl font-extrabold not-italic leading-none" style={{ color: C.lhHi }}>
+            {nf(z.si)}
+          </em>
+          <Delta now={z.si} prev={z.pi} />
+        </span>
+        <span className="w-[72px] text-right">
+          <em className="block text-xl font-extrabold not-italic leading-none" style={{ color: C.fdHi }}>
+            {nf(z.so)}
+          </em>
+          <Delta now={z.so} prev={z.po} />
+        </span>
+      </div>
+
+      {/* ---- รายสาขา · สองคอลัมน์ ไล่ลงคอลัมน์ซ้ายให้ครบก่อนค่อยขึ้นคอลัมน์ขวา ---- */}
+      <div
+        className="grid min-h-0 flex-1 gap-x-3 gap-y-[3px] p-2"
+        style={{
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gridTemplateRows: `repeat(${Math.ceil(shown.length / 2)}, minmax(0, auto))`,
+          gridAutoFlow: 'column',
+          alignContent: 'center',
+        }}
+      >
+        {shown.map((r, i) => (
+          <span key={r.dir + r.station} className="flex items-center gap-2 overflow-hidden">
+            <span className="w-[14px] shrink-0 text-right font-mono text-[10px]" style={{ color: C.faint }}>
+              {i + 1}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{r.station}</span>
+            <span
+              className="w-[54px] shrink-0 text-right font-mono text-[17px] font-bold"
+              style={{ color: r.in_wh ? C.lhHi : C.faint }}
+            >
+              {nf(r.in_wh)}
+            </span>
+            <span
+              className="w-[48px] shrink-0 text-right font-mono text-[17px] font-bold"
+              style={{ color: r.on_truck ? C.fdHi : C.faint }}
+            >
+              {nf(r.on_truck)}
+            </span>
+          </span>
+        ))}
+      </div>
+
+      {rest.length > 0 && (
+        <p className="px-3 pb-2 text-center font-mono text-[11px]" style={{ color: C.faint }}>
+          อีก {rest.length} สาขา · รวม {nf(restIn)} / {nf(restOn)}
+        </p>
+      )}
     </section>
   )
 }
