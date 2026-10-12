@@ -18,6 +18,8 @@ import {
   issuePhotosReady,
   type IssueShots,
 } from './IssuePhotosBlock'
+import { AssetOtButton } from './AssetOtButton'
+import { isLate, listAssetOtOpen } from '../lib/assetOt'
 import { PartBoundary } from './ErrorBoundary'
 import { stampLines } from '../lib/image'
 import { fmtDateTime, relativeAge } from '../lib/format'
@@ -45,6 +47,8 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
   const held = useAsync(() => listAssetHoldings(true, profile?.id), [profile?.id])
   const types = useAsync(() => listAssetTypes(), [])
   const issues = useAsync(() => listAssetOpenIssues(), [])
+  /* ใบที่ขอ OT ไว้ · ถามแยกด้วยเหตุผลเดียวกับที่หน้าแรก */
+  const otOpen = useAsync(() => listAssetOtOpen(), [])
 
   const [picked, setPicked] = useState<string[]>([])
   const [shotsBy, setShotsBy] = useState<Record<string, Shot[]>>({})
@@ -68,6 +72,10 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
   const issueBy = useMemo(
     () => new Map((issues.data ?? []).map((i) => [i.asset_code, i])),
     [issues.data],
+  )
+  const otBy = useMemo(
+    () => new Map((otOpen.data ?? []).map((o) => [o.txn_id, o])),
+    [otOpen.data],
   )
 
   // ของพ่วงคืนพร้อมประเภทแม่ในรอบเดียว จึงจับกลุ่มด้วย "ประเภทหลัก"
@@ -233,7 +241,10 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
             <ul className="overflow-hidden rounded-card border border-line bg-surface px-3">
               {g.list.map((h) => {
                 const on = picked.includes(h.asset_code)
-                const late = h.due_at ? Date.now() > Date.parse(h.due_at) : false
+                const ot = otBy.get(h.txn_id)
+                /* อยู่ในช่วง OT ไม่นับว่าเลย · กติกาอยู่ที่ isLate() ที่เดียวทั้งระบบ
+                   ถ้าหน้านี้คิดเอง วันหนึ่งหน้าแรกจะบอกว่าเลย ส่วนหน้านี้บอกว่ายัง */
+                const late = isLate(h.due_at, ot?.ot_until)
                 const old = issueBy.get(h.asset_code)
                 const note = newIssues[h.asset_code]
                 return (
@@ -264,7 +275,11 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
                         <span
                           className={`block text-xs ${late ? 'text-danger-txt' : 'text-ink-500'}`}
                         >
-                          {late ? 'เลยกะแล้ว' : `ถือ ${relativeAge(h.taken_at)}`}
+                          {late
+                            ? 'เลยกะแล้ว'
+                            : ot
+                              ? 'อยู่ในช่วงต่อเวลา'
+                              : `ถือ ${relativeAge(h.taken_at)}`}
                         </span>
                         {/* ปุ่มแจ้งเสีย — เดิมเป็นตัวหนังสือขีดเส้นใต้เล็ก ๆ หน้างานใส่ถุงมือกดไม่โดน
                             ตอนนี้เป็นปุ่มสีแดงเต็มตัว สูงพอให้นิ้วโป้งกดได้ */}
@@ -279,6 +294,23 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
                         )}
                       </span>
                     </div>
+
+                    {/*
+                      ขอต่อเวลา · ขึ้นเฉพาะใบที่เลยเวลาแล้ว หรือที่ขอต่อไว้แล้ว
+                      วางเป็นแถวเต็มความกว้างใต้ชื่อเครื่อง ไม่ได้ยัดในคอลัมน์ขวา
+                      เพราะพอกางปุ่มสี่ชั่วโมงออกมา คอลัมน์แคบนั้นรับไม่ไหว
+                      ไม่กดก็คืนของได้ตามปกติ ปุ่มนี้ไม่บังคับและไม่ขวางอะไร
+                    */}
+                    {(late || ot) && (
+                      <div className="pb-2">
+                        <AssetOtButton
+                          txnId={h.txn_id}
+                          otUntil={ot?.ot_until}
+                          otHours={ot?.ot_hours}
+                          onDone={() => otOpen.reload()}
+                        />
+                      </div>
+                    )}
 
                     {on && note !== undefined && (
                       <div className="mb-2 rounded-card bg-danger-bg p-3">

@@ -23,6 +23,7 @@ import {
   roleLabel,
   showsOsScanTile,
 } from '../../lib/roles'
+import { isLate, listAssetOtOpen } from '../../lib/assetOt'
 import { usePendingApprovals } from '../../lib/usePendingApprovals'
 import { NotifyBell } from '../../components/NotifyBell'
 import { NewNotices } from '../../components/NewNotices'
@@ -100,9 +101,24 @@ export default function Home() {
    *
    * ใช้ตัวเลขที่หน้านี้ขอมาอยู่แล้วทั้งหมด ไม่ได้ยิงถามเพิ่มแม้แต่ครั้งเดียว
    */
+  /*
+    ใบที่ขอ OT ไว้ · ถามแยกเพราะเพิ่มคอลัมน์กลาง view asset_holdings ไม่ได้
+    ต้องเขียน view ใหม่ทั้งก้อน ซึ่งเสี่ยงกับของที่หน้างานใช้อยู่ทุกวัน
+    ของกองนี้มีไม่กี่แถวต่อคน การไล่หาแบบตรง ๆ จึงถูกกว่าทำแผนที่
+  */
+  const otOpen = useAsync(() => listAssetOtOpen(), [])
   const lateList = (heldAssets.data ?? [])
-    .filter((h) => h.due_at && Date.now() > Date.parse(h.due_at))
-    .map((h) => ({ code: h.asset_code, typeName: h.type_name, dueAt: h.due_at as string }))
+    .map((h) => ({ h, o: (otOpen.data ?? []).find((x) => x.txn_id === h.txn_id) }))
+    /* อยู่ในช่วง OT ไม่นับว่าเลย · กติกาอยู่ที่ isLate() ที่เดียวทั้งระบบ */
+    .filter(({ h, o }) => isLate(h.due_at, o?.ot_until))
+    .map(({ h, o }) => ({
+      code: h.asset_code,
+      typeName: h.type_name,
+      dueAt: h.due_at as string,
+      txnId: h.txn_id,
+      otUntil: o?.ot_until ?? null,
+      otHours: o?.ot_hours ?? null,
+    }))
   const lateAssets = lateList.length
   const notices: NoticeItem[] = []
   if (lateAssets > 0)

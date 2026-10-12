@@ -6,6 +6,8 @@ import { breakNow, breakOverRecent } from '../lib/breakPass'
 import { isLate, listAssetOtOpen } from '../lib/assetOt'
 import { ErrorBox, Loading, Modal, Spinner } from './ui'
 import { readableError } from '../lib/supabase'
+import { deptName } from '../lib/deptNames'
+import { relativeAge } from '../lib/format'
 import type { TransferCandidate } from './AssetTransfer'
 import type { AssetBoardRow, AssetHolding, AssetIssue, Item, OpenBorrowing } from '../lib/types'
 
@@ -366,6 +368,43 @@ export function HomeBoard({
     [holdings],
   )
 
+  /**
+   * สิ้นเปลืองที่ยืมไปแล้วยังไม่คืน · จับกลุ่มรายคน ไม่ใช่รายรายการ
+   *
+   * เจ้าของระบบสั่งว่า "เน้นที่ยืมคืนว่าอันไหนอยู่กับใคร"
+   * คำถามจริงคือ "ไปตามใคร" ไม่ใช่ "ค้างกี่ชิ้น"
+   * ถ้าเรียงเป็นรายชิ้น คนเดียวที่ยืมห้าอย่างจะกินห้าแถว
+   * แล้วคนที่ยืมอย่างเดียวแต่ค้างมาสามวันจะถูกดันหายไปท้ายรายการ
+   *
+   * เรียงจากค้างนานสุด ไม่ใช่จากจำนวนชิ้น
+   * เพราะของที่ค้างนานคือของที่ไม่มีใครตามแล้ว ซึ่งคือของที่หายจริง
+   */
+  const borrowers = useMemo(() => {
+    const m = new Map<
+      string,
+      { name: string; code: string; dept: string | null; oldest: string; lines: string[]; n: number }
+    >()
+    for (const b of openBorrow) {
+      const g = m.get(b.requester_id)
+      const line = `${b.item_name} ×${b.qty_open} ${b.unit}`
+      if (!g) {
+        m.set(b.requester_id, {
+          name: b.requester_name,
+          code: b.requester_code,
+          dept: b.requester_dept,
+          oldest: b.created_at,
+          lines: [line],
+          n: 1,
+        })
+      } else {
+        g.lines.push(line)
+        g.n += 1
+        if (Date.parse(b.created_at) < Date.parse(g.oldest)) g.oldest = b.created_at
+      }
+    }
+    return [...m.values()].sort((a, b) => Date.parse(a.oldest) - Date.parse(b.oldest))
+  }, [openBorrow])
+
   const out = items.filter((i) => i.is_active && i.qty_on_hand === 0)
   const low = items.filter((i) => i.is_active && i.qty_on_hand > 0 && i.qty_on_hand <= i.min_qty)
   const fresh = issues.filter((i) => Date.now() - Date.parse(i.reported_at) < 24 * 3600_000)
@@ -470,6 +509,19 @@ export function HomeBoard({
         (g) =>
           `${g.name} · ใบ ${g.open_cards}/${g.max_open} · ${g.open_people}/${g.max_people} คน`,
       ),
+    },
+    {
+      key: 'borrow',
+      n: openBorrow.length,
+      label: 'สิ้นเปลืองยืมค้าง',
+      tone: openBorrow.length > 0 ? 'warn' : undefined,
+      to: '/admin/outstanding',
+      head: `ยืมแล้วยังไม่คืน · ${borrowers.length} คน`,
+      note: 'เรียงจากค้างนานสุด',
+      rows: borrowers
+        .slice(0, 20)
+        .map((p) => `${p.name} · ${p.n} รายการ · ค้าง ${relativeAge(p.oldest)}`),
+      more: Math.max(0, borrowers.length - 20),
     },
     {
       key: 'out',
@@ -910,6 +962,65 @@ export function HomeBoard({
               className="mt-1 block text-center text-xs text-ink-500 underline"
             >
               ดูทั้งหมดในหน้าประวัติ
+            </Link>
+          )}
+        </div>
+      )}
+
+      {/*
+        สิ้นเปลืองยืมค้าง · รายคน ไม่ใช่รายชิ้น
+        ของกองนี้ไม่มีกำหนดคืนเหมือน Asset จึงไม่มีนาฬิกาให้นับถอยหลัง
+        สิ่งเดียวที่บอกได้ว่าควรไปตามใครก่อนคือค้างมานานแค่ไหน
+      */}
+      {borrowers.length > 0 && (
+        <div className="mt-3 rounded-card bg-surface-2 p-3">
+          <div className="mb-2 flex flex-wrap items-baseline gap-2">
+            <span className="font-display text-base">สิ้นเปลืองยืมค้าง</span>
+            <span className="text-xs text-ink-500">
+              {borrowers.length} คน · {openBorrow.length} รายการ · เรียงจากค้างนานสุด
+            </span>
+            <span className="flex-1" />
+            <Link to="/admin/outstanding" className="text-xs text-ink-500 underline">
+              ไปหน้าของค้างคืน
+            </Link>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {borrowers.slice(0, 12).map((p) => (
+              <Link
+                key={p.code + p.oldest}
+                to="/admin/outstanding"
+                className="rounded-card bg-surface px-2 py-[6px]"
+              >
+                <span className="flex items-baseline gap-1">
+                  <b className="min-w-0 flex-1 truncate text-[12.5px]">{p.name}</b>
+                  <span className="shrink-0 font-mono text-[11px] text-ink-400">{p.n} รายการ</span>
+                </span>
+                <span className="block truncate text-[10.5px] text-ink-400">
+                  {deptName(p.dept, '—')} · ค้าง {relativeAge(p.oldest)}
+                </span>
+                <span className="mt-[2px] block">
+                  {p.lines.slice(0, 2).map((l, i) => (
+                    <span key={i} className="block truncate text-[11px] text-ink-500">
+                      · {l}
+                    </span>
+                  ))}
+                  {p.lines.length > 2 && (
+                    <span className="block text-[10.5px] text-ink-400">
+                      และอีก {p.lines.length - 2} อย่าง
+                    </span>
+                  )}
+                </span>
+              </Link>
+            ))}
+          </div>
+
+          {borrowers.length > 12 && (
+            <Link
+              to="/admin/outstanding"
+              className="mt-2 block text-center text-xs text-ink-500 underline"
+            >
+              ดูทั้งหมดอีก {borrowers.length - 12} คน
             </Link>
           )}
         </div>

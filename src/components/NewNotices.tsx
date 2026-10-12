@@ -4,6 +4,7 @@ import { useAsync } from '../lib/useAsync'
 import { listAnnouncements } from '../lib/api'
 import { markNoticeSeen, listNoticeSeen } from '../lib/noticeSeen'
 import { Modal } from './ui'
+import { AssetOtButton } from './AssetOtButton'
 
 /**
  * ป็อปอัพรวมเรื่องใหม่ที่ยังไม่เคยเห็น
@@ -28,6 +29,11 @@ export interface LateItem {
   code: string
   typeName: string
   dueAt: string
+  /** ใบเบิกของเครื่องนี้ · ไว้ให้กดต่อเวลาจากในป็อปอัพได้เลย */
+  txnId: string
+  /** เคยขอต่อไว้ถึงกี่โมง · ว่าง = ยังไม่เคยขอ */
+  otUntil?: string | null
+  otHours?: number | null
 }
 
 interface Row {
@@ -35,18 +41,34 @@ interface Row {
   title: string
   sub: string
   bad?: boolean
+  /** มีใบเบิกผูกอยู่ · ขอต่อเวลาได้จากแถวนี้เลย */
+  ot?: { txnId: string; until?: string | null; hours?: number | null }
 }
 
 export function NewNotices({ late }: { late: LateItem[] }) {
   const seen = useAsync(() => listNoticeSeen(), [])
   const anns = useAsync(() => listAnnouncements(), [])
   const [closed, setClosed] = useState(false)
+  /*
+    ใบเบิกใบเดียวถือได้หลายเครื่อง และการต่อเวลาต่อให้ทั้งใบ ไม่ใช่ทีละเครื่อง
+    ถ้าให้แต่ละแถวจำของตัวเอง กดต่อที่เครื่องแรกแล้วเครื่องที่สองจะยังขึ้นปุ่มอยู่
+    พอกดก็จะเจอ "ใบนี้ต่อเวลาไปแล้ว" ทั้งที่เพิ่งกดไปเองเมื่อกี้
+    จึงจำที่เลขใบ แล้วทุกแถวของใบเดียวกันพลิกพร้อมกัน
+  */
+  const [otDone, setOtDone] = useState<Record<string, { hours: number; until: string }>>({})
 
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = []
     for (const l of late) {
       out.push({
-        key: `late:${l.code}`,
+        /*
+          กุญแจผูกกับเส้นตายที่ใช้จริง ไม่ใช่ผูกกับรหัสเครื่องเฉย ๆ
+          พอขอต่อเวลา เส้นตายเปลี่ยน กุญแจจึงเป็นตัวใหม่
+          แปลว่าถ้าเลยเวลาที่ขอต่อไว้อีก ป็อปอัพจะเด้งเตือนใหม่
+          ถ้าผูกกับรหัสเครื่องอย่างเดียว เตือนครั้งแรกครั้งเดียวแล้วเงียบตลอดกาล
+        */
+        key: `late:${l.code}:${l.otUntil ?? l.dueAt}`,
+        ot: { txnId: l.txnId, until: l.otUntil, hours: l.otHours },
         title: `เลยกำหนดคืนแล้ว · ${l.code}`,
         sub: `${l.typeName} · ครบกำหนด ${new Date(l.dueAt).toLocaleString('th-TH', {
           hour: '2-digit',
@@ -100,6 +122,21 @@ export function NewNotices({ late }: { late: LateItem[] }) {
               {r.title}
             </p>
             <p className={`text-sm ${r.bad ? 'text-danger-txt' : 'text-ink-500'}`}>{r.sub}</p>
+            {/*
+              ขอต่อเวลาได้ตรงนี้เลย ไม่ต้องเด้งไปอีกหน้าแล้วหาเครื่องเองใหม่
+              ไม่กดก็ปิดป็อปอัพได้ตามปกติ ปุ่มนี้ไม่เคยขวางทางอะไร
+            */}
+            {r.ot && (
+              <AssetOtButton
+                txnId={r.ot.txnId}
+                otUntil={otDone[r.ot.txnId]?.until ?? r.ot.until}
+                otHours={otDone[r.ot.txnId]?.hours ?? r.ot.hours}
+                tone="onDanger"
+                onDone={(hours, until) =>
+                  setOtDone((v) => ({ ...v, [r.ot?.txnId ?? '']: { hours, until } }))
+                }
+              />
+            )}
           </li>
         ))}
         {fresh.length > 8 && (
