@@ -27,6 +27,8 @@ export interface OutTruck {
 export interface OutRow {
   dir: 'LH' | 'FD'
   station: string
+  /** โซน D0x ของสาขา · null = ยังไม่ได้ตั้งที่หน้าหลังบ้าน */
+  zone: string | null
   in_wh: number
   on_truck: number
   /** ค่าของรอบก่อนหน้า · null = รอบก่อนไม่มีสาขานี้ */
@@ -323,4 +325,54 @@ export const OUT_RANK: Record<OutState, number> = {
   down: 2,
   new: 2,
   clear: 3,
+}
+
+/* ------------------------------------------------------- โซน D0x ของสาขา */
+
+/**
+ * โซนของสาขาปลายทาง · ตารางของตัวเอง ไม่ผูกกับรายชื่อสาขาของงานปล่อยรถ
+ *
+ * ดึงมาครั้งแรกจากงานปล่อยรถด้วย seedOutZones() ได้ 80 จาก 104 สาขา
+ * ที่เหลือเจ้าของระบบตั้งเองที่หลังบ้าน และหลังจากนั้นสองระบบไม่ยุ่งกัน
+ * ถ้าผูกกันตอนอ่าน วันที่ใครไปแก้ชื่อสาขาฝั่งปล่อยรถ โซนฝั่งนี้จะหายเงียบ ๆ
+ */
+export interface OutZoneRow {
+  station: string
+  dir: 'LH' | 'FD'
+  in_wh: number
+  on_truck: number
+  zone: string | null
+  note: string | null
+  from_seed: boolean
+}
+
+export async function outZoneRows(): Promise<OutZoneRow[]> {
+  const { data, error } = await supabase.rpc('hub_out_zone_rows')
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as OutZoneRow[]
+}
+
+/** เติมเฉพาะช่องที่ยังว่าง ไม่ทับของที่คนตั้งเอง · กดซ้ำกี่รอบก็ปลอดภัย */
+export async function seedOutZones(): Promise<{ added: number; left: number }> {
+  const { data, error } = await supabase.rpc('hub_out_zone_seed')
+  if (error) throw new Error(readableError(error))
+  return data as { added: number; left: number }
+}
+
+export async function setOutZone(station: string, zone: string, note?: string | null) {
+  const { error } = await supabase.rpc('hub_out_zone_set', {
+    p_station: station,
+    p_zone: zone,
+    p_note: note ?? null,
+  })
+  if (error) throw new Error(readableError(error))
+}
+
+export async function setOutZoneMany(stations: string[], zone: string): Promise<number> {
+  const { data, error } = await supabase.rpc('hub_out_zone_set_many', {
+    p_stations: stations,
+    p_zone: zone,
+  })
+  if (error) throw new Error(readableError(error))
+  return (data as { n: number }).n
 }

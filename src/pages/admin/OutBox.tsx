@@ -121,6 +121,29 @@ function Tag({ state, text }: { state: OutState; text: string }) {
   )
 }
 
+/**
+ * ป้ายโซน D0x · ติดทุกที่ที่มีชื่อสาขา
+ *
+ * สาขาที่ยังไม่ได้ตั้งโซนขึ้นป้ายจาง ๆ ว่าไม่มีโซน ไม่ใช่เว้นว่างไว้เฉย ๆ
+ * ช่องว่างอ่านได้สองแบบ คือยังไม่ตั้ง กับตั้งแล้วแต่ไม่มี ซึ่งคนละเรื่องกัน
+ */
+function Zone({ z, dim }: { z: string | null; dim?: boolean }) {
+  if (!z)
+    return (
+      <span className="rounded px-[5px] py-[1px] font-mono text-[10px]" style={{ background: C.chip, color: C.faint }}>
+        ไม่มีโซน
+      </span>
+    )
+  return (
+    <span
+      className="rounded px-[5px] py-[1px] font-mono text-[10px] font-bold"
+      style={{ background: dim ? C.chip : '#1E3246', color: '#8FD0FF' }}
+    >
+      {z}
+    </span>
+  )
+}
+
 function tagText(r: OutCalc): string {
   if (r.state === 'late') return `เลยเวลา ${r.late.map((x) => x.at.slice(11, 16)).join(' ')}`
   if (r.state === 'soon') return `ใกล้ถึง ${r.soon.map((x) => x.at.slice(11, 16)).join(' ')}`
@@ -401,6 +424,11 @@ export default function OutBox() {
               <UpdateCard snapAt={snap.snap_at} uploadedAt={snap.uploaded_at} ageTxt={ageTxt} warn={ageMin > 45} />
             </div>
 
+            <div className="mb-3 grid gap-3 lg:grid-cols-2">
+              <ZoneRank rows={rows} vs={vs} />
+              <ZoneTop rows={rows} />
+            </div>
+
             <TwoSide rows={rows} metric="in_wh" title="เข้าคลังแต่ไม่สแกนออก" vs={vs} />
             <div className="h-3" />
             <TwoSide rows={rows} metric="on_truck" title="สแกนออกแต่รถไม่ออก" vs={vs} />
@@ -572,7 +600,8 @@ function TopOne({
       {r ? (
         <>
           <span className="mt-1 block break-words text-xl font-extrabold leading-tight">{r.station}</span>
-          <span className="font-mono text-xs" style={{ color: C.faint }}>
+          <span className="flex items-center gap-2 font-mono text-xs" style={{ color: C.faint }}>
+            <Zone z={r.zone} />
             {LANE[r.dir]}
           </span>
           <div className="mt-1 flex items-baseline gap-3">
@@ -588,6 +617,124 @@ function TopOne({
         </span>
       )}
     </div>
+  )
+}
+
+/* ------------------------------------------------------------- โซน D0x */
+
+/** รวมยอดของแต่ละโซน · สาขาที่ยังไม่ตั้งโซนรวมเป็นกลุ่ม "ไม่มีโซน" ไม่ได้ถูกทิ้ง */
+function byZone(rows: OutCalc[]) {
+  const m = new Map<string, { zone: string | null; inWh: number; onTruck: number; pIn: number; pOn: number; n: number; top: OutCalc | null }>()
+  for (const r of rows) {
+    const k = r.zone ?? ''
+    const cur = m.get(k) ?? { zone: r.zone ?? null, inWh: 0, onTruck: 0, pIn: 0, pOn: 0, n: 0, top: null }
+    cur.inWh += r.in_wh
+    cur.onTruck += r.on_truck
+    cur.pIn += r.prev_in ?? 0
+    cur.pOn += r.prev_on ?? 0
+    cur.n += 1
+    if (!cur.top || r.in_wh + r.on_truck > cur.top.in_wh + cur.top.on_truck) cur.top = r
+    m.set(k, cur)
+  }
+  return [...m.values()].sort((a, b) => b.inWh + b.onTruck - (a.inWh + a.onTruck))
+}
+
+/** อันดับโซน · สองแท่งต่อโซน ฟ้าคือเข้าคลัง เหลืองคือรถไม่ออก */
+function ZoneRank({ rows, vs }: { rows: OutCalc[]; vs: string }) {
+  const g = useMemo(() => byZone(rows), [rows])
+  const max = Math.max(1, ...g.map((x) => Math.max(x.inWh, x.onTruck)))
+  return (
+    <section className="p-4" style={CARD}>
+      <h2 className="mb-1 text-lg font-extrabold">อันดับโซน D0</h2>
+      <p className="mb-3 text-[11px]" style={{ color: C.faint }}>
+        รวมยอดของทุกสาขาในโซนนั้น · เรียงจากค้างรวมมากสุด · {vs}
+      </p>
+      <ul className="space-y-3">
+        {g.map((x) => (
+          <li key={x.zone ?? 'none'}>
+            <div className="mb-1 flex items-baseline gap-2">
+              <Zone z={x.zone} />
+              <span className="text-sm" style={{ color: C.faint }}>
+                {x.n} สาขา
+              </span>
+              <span className="flex-1" />
+              <span className="font-mono text-sm font-bold">{nf(x.inWh + x.onTruck)}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-[62px] shrink-0 text-right font-mono text-sm font-bold" style={{ color: C.lhHi }}>
+                {nf(x.inWh)}
+              </span>
+              <span className="flex h-[14px] flex-1" style={groove}>
+                <i style={barStyle('LH', 'r', (x.inWh / max) * 100)} />
+              </span>
+              <Delta now={x.inWh} prev={x.pIn} />
+            </div>
+            <div className="mt-1 flex items-center gap-2">
+              <span className="w-[62px] shrink-0 text-right font-mono text-sm font-bold" style={{ color: C.fdHi }}>
+                {nf(x.onTruck)}
+              </span>
+              <span className="flex h-[14px] flex-1" style={groove}>
+                <i style={barStyle('FD', 'r', (x.onTruck / max) * 100)} />
+              </span>
+              <Delta now={x.onTruck} prev={x.pOn} />
+            </div>
+          </li>
+        ))}
+        {g.length === 0 && (
+          <li className="text-sm" style={{ color: C.faint }}>
+            ยังไม่มีข้อมูล
+          </li>
+        )}
+      </ul>
+    </section>
+  )
+}
+
+/** สาขาที่หนักสุดของแต่ละโซน · ตอบว่าในโซนนั้นต้องไปที่สาขาไหนก่อน */
+function ZoneTop({ rows }: { rows: OutCalc[] }) {
+  const g = useMemo(() => byZone(rows), [rows])
+  return (
+    <section className="p-4" style={CARD}>
+      <h2 className="mb-1 text-lg font-extrabold">สาขาสูงสุดของแต่ละโซน</h2>
+      <p className="mb-3 text-[11px]" style={{ color: C.faint }}>
+        ในโซนนั้นต้องไปที่สาขาไหนก่อน
+      </p>
+      <ul className="space-y-2">
+        {g.map((x) =>
+          x.top ? (
+            <li
+              key={x.zone ?? 'none'}
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2"
+              style={{ borderRadius: 11, background: C.groove, border: `1px solid ${C.line2}` }}
+            >
+              <Zone z={x.zone} />
+              <span className="min-w-0 flex-1 break-words text-[15px] font-bold leading-tight">{x.top.station}</span>
+              <span className="text-right">
+                <em className="block text-xl font-extrabold not-italic leading-none" style={{ color: C.lhHi }}>
+                  {nf(x.top.in_wh)}
+                </em>
+                <span className="font-mono text-[10px]" style={{ color: C.faint }}>
+                  เข้าคลัง
+                </span>
+              </span>
+              <span className="text-right">
+                <em className="block text-xl font-extrabold not-italic leading-none" style={{ color: C.fdHi }}>
+                  {nf(x.top.on_truck)}
+                </em>
+                <span className="font-mono text-[10px]" style={{ color: C.faint }}>
+                  รถไม่ออก
+                </span>
+              </span>
+            </li>
+          ) : null,
+        )}
+        {g.length === 0 && (
+          <li className="text-sm" style={{ color: C.faint }}>
+            ยังไม่มีข้อมูล
+          </li>
+        )}
+      </ul>
+    </section>
   )
 }
 
@@ -635,7 +782,10 @@ function TwoSide({
             <Row key={i} i={i}>
               {a ? (
                 <div className="grid items-center gap-2" style={{ gridTemplateColumns: 'minmax(0,1fr) auto 56%' }}>
-                  <span className="truncate text-right text-[13.5px]">{a.station}</span>
+                  <span className="flex min-w-0 items-center justify-end gap-1.5">
+                    <Zone z={a.zone} dim />
+                    <span className="truncate text-[13.5px]">{a.station}</span>
+                  </span>
                   <span className="font-mono text-base font-bold" style={{ color: C.lhHi }}>
                     {nf(a[metric])}
                   </span>
@@ -654,7 +804,10 @@ function TwoSide({
                   <span className="font-mono text-base font-bold" style={{ color: C.fdHi }}>
                     {nf(b[metric])}
                   </span>
-                  <span className="truncate text-[13.5px]">{b.station}</span>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate text-[13.5px]">{b.station}</span>
+                    <Zone z={b.zone} dim />
+                  </span>
                 </div>
               ) : (
                 <span />
@@ -821,6 +974,9 @@ function TvRow({ r, open, onToggle }: { r: OutCalc; open: boolean; onToggle: () 
         }}
       >
         <span className="min-w-0 flex-1">
+          <span className="mb-[2px] block">
+            <Zone z={r.zone} />
+          </span>
           <b className="block break-words text-lg font-extrabold leading-tight">{r.station}</b>
           {foot && (
             <span className="block font-mono text-xs" style={{ color: C.faint }}>
@@ -874,7 +1030,8 @@ function RowItem({ r, max, open, onToggle }: { r: OutCalc; max: number; open: bo
       <tr className="cursor-pointer" style={{ borderBottom: `1px solid ${C.line2}`, background: open ? C.panel2 : undefined }} onClick={onToggle}>
         <td className="px-3 py-2">
           <span className="block">{r.station}</span>
-          <span className="block font-mono text-xs" style={{ color: C.faint }}>
+          <span className="flex items-center gap-2 font-mono text-xs" style={{ color: C.faint }}>
+            <Zone z={r.zone} />
             {r.dir}
           </span>
         </td>

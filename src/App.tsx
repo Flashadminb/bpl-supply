@@ -22,6 +22,7 @@ import { Privacy, Terms } from './pages/Legal'
 // หน้าที่ลากไลบรารีหนัก (zxing) หรือใช้เฉพาะแอดมิน — โหลดเมื่อเปิดจริงเท่านั้น
 // เน็ตในฮับไม่นิ่ง หน้าแรกต้องเบาที่สุด
 const OutBox = lazy(() => import('./pages/admin/OutBox'))
+const OutZones = lazy(() => import('./pages/admin/OutZones'))
 const Scan = lazy(() => import('./pages/staff/Scan'))
 const Returns = lazy(() => import('./pages/staff/Returns'))
 const AssetPick = lazy(() => import('./pages/staff/AssetPick'))
@@ -411,6 +412,10 @@ export default function App() {
           path="trucks"
           element={<Guard roles={['admin']} allowDispatch><TruckAdmin /></Guard>}
         />
+        {/* โซน D0x ของสาขาปลายทาง · งานตั้งค่าของหน้าของค้างส่งออก
+            อยู่หลังบ้านเพราะทำครั้งเดียวแล้วนาน ๆ แก้ที ไม่ควรอยู่บนจอที่เปิดค้างทั้งกะ
+            ตารางแยกจากรายชื่อสาขาของงานปล่อยรถ แก้ฝั่งโน้นไม่กระทบฝั่งนี้ */}
+        <Route path="outbox-zones" element={<Guard roles={['admin']}><OutZones /></Guard>} />
         {/* ตั้งเกณฑ์เวลารถรอลงงาน · ของผู้ดูแลระบบคนเดียว
             ผู้ตรวจสอบดูกระดาน แดชบอร์ด และประวัติได้ แต่ไม่ตั้งเกณฑ์
             ด่านจริงอยู่ที่ policy ของ wait_truck_kpi เส้นทางนี้แค่ไม่ให้กดเข้ามาเจอ error */}
