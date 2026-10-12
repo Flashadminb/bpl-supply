@@ -410,6 +410,49 @@ export async function breakNow(): Promise<BreakNow> {
   return rpc<BreakNow>('break_now', {})
 }
 
+/* ──────────────────── ใครเกินเวลาบ้างในรอบ 24 ชั่วโมง ──────────────────── */
+
+export interface BreakOverRow {
+  id: number
+  ref: string
+  card: string
+  grp_code: string
+  grp: string
+  people: number
+  nickname: string | null
+  reason: string
+  minutes: number
+  issued_by: string | null
+  issued_at: string
+  due_at: string
+  /** ว่าง = ยังไม่กลับเข้ามา */
+  closed_at: string | null
+  /** ออกไปกี่คน กลับมาไม่ครบกี่คน · 0 = ครบ */
+  missing: number
+  over_min: number
+  /** กลับเข้ามาแล้วหรือยัง */
+  back: boolean
+}
+
+export interface BreakOverRecent {
+  rows: BreakOverRow[]
+  /** เกินครบหนึ่งนาทีขึ้นไปทั้งหมด · ส่วนใหญ่คือเวลาเดินกลับเข้าประตู */
+  total: number
+  /** เกินห้านาทีขึ้นไป · เส้นที่แยกเดินกลับช้าออกจากอยู่ข้างนอกนานเกิน */
+  over5: number
+}
+
+/**
+ * ใบที่เกินเวลาในรอบ 24 ชั่วโมง · รวมใบที่กลับเข้ามาแล้ว
+ *
+ * ต่างจาก breakNow().over ตรงที่ตัวนั้นหายทันทีที่ รปภ กดรับกลับ
+ * ซึ่งแปลว่าคนที่เกินยี่สิบนาทีแล้วเดินกลับเข้ามา จะไม่เคยขึ้นหน้าแรกเลย
+ * นอกจากแอดมินบังเอิญจ้องจออยู่พอดีตอนนั้น
+ */
+export async function breakOverRecent(limit = 60): Promise<BreakOverRecent> {
+  return rpc<BreakOverRecent>('break_over_recent', { p_limit: limit })
+}
+
 /* ───────────────────── แก้ไขประวัติ และประวัติการแก้ไข ───────────────────── */
 
 export interface BreakEditArgs {

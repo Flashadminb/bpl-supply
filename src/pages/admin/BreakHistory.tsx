@@ -147,7 +147,9 @@ export default function BreakHistory() {
   // ย้อนหลัง 7 วันพอ เบรคเกิดวันละหลายร้อยใบ ตั้ง 30 วันแล้วตารางจะชนเพดาน 1000 แถว
   const [from, setFrom] = useState(dayKey(-7))
   const [to, setTo] = useState(dayKey())
-  const [onlyOver, setOnlyOver] = useState(false)
+  /* ลิงก์จากป้ายเบรคเกินเวลาบนหน้าแรกพามาที่ ?over=1
+       เพื่อให้เปิดมาแล้วเห็นเฉพาะใบที่เกิน ไม่ใช่เห็นทั้งเจ็ดวันแล้วไล่หาเอง */
+  const [onlyOver, setOnlyOver] = useState(q0.get('over') === '1')
   const [onlyBan, setOnlyBan] = useState(false)
   const [onlyProblem, setOnlyProblem] = useState(false)
   const [open, setOpen] = useState<number | null>(null)
@@ -632,6 +634,7 @@ export default function BreakHistory() {
                       <th className="p-2">เดิน</th>
                       <th className="p-2">ข้างนอก</th>
                       <th className="p-2">สถานะ</th>
+                      <th className="w-[56px] p-2">แก้</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -668,10 +671,21 @@ export default function BreakHistory() {
                           <td className="p-2">
                             <StatusPill r={r} />
                           </td>
+                          {/*
+                            ปุ่มแก้อยู่ติดสถานะเลย ไม่ต้องกางแถวก่อน
+                            เพราะเก้าในสิบครั้งที่เปิดหน้านี้ คนมาแก้สถานะกับเวลา
+                            ไม่ได้มาดูรูป · ของเดิมต้องกดแถว แล้วรอรูปโหลด
+                            แล้วค่อยกดปุ่มแก้ แล้วค่อยได้ฟอร์ม สามจังหวะเพื่อเรื่องเดียว
+                            stopPropagation เพราะทั้งแถวเป็นปุ่มกางอยู่แล้ว
+                            ถ้าไม่กัน กดในฟอร์มทีไรแถวจะกางปิดสลับไปด้วยทุกครั้ง
+                          */}
+                          <td className="p-2" onClick={(e) => e.stopPropagation()}>
+                            <QuickEdit r={r} onDone={() => setTick((n) => n + 1)} />
+                          </td>
                         </tr>
                         {open === r.id && (
                           <tr className="border-b border-line-2 bg-ink/5">
-                            <td colSpan={9} className="p-3">
+                            <td colSpan={10} className="p-3">
                               <p className="mb-2 text-xs text-ink-500">
                                 {r.ref_no} · ขอ {r.minutes} นาที · {r.people} คน
                                 {r.returned_people !== null && ` · กลับ ${r.returned_people} คน`}
@@ -691,7 +705,9 @@ export default function BreakHistory() {
                 </table>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <p className="text-xs text-ink-400">กดที่แถวเพื่อดูรูป แก้สถานะ หรือแก้เวลา</p>
+                <p className="text-xs text-ink-400">
+                  กดปุ่มแก้ท้ายแถวเพื่อแก้สถานะหรือเวลาได้เลย · กดที่แถวถ้าจะดูรูปด้วย
+                </p>
                 <span className="flex-1" />
                 <Pager page={page} pages={pages} total={total} onGo={setPage} />
               </div>
@@ -764,8 +780,18 @@ const KIND_TH: { code: 'guard' | 'problem' | 'supervisor' | 'admin'; label: stri
  * เดือนหน้าจะไม่มีใครตอบได้ว่าทำไมเวลาไม่ตรงกับที่ รปภ จำได้
  * ทุกการแก้ถูกบันทึกลงประวัติการแก้ไขโดยอัตโนมัติจากฝั่งฐานข้อมูล
  */
-function EditPass({ r, onDone }: { r: BreakRow; onDone: () => void }) {
-  const [open, setOpen] = useState(false)
+function EditPassForm({
+  r,
+  onDone,
+  onCancel,
+  bare = false,
+}: {
+  r: BreakRow
+  onDone: () => void
+  onCancel: () => void
+  /** อยู่ในกล่องป็อปอัพอยู่แล้ว ไม่ต้องตีกรอบซ้อนกรอบ */
+  bare?: boolean
+}) {
   const [kind, setKind] = useState<string>(r.close_kind ?? '')
   const [gate, setGate] = useState(toLocalInput(r.gate_out_at))
   const [back, setBack] = useState(toLocalInput(r.closed_at))
@@ -802,7 +828,6 @@ function EditPass({ r, onDone }: { r: BreakRow; onDone: () => void }) {
         note: note || null,
         clear,
       })
-      setOpen(false)
       setWhy('')
       onDone()
     } catch (e) {
@@ -812,16 +837,8 @@ function EditPass({ r, onDone }: { r: BreakRow; onDone: () => void }) {
     }
   }
 
-  if (!open) {
-    return (
-      <button type="button" className="btn-soft mt-3 h-tap px-4 text-sm" onClick={() => setOpen(true)}>
-        แก้สถานะ หรือแก้เวลา
-      </button>
-    )
-  }
-
   return (
-    <div className="mt-3 rounded-card border border-line p-3">
+    <div className={bare ? '' : 'mt-3 rounded-card border border-line p-3'}>
       {err && (
         <div className="mb-2">
           <ErrorBox message={err} />
@@ -877,11 +894,84 @@ function EditPass({ r, onDone }: { r: BreakRow; onDone: () => void }) {
         >
           {busy ? <Spinner /> : null} บันทึกการแก้
         </button>
-        <button type="button" className="btn-ghost h-tap px-4" onClick={() => setOpen(false)}>
+        <button type="button" className="btn-ghost h-tap px-4" onClick={onCancel}>
           ยกเลิก
         </button>
         {!changed && <span className="self-center text-xs text-ink-400">ยังไม่ได้แก้อะไร</span>}
       </div>
     </div>
+  )
+}
+
+/** ปุ่มเดิมในแถวที่กางออก · ยังอยู่เหมือนเดิมสำหรับคนที่เปิดดูรูปอยู่แล้ว */
+function EditPass({ r, onDone }: { r: BreakRow; onDone: () => void }) {
+  const [open, setOpen] = useState(false)
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="btn-soft mt-3 h-tap px-4 text-sm"
+        onClick={() => setOpen(true)}
+      >
+        แก้สถานะ หรือแก้เวลา
+      </button>
+    )
+  }
+  return (
+    <EditPassForm
+      r={r}
+      onDone={() => {
+        setOpen(false)
+        onDone()
+      }}
+      onCancel={() => setOpen(false)}
+    />
+  )
+}
+
+/**
+ * ปุ่มแก้ด่วนท้ายแถว · ฟอร์มตัวเดียวกับในแถวที่กางออก ไม่ได้ลอกมาวาง
+ *
+ * ถ้าลอกไปอีกชุด วันหนึ่งจะมีคนเพิ่มช่องที่ฝั่งหนึ่งแล้วลืมอีกฝั่ง
+ * แล้วจะมีใบที่แก้จากแถวกางได้แต่แก้จากปุ่มด่วนไม่ได้ โดยไม่มีใครรู้ว่าทำไม
+ *
+ * ฟอร์มเกิดใหม่ทุกครั้งที่เปิด (เรนเดอร์เฉพาะตอน open)
+ * ค่าในช่องจึงเป็นค่าล่าสุดของใบนั้นเสมอ ไม่ใช่ค่าค้างจากครั้งก่อน
+ */
+function QuickEdit({ r, onDone }: { r: BreakRow; onDone: () => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button
+        type="button"
+        className="btn-soft h-tap w-full px-2 text-xs"
+        onClick={() => setOpen(true)}
+        aria-label={`แก้ใบ ${r.card_code}`}
+      >
+        แก้
+      </button>
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title={`แก้ใบ ${r.card_code} · ${r.ref_no}`}
+        width="max-w-[720px]"
+      >
+        <p className="mb-3 text-xs text-ink-500">
+          {r.reason_label} · ขอ {r.minutes} นาที · {r.people} คน · ปล่อยโดย {r.issued_by_name}
+          {r.closed_by_name ? ` · รับกลับโดย ${r.closed_by_name}` : ''}
+        </p>
+        {open && (
+          <EditPassForm
+            r={r}
+            bare
+            onDone={() => {
+              setOpen(false)
+              onDone()
+            }}
+            onCancel={() => setOpen(false)}
+          />
+        )}
+      </Modal>
+    </>
   )
 }

@@ -147,6 +147,12 @@ export default function Dashboard() {
           assetUnsent.reload()
           unsent.reload()
         }}
+        /* สั่งงานเครื่องจากตารางบนหน้าแรกแล้ว · ตัวเลขทั้งหน้าต้องตามไปด้วย
+           ไม่ใช่โอนเสร็จแล้วยังเห็นชื่อคนเดิมค้างอยู่จนกว่าจะกดรีเฟรชเอง */
+        onAssetChanged={() => {
+          held.reload()
+          assetIssues.reload()
+        }}
       />
 
       <section className="mb-5">

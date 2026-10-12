@@ -1,12 +1,25 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAsync } from '../lib/useAsync'
-import { exportToSheet, listAssetTransferRows } from '../lib/api'
-import { breakNow } from '../lib/breakPass'
+import { assetBoard, exportToSheet, listAssetTransferRows } from '../lib/api'
+import { breakNow, breakOverRecent } from '../lib/breakPass'
 import { isLate, listAssetOtOpen } from '../lib/assetOt'
-import { Modal, Spinner } from './ui'
+import { ErrorBox, Loading, Modal, Spinner } from './ui'
 import { readableError } from '../lib/supabase'
-import type { AssetHolding, AssetIssue, Item, OpenBorrowing } from '../lib/types'
+import type { TransferCandidate } from './AssetTransfer'
+import type { AssetBoardRow, AssetHolding, AssetIssue, Item, OpenBorrowing } from '../lib/types'
+
+/**
+ * กล่องสั่งงานของเครื่องเดียว · ตัวเดียวกับที่หน้ากระดานใช้ ไม่ได้ทำใหม่
+ *
+ * โหลดแยกก้อนตอนกดเปิดเท่านั้น เพราะข้างในลากกล่องถ่ายรูป กล่องโอน
+ * และกล่องเคลียร์ใบแจ้งเสียติดมาทั้งชุด ถ้า import ตรง ๆ ของทั้งกองนี้
+ * จะไปกองอยู่ในก้อนของหน้าแรก ซึ่งเป็นหน้าที่ทุกคนต้องโหลดก่อนเสมอ
+ * ทั้งที่คนส่วนใหญ่เปิดหน้าแรกแล้วก็ไม่ได้กดเครื่องสักเครื่อง
+ */
+const DeviceBox = lazy(() =>
+  import('../pages/admin/AssetDeviceBox').then((m) => ({ default: m.AssetDeviceBox })),
+)
 
 /**
  * แถบบนสุดของหน้าแรกหลังบ้าน
@@ -21,6 +34,11 @@ import type { AssetHolding, AssetIssue, Item, OpenBorrowing } from '../lib/types
  */
 
 const p2 = (n: number) => String(n).padStart(2, '0')
+
+/** hh:mm แบบไทย · ใช้กับเวลาที่คนจะเอาไปเทียบกับนาฬิกาบนผนัง */
+function hhmm(iso: string): string {
+  return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+}
 
 function minsLeft(iso: string): number {
   return Math.round((Date.parse(iso) - Date.now()) / 60000)
@@ -213,6 +231,7 @@ export function HomeBoard({
   fromISO,
   toISO,
   onSent,
+  onAssetChanged,
 }: {
   holdings: AssetHolding[]
   issues: AssetIssue[]
@@ -223,6 +242,8 @@ export function HomeBoard({
   fromISO: string
   toISO: string
   onSent?: () => void
+  /** สั่งงานเครื่องจากหน้านี้สำเร็จแล้ว · ให้หน้าแม่ไปโหลดรายการถือครองใหม่ */
+  onAssetChanged?: () => void
 }) {
   /** ติ๊กไว้ก่อนทุกชุดที่มีของค้าง · คนเปิดกล่องนี้ส่วนใหญ่ตั้งใจจะส่งทั้งหมดอยู่แล้ว */
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -241,6 +262,47 @@ export function HomeBoard({
       }),
     [],
   )
+  /**
+   * เครื่องที่กดเปิดอยู่ · เก็บเป็นรหัส ไม่ได้เก็บทั้งแถว
+   *
+   * กล่องสั่งงานกินข้อมูลคนละชุดกับตารางนี้ มันขอ asset_board ซึ่งรู้ด้วยว่า
+   * เครื่องไหนมีใบแจ้งเสียค้าง มีโอนที่ปลายทางยังไม่รับ และเครื่องไหนว่างอยู่
+   * สามเรื่องนั้นไม่มีในรายการถือครองที่หน้านี้ถืออยู่
+   *
+   * กระดานถูกขอตอนกดเครื่องแรกเท่านั้น ไม่ได้ขอตั้งแต่เปิดหน้า
+   * เพราะมันคือ 143 แถวที่คนส่วนใหญ่เปิดหน้าแรกแล้วไม่ได้ใช้
+   */
+  const [pickCode, setPickCode] = useState<string | null>(null)
+  const [wantBoard, setWantBoard] = useState(false)
+  const board = useAsync<AssetBoardRow[] | null>(
+    async () => (wantBoard ? assetBoard() : null),
+    [wantBoard],
+  )
+  const pick = useMemo(
+    () => (pickCode ? ((board.data ?? []).find((r) => r.code === pickCode) ?? null) : null),
+    [board.data, pickCode],
+  )
+  /* เครื่องที่ติ๊กโอนไปพร้อมกันได้ · ส่งทั้งกระดานเหมือนหน้ากระดาน
+     ไม่ใช่แค่สิบสองเครื่องที่ตารางนี้โชว์อยู่ */
+  const moveCandidates = useMemo<TransferCandidate[]>(
+    () =>
+      (board.data ?? [])
+        .filter((x) => x.is_enabled)
+        .map((x) => ({
+          code: x.code,
+          type_name: x.type_name,
+          dept: x.dept_code,
+          holder: x.holder_name,
+          holderId: x.holder_id,
+        })),
+    [board.data],
+  )
+
+  function openDevice(code: string) {
+    setWantBoard(true)
+    setPickCode(code)
+  }
+
   /* สถานะเบรคเดี๋ยวนี้ · ก้อนเดียวได้ทั้งแผนกที่เบรคอยู่และใบที่เกินเวลา
      ถามใหม่ทุกนาที เพราะเบรคเป็นเรื่องที่เปลี่ยนทุกไม่กี่นาที
      ต่างจากของค้างคืนที่เปลี่ยนวันละไม่กี่ครั้ง */
@@ -252,6 +314,14 @@ export function HomeBoard({
   const br = useAsync(() => breakNow(), [brTick])
   const brGroups = br.data?.groups ?? []
   const brOver = br.data?.over ?? []
+
+  /* ใครเกินเวลาไปแล้วบ้างในรอบ 24 ชม · รวมคนที่กลับเข้ามาแล้ว
+     ถามรอบเดียวกับ breakNow เพราะเปลี่ยนด้วยเหตุการณ์เดียวกัน */
+  const brPast = useAsync(() => breakOverRecent(60), [brTick])
+  const overRows = brPast.data?.rows ?? []
+  const overTotal = brPast.data?.total ?? 0
+  const over5 = brPast.data?.over5 ?? 0
+  const overOut = overRows.filter((o) => !o.back).length
 
   /* ใบที่ขอ OT ไว้ · เอามาต่อกับรายการถือครองด้วย txn_id
      ที่แยกคำถามเพราะเพิ่มคอลัมน์กลาง view asset_holdings ไม่ได้
@@ -678,7 +748,9 @@ export function HomeBoard({
           <span className="font-display text-base">Asset ที่ออกไปอยู่กับคน</span>
           <span className="text-xs text-ink-500">เรียงจากใกล้ครบกำหนดสุด · {soon.length} เครื่อง</span>
           <span className="flex-1" />
-          <span className="text-[10.5px] text-ink-400">เขียว ยังเหลือเวลา · เหลือง ใกล้ครบ · แดง เลยแล้ว</span>
+          <span className="text-[10.5px] text-ink-400">
+            กดที่เครื่องเพื่อโอน คืนแทน หรือดูประวัติ · เขียว ยังเหลือเวลา · เหลือง ใกล้ครบ · แดง เลยแล้ว
+          </span>
         </div>
         {/*
           สามช่องต่อแถวบนจอกว้าง · ของเดิมเป็นแถวเต็มความกว้างแถวละเครื่อง
@@ -698,7 +770,17 @@ export function HomeBoard({
             /* แถบยาวตามเวลาที่ใช้ไป · ไม่รู้เวลาเริ่มก็ประมาณจากกำหนดแปดชั่วโมง */
             const pct = over ? 100 : Math.max(4, Math.min(100, 100 - (m / 480) * 100))
             return (
-              <li key={h.out_item_id} className="rounded-card bg-surface px-2 py-[6px]">
+              <li key={h.out_item_id}>
+                {/*
+                  กดแล้วเปิดกล่องเดียวกับหน้ากระดาน · โอน คืนแทน ยกเลิกโอน ดูประวัติ
+                  ของเดิมเป็นแค่ข้อความ เห็นว่าเครื่องนี้เลยกำหนดแล้วแต่ทำอะไรไม่ได้
+                  ต้องจำรหัสไว้ในหัวแล้วเปิดอีกหน้าไปพิมพ์ค้นใหม่
+                */}
+                <button
+                  type="button"
+                  onClick={() => openDevice(h.asset_code)}
+                  className="block w-full rounded-card bg-surface px-2 py-[6px] text-left"
+                >
                 <span className="flex items-center gap-2">
                   <b className="shrink-0 font-mono text-xs">{h.asset_code}</b>
                   {o && (
@@ -718,6 +800,7 @@ export function HomeBoard({
                 <span className="mt-1 block h-[6px] overflow-hidden rounded-pill bg-ink/10">
                   <i className="block h-full rounded-pill" style={{ width: `${pct}%`, background: col }} />
                 </span>
+                </button>
               </li>
             )
           })}
@@ -728,11 +811,152 @@ export function HomeBoard({
           )}
         </ul>
         {soon.length > 12 && (
-          <Link to="/admin/assets-out" className="mt-2 block text-center text-xs text-ink-500 underline">
-            ดูทั้งหมดอีก {soon.length - 12} เครื่อง
+          /* ของเยอะกว่าที่ตารางนี้ไหว ก็ส่งไปหน้ากระดาน ไม่ใช่หน้ารายการค้าง
+             เพราะกระดานคือที่เดียวที่กรอง ค้นหา และสั่งงานได้ครบในหน้าเดียว */
+          <Link to="/admin/asset-board" className="mt-2 block text-center text-xs text-ink-500 underline">
+            ดูทั้งหมดอีก {soon.length - 12} เครื่อง · ไปหน้ากระดาน
           </Link>
         )}
       </div>
+
+      {/*
+        เบรคเกินเวลารอบ 24 ชม · อยู่ใต้ตาราง Asset ตามที่เจ้าของระบบสั่ง
+        โชว์เฉพาะใบที่เกินจริง ใบที่กลับตรงเวลาไม่ขึ้นเลย
+        ใบที่ยังไม่กลับขึ้นก่อนและกระพริบ ใบที่กลับมาแล้วอยู่ต่ออีก 24 ชม แล้วหายเอง
+        ทุกช่องกดแล้วเข้าหน้าประวัติที่ใบนั้นทันที ด้วยเลขใบซึ่งไม่ซ้ำกับใครเลย
+      */}
+      {overRows.length > 0 && (
+        <div className="mt-3 rounded-card bg-surface-2 p-3">
+          <div className="mb-2 flex flex-wrap items-baseline gap-2">
+            <span className="font-display text-base">เบรคเกินเวลา</span>
+            {/*
+              สามตัวเลขไม่เท่ากันโดยตั้งใจ · วันหนึ่งปิดใบเกือบห้าร้อยใบ
+              และครึ่งหนึ่งเกินหนึ่งนาที ซึ่งคือเวลาเดินกลับเข้าประตู ไม่ใช่การอู้
+              ถ้าเขียนแต่เลขก้อนใหญ่ ป้ายนี้จะแดงทุกวันจนไม่มีความหมาย
+            */}
+            <span className="text-xs text-ink-500">
+              รอบ 24 ชม
+              {overOut > 0 && (
+                <b className="text-danger-txt"> · ยังไม่กลับ {overOut} ใบ</b>
+              )}
+              {' · เกิน 5 นาทีขึ้นไป '}
+              <b>{over5}</b> ใบ · เกิน 1 นาทีขึ้นไป {overTotal} ใบ
+            </span>
+            <span className="flex-1" />
+            <Link
+              to="/admin/break/history?tab=history&over=1"
+              className="text-xs text-ink-500 underline"
+            >
+              ไปหน้าประวัติ
+            </Link>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-5">
+            {overRows.slice(0, 15).map((o) => (
+              <Link
+                key={o.id}
+                to={`/admin/break/history?tab=history&q=${encodeURIComponent(o.ref)}`}
+                className={
+                  o.back
+                    ? 'rounded-card border border-line bg-surface px-2 py-[6px]'
+                    : 'animate-[hbFlash_1.1s_ease-in-out_infinite] rounded-card border-2 border-danger px-2 py-[6px]'
+                }
+              >
+                <span className="flex items-center gap-1">
+                  <b
+                    className={`min-w-0 flex-1 truncate font-mono text-xs font-bold ${o.back ? '' : 'text-danger-txt'}`}
+                  >
+                    {o.card}
+                  </b>
+                  <span
+                    className={`shrink-0 rounded-pill px-[5px] py-[1px] text-[9.5px] font-bold ${
+                      o.back ? 'bg-ink/10 text-ink-500' : 'bg-danger text-white'
+                    }`}
+                  >
+                    {o.back ? 'กลับแล้ว' : 'ยังไม่กลับ'}
+                  </span>
+                </span>
+                <span
+                  className={`mt-[1px] block truncate text-[11px] ${o.back ? 'text-ink-500' : 'text-danger-txt'}`}
+                >
+                  {o.nickname ? o.nickname + ' · ' : ''}
+                  {o.grp} · {o.people} คน
+                </span>
+                <span
+                  className={`block font-mono text-[11px] font-bold ${o.back ? 'text-ink' : 'text-danger-txt'}`}
+                >
+                  เกิน {o.over_min} นาที
+                  <span className="font-sans font-normal text-ink-400">
+                    {' · '}
+                    {hhmm(o.closed_at ?? o.due_at)}
+                  </span>
+                </span>
+                {o.missing > 0 && (
+                  <span className="mt-[2px] block rounded-pill bg-danger px-[5px] py-[1px] text-center text-[9.5px] font-bold text-white">
+                    เข้าไม่ครบ · ขาด {o.missing}
+                  </span>
+                )}
+              </Link>
+            ))}
+          </div>
+
+          <p className="mt-2 text-center text-[10.5px] text-ink-400">
+            เรียงจากเกินนานสุด · ใบที่ยังไม่กลับขึ้นก่อนเสมอ
+            {overRows.length > 15 && ` · โชว์ 15 ใบแรกจาก ${overTotal} ใบ`}
+          </p>
+          {overRows.length > 15 && (
+            <Link
+              to="/admin/break/history?tab=history&over=1"
+              className="mt-1 block text-center text-xs text-ink-500 underline"
+            >
+              ดูทั้งหมดในหน้าประวัติ
+            </Link>
+          )}
+        </div>
+      )}
+
+      {/*
+        กล่องสั่งงานของเครื่องที่กดเปิด
+        ระหว่างรอกระดานโหลด ขึ้นกล่องเปล่าไว้ก่อน ไม่ปล่อยให้กดแล้วเงียบ
+        เพราะเน็ตในฮับสะดุดบ่อย แล้วคนจะกดซ้ำอีกสามครั้งคิดว่าไม่ติด
+      */}
+      {pickCode && !pick && (
+        <Modal open onClose={() => setPickCode(null)} title={pickCode}>
+          {board.error ? (
+            <ErrorBox message={board.error} onRetry={board.reload} />
+          ) : board.loading || !board.data ? (
+            <Loading label="กำลังเปิดกล่องเครื่อง…" />
+          ) : (
+            <div>
+              <p className="text-sm text-ink-500">
+                ไม่เจอเครื่องนี้บนกระดาน · อาจถูกปิดใช้งานหรือย้ายทะเบียนไปแล้ว
+              </p>
+              <Link to="/admin/asset-board" className="mt-3 block text-sm underline">
+                เปิดหน้ากระดานเครื่อง
+              </Link>
+            </div>
+          )}
+        </Modal>
+      )}
+      {pick && (
+        <Suspense
+          fallback={
+            <Modal open onClose={() => setPickCode(null)} title={pick.code}>
+              <Loading label="กำลังเปิดกล่องเครื่อง…" />
+            </Modal>
+          }
+        >
+          <DeviceBox
+            r={pick}
+            candidates={moveCandidates}
+            onClose={() => setPickCode(null)}
+            onDone={() => {
+              board.reload()
+              onAssetChanged?.()
+            }}
+          />
+        </Suspense>
+      )}
     </section>
   )
 }
