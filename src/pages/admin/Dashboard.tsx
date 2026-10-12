@@ -138,9 +138,15 @@ export default function Dashboard() {
         openBorrow={openBorrow}
         pendingApprovals={pending.length}
         sheetRows={[
-          { label: 'Asset', n: assetPendingSheet },
-          { label: 'สิ้นเปลือง', n: pendingSheet },
+          { label: 'Asset', n: assetPendingSheet, scope: 'asset' },
+          { label: 'สิ้นเปลือง', n: pendingSheet, scope: 'supply' },
         ]}
+        fromISO={fromISO}
+        toISO={toISO}
+        onSent={() => {
+          assetUnsent.reload()
+          unsent.reload()
+        }}
       />
 
       <section className="mb-5">

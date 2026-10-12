@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAsync } from '../lib/useAsync'
-import { listAssetTransferRows } from '../lib/api'
+import { exportToSheet, listAssetTransferRows } from '../lib/api'
+import { Modal, Spinner } from './ui'
+import { readableError } from '../lib/supabase'
 import type { AssetHolding, AssetIssue, Item, OpenBorrowing } from '../lib/types'
 
 /**
@@ -96,7 +98,8 @@ interface CardDef {
   label: string
   tone?: 'bad' | 'warn' | 'go'
   blink?: boolean
-  to: string
+  to?: string
+  onClick?: () => void
   head: string
   note?: string
   rows: string[]
@@ -104,6 +107,8 @@ interface CardDef {
 }
 
 function Card({ c }: { c: CardDef }) {
+  const Tag = (c.to ? Link : 'button') as React.ElementType
+  const extra = c.to ? { to: c.to } : { type: 'button' as const, onClick: c.onClick }
   const tone =
     c.tone === 'bad'
       ? 'bg-danger-bg text-danger-txt'
@@ -114,9 +119,9 @@ function Card({ c }: { c: CardDef }) {
           : 'bg-surface-2 text-ink'
 
   return (
-    <Link
-      to={c.to}
-      className={`group relative block rounded-card border-2 border-transparent p-2 ${tone} ${
+    <Tag
+      {...extra}
+      className={`group relative block w-full rounded-card border-2 border-transparent p-2 text-left ${tone} ${
         c.blink ? 'animate-[hbBlink_1.25s_ease-in-out_infinite]' : ''
       }`}
     >
@@ -141,7 +146,7 @@ function Card({ c }: { c: CardDef }) {
           </span>
         ) : null}
       </span>
-    </Link>
+    </Tag>
   )
 }
 
@@ -154,14 +159,26 @@ export function HomeBoard({
   openBorrow,
   pendingApprovals,
   sheetRows,
+  fromISO,
+  toISO,
+  onSent,
 }: {
   holdings: AssetHolding[]
   issues: AssetIssue[]
   items: Item[]
   openBorrow: OpenBorrowing[]
   pendingApprovals: number
-  sheetRows: { label: string; n: number }[]
+  sheetRows: { label: string; n: number; scope: 'asset' | 'supply' }[]
+  fromISO: string
+  toISO: string
+  onSent?: () => void
 }) {
+  /** ติ๊กไว้ก่อนทุกชุดที่มีของค้าง · คนเปิดกล่องนี้ส่วนใหญ่ตั้งใจจะส่งทั้งหมดอยู่แล้ว */
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [picked, setPicked] = useState<string[]>([])
+  const [sending, setSending] = useState(false)
+  const [sentMsg, setSentMsg] = useState<string | null>(null)
+  const [sendErr, setSendErr] = useState<string | null>(null)
   /* โอนที่ปลายทางยังไม่กดรับ · หน้าแม่ไม่เคยขอข้อมูลนี้ จึงขอเองที่นี่
      ย้อนหลังเจ็ดวันพอ ของที่ค้างนานกว่านั้นไม่ได้แก้ด้วยการเตือนบนหน้าแรก */
   const moves = useAsync(
@@ -289,13 +306,46 @@ export function HomeBoard({
     {
       key: 'sheet',
       n: sheetTotal,
-      label: 'ค้างส่งชีต',
+      label: sheetTotal > 0 ? 'ค้างส่งชีต · กดส่งได้' : 'ค้างส่งชีต',
       tone: sheetTotal > 0 ? 'go' : undefined,
-      to: '/admin/export',
+      onClick: () => {
+        setPicked(sheetRows.filter((r) => r.n > 0).map((r) => r.scope))
+        setSentMsg(null)
+        setSendErr(null)
+        setSheetOpen(true)
+      },
       head: 'รอส่งเข้า Google Sheet',
+      note: sheetTotal > 0 ? 'กดที่การ์ดเพื่อเลือกและส่งจากหน้านี้ได้เลย' : undefined,
       rows: sheetRows.map((r) => `${r.label} ${r.n.toLocaleString('th-TH')} บรรทัด`),
     },
   ]
+
+  /**
+   * ส่งทีละชุด ไม่ได้ยิงพร้อมกัน
+   * เพราะ Edge Function เขียนลงไฟล์เดียวกัน ยิงพร้อมกันคือเสี่ยงเขียนทับกันเอง
+   * และถ้าชุดใดชุดหนึ่งพลาด ต้องรู้ว่าชุดไหน ไม่ใช่รู้แค่ว่ามีอะไรพลาด
+   */
+  async function send() {
+    setSending(true)
+    setSendErr(null)
+    setSentMsg(null)
+    const done: string[] = []
+    try {
+      for (const r of sheetRows) {
+        if (!picked.includes(r.scope) || r.n === 0) continue
+        const res = await exportToSheet({ scope: r.scope, from: fromISO, to: toISO })
+        done.push(`${r.label} เพิ่มใหม่ ${res.appended} อัปของเดิม ${res.updated}`)
+      }
+      setSentMsg(done.join(' · ') || 'ไม่มีอะไรต้องส่ง')
+      onSent?.()
+    } catch (e) {
+      setSendErr(
+        (done.length > 0 ? `ส่งไปแล้ว ${done.join(' · ')} · ` : '') + readableError(e),
+      )
+    } finally {
+      setSending(false)
+    }
+  }
 
   const ticker = [
     fresh.length > 0 && { text: `แจ้งซ่อมใหม่ ${fresh.length} เรื่อง`, bad: true },
@@ -312,6 +362,65 @@ export function HomeBoard({
         @keyframes hbTick { from { transform: translateX(0) } to { transform: translateX(-50%) } }
         @keyframes hbBlink { 0%,100% { border-color: transparent } 50% { border-color: #E24B4A } }
       `}</style>
+
+      {/*
+        กล่องเลือกก่อนส่ง · ไม่ยิงทันทีที่กด
+        เพราะส่งชีตคือการเขียนลงไฟล์ขององค์กรที่คนอื่นเปิดดูอยู่
+        กดพลาดครั้งเดียวแล้วบอกว่าไม่ได้ตั้งใจ ไม่ช่วยอะไรเลย
+      */}
+      <Modal open={sheetOpen} onClose={() => setSheetOpen(false)} title="ส่งเข้า Google Sheet">
+        <p className="mb-2 text-sm text-ink-500">
+          ติ๊กเลือกว่าจะส่งอะไรบ้าง · ส่งซ้ำไม่เกิดแถวซ้ำ ระบบอัปของเดิมให้
+        </p>
+        <div className="space-y-2">
+          {sheetRows.map((r) => (
+            <label
+              key={r.scope}
+              className={`flex items-start gap-2 rounded-card bg-surface-2 p-3 ${r.n === 0 ? 'opacity-55' : ''}`}
+            >
+              <input
+                type="checkbox"
+                className="mt-[2px] h-[18px] w-[18px]"
+                disabled={r.n === 0 || sending}
+                checked={picked.includes(r.scope)}
+                onChange={(e) =>
+                  setPicked((p) => (e.target.checked ? [...p, r.scope] : p.filter((x) => x !== r.scope)))
+                }
+              />
+              <span className="flex-1">
+                <span className="block font-display text-base">
+                  {r.label} · {r.n.toLocaleString('th-TH')} บรรทัด
+                </span>
+                <span className="block text-xs text-ink-400">
+                  {r.n === 0 ? 'ไม่มีของค้าง ติ๊กไม่ได้' : 'ในช่วงวันที่เลือกไว้ด้านบนของหน้า'}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+
+        {sentMsg && <p className="mt-3 rounded-card bg-success-bg px-3 py-2 text-sm text-success-txt">{sentMsg}</p>}
+        {sendErr && <p className="mt-3 rounded-card bg-danger-bg px-3 py-2 text-sm text-danger-txt">{sendErr}</p>}
+
+        <div className="mt-4 flex gap-2">
+          <button type="button" className="btn-soft flex-1 py-3" onClick={() => setSheetOpen(false)}>
+            ปิด
+          </button>
+          <button
+            type="button"
+            className="btn-primary flex-[2] py-3"
+            disabled={sending || picked.length === 0}
+            onClick={() => void send()}
+          >
+            {sending ? <Spinner /> : null} ส่ง{' '}
+            {sheetRows
+              .filter((r) => picked.includes(r.scope))
+              .reduce((n, r) => n + r.n, 0)
+              .toLocaleString('th-TH')}{' '}
+            บรรทัด
+          </button>
+        </div>
+      </Modal>
 
       <Ticker lines={ticker} />
 
