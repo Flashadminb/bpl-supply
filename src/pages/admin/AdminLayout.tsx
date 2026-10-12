@@ -45,108 +45,122 @@ interface Group {
   subs?: { title: string; links: Link[] }[]
 }
 
+/**
+ * ลำดับเมนู · เจ้าของระบบเรียงมาเองทั้งชุด
+ *
+ * ทุกคนเห็นลำดับเดียวกัน ต่างกันแค่ว่าใครเห็นรายการไหนบ้าง
+ * ไม่ได้สลับลำดับตามบทบาท เพราะคนสองคนที่คุยกันทางโทรศัพท์
+ * ต้องชี้ได้ว่า "อันที่สามจากบน" แล้วหมายถึงอันเดียวกัน
+ *
+ * บางรายการตั้งใจให้ซ้ำสองกลุ่ม เช่นหลักฐานการเบิก-คืนที่อยู่ทั้งกลุ่มบนและ ADMIN
+ * เพราะคนละคนเข้าหามันคนละทาง · คนตรวจเข้าจากกลุ่มบน คนคุมของเข้าจาก ADMIN
+ */
 const GROUPS: Group[] = [
   {
     title: null,
     links: [
-      { to: '/admin', label: 'หน้าแรก', icon: 'home', end: true },
+      { to: '/admin', label: 'หน้าแรก', icon: 'home', end: true, audit: true },
+      { to: '/admin/notices', label: 'ประกาศและแจ้งเตือน', icon: 'bell', audit: true },
       { to: '/admin/evidence', label: 'หลักฐานการเบิก-คืน', icon: 'photo' },
       { to: '/admin/return-status', label: 'สถานะเบิก-คืน', icon: 'clipboard', audit: true },
       { to: '/admin/asset-moves', label: 'สถานะโอน-แจ้งเสีย', icon: 'history', audit: true },
-    ],
-  },
-  {
-    title: 'ตรวจสอบ',
-    links: [
-      { to: '/admin/meetings', label: 'รายชื่อประชุม', icon: 'clipboard', audit: true, badge: 'meetings' },
-      { to: '/admin/meeting-evidence', label: 'หลักฐานการเข้าประชุม', icon: 'photo', audit: true },
-      { to: '/admin/report/meeting', label: 'แดชบอร์ดประชุม', icon: 'pie' },
-      { to: '/admin/supply-history', label: 'ประวัติเบิกสิ้นเปลือง', icon: 'history', audit: true },
-      // สองอันนี้อยู่ในงาน STANDARD ด้วย ตั้งใจให้ซ้ำ
-      // เพราะเปิดบ่อยพอ ๆ กับประวัติเบิก แต่ไปจมอยู่ในกลุ่มที่พับเก็บไว้
-      { to: '/admin/break/history', label: 'ประวัติเบรค', icon: 'history', audit: true },
-          { to: '/admin/break/audit', label: 'ประวัติการแก้ไขเบรค', icon: 'clipboard', audit: true },
-      { to: '/admin/os/scans', label: 'ประวัติการสแกน', icon: 'history', audit: true },
-    ],
-  },
-  {
-    title: 'ยังไม่คืน',
-    links: [
       { to: '/admin/outstanding', label: 'ของค้างคืน', icon: 'clock', audit: true },
       { to: '/admin/assets-out', label: 'Asset ที่ยังไม่คืน', icon: 'device-clock', audit: true },
+      { to: '/admin/approvals', label: 'คำขอเบิก', icon: 'inbox', badge: 'approvals' },
     ],
   },
   {
-    title: 'สิ้นเปลือง',
+    title: 'ADMIN',
     links: [
       { to: '/admin/stock', label: 'สต็อกวัสดุ', icon: 'box' },
       { to: '/admin/approvals', label: 'คำขอเบิก', icon: 'inbox', badge: 'approvals' },
+      { to: '/admin/evidence', label: 'หลักฐานการเบิก-คืน', icon: 'photo' },
+      { to: '/admin/return-status', label: 'สถานะเบิก-คืน', icon: 'clipboard' },
+      { to: '/admin/asset-moves', label: 'สถานะโอน-แจ้งเสีย', icon: 'history' },
+      { to: '/admin/outstanding', label: 'ของค้างคืน', icon: 'clock' },
       { to: '/admin/by', label: 'บาร์โค้ดจาก BY', icon: 'barcode' },
       { to: '/admin/sacks', label: 'กระจายกระสอบ', icon: 'box' },
-    ],
-  },
-  {
-    title: 'Asset',
-    links: [
-      /* กระดานมาก่อนทะเบียน เพราะคำถามที่ถามทุกวันคือ "เครื่องอยู่กับใคร" ไม่ใช่ "มีเครื่องอะไรบ้าง" */
-      { to: '/admin/asset-board', label: 'กระดานเครื่อง', icon: 'device-clock' },
-      { to: '/admin/assets', label: 'ทะเบียนเครื่อง', icon: 'device' },
-    ],
-  },
-  {
-    title: 'รายงาน',
-    links: [
       { to: '/admin/report/supply', label: 'รายงานสิ้นเปลือง', icon: 'chart' },
       { to: '/admin/report/asset', label: 'รายงาน Asset', icon: 'pie', audit: true },
     ],
   },
   {
-    title: 'งาน STANDARD',
+    /* ไม่ได้อยู่ในชุดที่เจ้าของระบบเรียงมา แต่ตัดทิ้งไม่ได้เพราะเป็นทางเดียวที่เข้าสองหน้านี้ */
+    title: 'ASSET',
+    links: [
+      { to: '/admin/asset-board', label: 'กระดานเครื่อง', icon: 'device-clock' },
+      { to: '/admin/assets', label: 'ทะเบียนเครื่อง', icon: 'device' },
+    ],
+  },
+  {
+    title: 'STANDARD',
     collapsible: true,
+    links: [
+      { to: '/admin/meetings', label: 'รายชื่อประชุม', icon: 'clipboard', audit: true, badge: 'meetings' },
+      { to: '/admin/meeting-evidence', label: 'หลักฐานการเข้าประชุม', icon: 'photo', audit: true },
+      { to: '/admin/report/meeting', label: 'แดชบอร์ดประชุม', icon: 'pie' },
+      { to: '/admin/break/history', label: 'ประวัติเบรค', icon: 'history', audit: true },
+      { to: '/admin/break/audit', label: 'ประวัติการแก้ไขเบรค', icon: 'clipboard', audit: true },
+      { to: '/admin/os/scans', label: 'ประวัติการสแกน', icon: 'history', audit: true },
+    ],
     subs: [
       {
         title: 'บัตร OS',
         links: [
           { to: '/guard', label: 'สแกนบัตร (หน้างาน)', icon: 'qr', audit: true },
           { to: '/admin/os', label: 'รายชื่อและบัตร', icon: 'users', audit: true, end: true },
-          { to: '/admin/os/scans', label: 'ประวัติการสแกน', icon: 'history', audit: true },
           { to: '/admin/os/print', label: 'พิมพ์บัตร', icon: 'qr', audit: true },
         ],
       },
       {
         title: 'บัตรเบรค',
         links: [
-          { to: '/admin/break/history', label: 'ประวัติเบรค', icon: 'history', audit: true },
-          { to: '/admin/break/audit', label: 'ประวัติการแก้ไขเบรค', icon: 'clipboard', audit: true },
           { to: '/admin/break/cards', label: 'จัดการบัตรเบรค', icon: 'qr', audit: true },
+        ],
+      },
+      {
+        title: 'สิ้นเปลือง',
+        links: [{ to: '/admin/supply-history', label: 'ประวัติเบิกสิ้นเปลือง', icon: 'history', audit: true }],
+      },
+    ],
+  },
+  {
+    title: 'OPERATION',
+    links: [
+      { to: '/outbox', label: 'ของค้างส่งออก', icon: 'box', adminOnly: true },
+      { to: '/parcel24', label: 'พัสดุค้างเกิน 24 ชม', icon: 'n24', adminOnly: true },
+      { to: '/admin/outbox-zones', label: 'โซน D0x ของสาขา', icon: 'lock', adminOnly: true },
+    ],
+    subs: [
+      {
+        title: 'กระดานปล่อยรถ',
+        links: [
+          { to: '/trucks', label: 'กระดานปล่อยรถ', icon: 'clipboard', audit: true },
+          { to: '/admin/trucks', label: 'ส่งชีต สาขา แจ้งเตือน', icon: 'sheet', adminOnly: true, audit: true },
+        ],
+      },
+      {
+        title: 'กระดานรถรอลงงาน',
+        links: [
+          { to: '/wait', label: 'กระดานรถรอลงงาน', icon: 'clock', audit: true },
+          { to: '/wait/stats', label: 'แดชบอร์ดรถรอลงงาน', icon: 'pie', audit: true },
+          { to: '/admin/wait', label: 'ตั้งเกณฑ์เวลารถรอลงงาน', icon: 'clock', adminOnly: true },
         ],
       },
     ],
   },
   {
-    title: 'การปล่อยรถ',
+    /* งานหลังบ้าน · ตั้งชื่ออังกฤษว่า SYSTEM เพราะสั้นกว่า BACK OFFICE
+       และสามกลุ่มบนเป็นคำเดียวหมด ยาวคำเดียวจะดูแปลกแถวเดียว */
+    title: 'SYSTEM',
     links: [
-      { to: '/trucks', label: 'กระดานปล่อยรถ', icon: 'clipboard', audit: true },
-      { to: '/admin/trucks', label: 'ส่งชีต สาขา แจ้งเตือน', icon: 'sheet', adminOnly: true, audit: true },
-      { to: '/wait', label: 'กระดานรถรอลงงาน', icon: 'clock', audit: true },
-      { to: '/wait/stats', label: 'แดชบอร์ดรถรอลงงาน', icon: 'pie', audit: true },
-      { to: '/admin/wait', label: 'ตั้งเกณฑ์เวลารถรอลงงาน', icon: 'clock', adminOnly: true },
-      { to: '/wait/history', label: 'ประวัติรถรอลงงาน', icon: 'history', audit: true },
-      { to: '/outbox', label: 'ของค้างส่งออก', icon: 'box', adminOnly: true },
-      { to: '/parcel24', label: 'พัสดุค้างเกิน 24 ชม', icon: 'n24', adminOnly: true },
-      { to: '/admin/outbox-zones', label: 'โซน D0x ของสาขา', icon: 'lock', adminOnly: true },
-    ],
-  },
-  {
-    title: 'ทั่วไป',
-    links: [
+      { to: '/admin/links', label: 'ลิงก์งาน', icon: 'sheet' },
       { to: '/admin/qr', label: 'พิมพ์ QR', icon: 'qr' },
-      { to: '/admin/export', label: 'ส่งออก Google Sheet', icon: 'sheet', badge: 'exports' },
+      { to: '/admin/notices', label: 'ประกาศและแจ้งเตือน', icon: 'bell', audit: true },
       { to: '/admin/users', label: 'ผู้ใช้และสิทธิ์', icon: 'users' },
       { to: '/admin/access', label: 'สิทธิ์เข้าถึง', icon: 'lock' },
-      { to: '/admin/links', label: 'ลิงก์งาน', icon: 'sheet' },
-      { to: '/admin/notices', label: 'ประกาศและแจ้งเตือน', icon: 'clipboard', audit: true },
-      { to: '/admin/health', label: 'สถานะระบบ', icon: 'chart' },
+      { to: '/admin/export', label: 'ส่งออก Google Sheet', icon: 'sheet', badge: 'exports' },
+      { to: '/admin/health', label: 'สถานะระบบ', icon: 'lock', ownerOnly: true },
     ],
   },
 ]
@@ -210,15 +224,18 @@ export default function AdminLayout() {
     <nav className="flex flex-col gap-1">
       {GROUPS.map((g) => {
         if (g.collapsible) {
+          const own = visible(g.links ?? [])
           const subs = (g.subs ?? [])
             .map((s) => ({ ...s, links: visible(s.links) }))
             .filter((s) => s.links.length > 0)
-          if (subs.length === 0) return null
-          const inside = subs.some((s) => s.links.some((l) => here.startsWith(l.to)))
+          if (subs.length === 0 && own.length === 0) return null
+          const inside =
+            own.some((l) => here.startsWith(l.to)) ||
+            subs.some((s) => s.links.some((l) => here.startsWith(l.to)))
           // ยืนอยู่ในหน้าของกลุ่มนี้แล้วยังพับไว้ คนจะหาไม่เจอว่าตัวเองอยู่ตรงไหน
           const on = openStd ?? inside
           return (
-            <div key={g.title} className="mt-3">
+            <div key={g.title} className="mt-3 rounded-card border border-dark-3 bg-dark-2/30 p-[6px]">
               <button
                 type="button"
                 className="flex min-h-tap w-full items-center gap-2 rounded-btn px-3 text-left font-mono text-xs uppercase tracking-widest text-dark-muted hover:bg-dark-2"
@@ -228,6 +245,7 @@ export default function AdminLayout() {
                 <span className="flex-1">{g.title}</span>
                 <span aria-hidden>{on ? '▾' : '▸'}</span>
               </button>
+              {on && own.map(item)}
               {on &&
                 subs.map((s) => (
                   <div key={s.title} className="mt-1">
@@ -242,15 +260,31 @@ export default function AdminLayout() {
         }
 
         const links = visible(g.links ?? [])
-        if (links.length === 0) return null
+        const plain = (g.subs ?? [])
+          .map((s) => ({ ...s, links: visible(s.links) }))
+          .filter((s) => s.links.length > 0)
+        if (links.length === 0 && plain.length === 0) return null
         return (
-          <div key={g.title ?? 'top'} className={g.title ? 'mt-3' : ''}>
+          /* ทุกกลุ่มมีกรอบของตัวเอง · ก่อนหน้านี้มีแต่หัวข้อตัวจาง ๆ คั่น
+             พอเมนูยาวขึ้นเรื่อย ๆ เส้นแบ่งแบบนั้นหายไปกับพื้นหลัง */
+          <div
+            key={g.title ?? 'top'}
+            className={`rounded-card border border-dark-3 bg-dark-2/30 p-[6px] ${g.title ? 'mt-3' : ''}`}
+          >
             {g.title && (
-              <p className="mb-1 px-3 font-mono text-xs uppercase tracking-widest text-dark-muted">
+              <p className="mb-1 px-3 pt-1 font-mono text-xs uppercase tracking-widest text-dark-muted">
                 {g.title}
               </p>
             )}
             {links.map(item)}
+            {plain.map((s) => (
+              <div key={s.title} className="mt-1">
+                <p className="mb-1 px-3 pl-5 font-mono text-[11px] uppercase tracking-widest text-dark-muted">
+                  {s.title}
+                </p>
+                {s.links.map(item)}
+              </div>
+            ))}
           </div>
         )
       })}
@@ -261,9 +295,16 @@ export default function AdminLayout() {
     <div className="min-h-dvh bg-canvas lg:flex">
       {/* แถบข้างเดสก์ท็อป 244px */}
       <aside className="hidden w-[244px] shrink-0 flex-col bg-dark lg:sticky lg:top-0 lg:flex lg:h-dvh">
+        {/* กดชื่อแอพกลับหน้าแรกของหลังบ้าน · ทำเป็นกรอบนูนให้รู้ว่ากดได้
+            ของเดิมเป็นข้อความเฉย ๆ ซึ่งกดได้จริงแต่ไม่มีอะไรบอก */}
         <div className="shrink-0 px-4 pb-3 pt-4">
-          <p className="font-mono text-xs tracking-widest text-dark-muted">FLASH EXPRESS</p>
-          <p className="font-display text-lg text-white">BPL SUPPLY</p>
+          <Link
+            to="/admin"
+            className="block rounded-card border border-dark-3 bg-dark-2 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,.08),0_6px_14px_-10px_#000] hover:bg-dark-3"
+          >
+            <span className="block font-mono text-xs tracking-widest text-dark-muted">FLASH EXPRESS</span>
+            <span className="block font-display text-lg text-white">BPL SUPPLY</span>
+          </Link>
         </div>
 
         {/* min-h-0 จำเป็น ไม่งั้น flex ไม่ยอมให้ลูกหดแล้วการเลื่อนจะไม่ทำงาน */}

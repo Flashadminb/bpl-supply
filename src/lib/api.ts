@@ -793,8 +793,26 @@ export async function updateProfile(
   if (error) throw new Error(readableError(error))
 }
 
-/** พนักงานเปลี่ยนรหัสผ่านของตัวเอง — ทำฝั่ง client ได้เลย เพราะล็อกอินอยู่แล้ว */
-export async function changeMyPassword(newPassword: string) {
+/**
+ * พนักงานเปลี่ยนรหัสผ่านของตัวเอง
+ *
+ * ส่งรหัสเดิมมาด้วยเมื่อไหร่ จะตรวจก่อนว่าใช่เจ้าของบัญชีจริง
+ *
+ * ที่ต้องตรวจ เพราะ session ค้างอยู่ในเครื่องเป็นเดือน พนักงานวางมือถือไว้
+ * แล้วเดินไปทำงานต่อเป็นเรื่องปกติในฮับ ใครหยิบไปก็เปลี่ยนรหัสยึดบัญชีได้เลย
+ * ตัว Supabase เองไม่ตรวจรหัสเดิมให้ จึงต้องล็อกอินซ้ำด้วยรหัสเดิมเพื่อพิสูจน์
+ * เป็นบัญชีเดียวกัน session จึงไม่หลุด
+ *
+ * ตอนบังคับตั้งรหัสครั้งแรกไม่ต้องส่งมา เพราะเพิ่งพิมพ์รหัสชั่วคราวไปเมื่อครู่
+ */
+export async function changeMyPassword(newPassword: string, oldPassword?: string) {
+  if (oldPassword !== undefined) {
+    const { data } = await supabase.auth.getUser()
+    const email = data.user?.email
+    if (!email) throw new Error('ไม่พบบัญชีที่ล็อกอินอยู่ ลองออกจากระบบแล้วเข้าใหม่')
+    const { error: checkError } = await supabase.auth.signInWithPassword({ email, password: oldPassword })
+    if (checkError) throw new Error('รหัสผ่านเดิมไม่ถูกต้อง')
+  }
   const { error } = await supabase.auth.updateUser({ password: newPassword })
   if (error) throw new Error(readableError(error))
   // ตั้งรหัสเองแล้ว ไม่ต้องบังคับอีก

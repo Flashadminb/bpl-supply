@@ -13,6 +13,7 @@ const MIN = 8
 
 export default function Account() {
   const { profile, hubName, signOut } = useAuth()
+  const [old, setOld] = useState('')
   const [pwd, setPwd] = useState('')
   const [confirm, setConfirm] = useState('')
   const [show, setShow] = useState(false)
@@ -22,7 +23,7 @@ export default function Account() {
 
   const tooShort = pwd.length > 0 && pwd.length < MIN
   const mismatch = confirm.length > 0 && pwd !== confirm
-  const canSubmit = pwd.length >= MIN && pwd === confirm && !busy
+  const canSubmit = old.length > 0 && pwd.length >= MIN && pwd === confirm && !busy
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -30,7 +31,8 @@ export default function Account() {
     setDone(false)
     setBusy(true)
     try {
-      await changeMyPassword(pwd)
+      await changeMyPassword(pwd, old)
+      setOld('')
       setPwd('')
       setConfirm('')
       setDone(true)
@@ -81,7 +83,21 @@ export default function Account() {
 
         <form onSubmit={onSubmit} className="card mt-3 p-4">
           <h2 className="font-display text-md">เปลี่ยนรหัสผ่าน</h2>
-          <p className="mt-1 text-sm text-ink-400">อย่างน้อย {MIN} ตัวอักษร</p>
+          <p className="mt-1 text-sm text-ink-400">
+            อย่างน้อย {MIN} ตัวอักษร · ต้องใส่รหัสเดิมก่อน เพื่อกันคนที่หยิบเครื่องที่เปิดค้างไว้ไปยึดบัญชี
+          </p>
+
+          <label className="label mt-3" htmlFor="old">
+            รหัสผ่านเดิม
+          </label>
+          <input
+            id="old"
+            type={show ? 'text' : 'password'}
+            className="input"
+            autoComplete="current-password"
+            value={old}
+            onChange={(e) => setOld(e.target.value)}
+          />
 
           <label className="label mt-3" htmlFor="new">
             รหัสผ่านใหม่
