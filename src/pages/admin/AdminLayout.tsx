@@ -29,6 +29,8 @@ interface Link {
   audit?: boolean
   /** เจ้าของระบบคนเดียว · แคบกว่า adminOnly เพราะผู้ดูแลระบบก็ไม่เห็น */
   ownerOnly?: boolean
+  /** ติดดาวไม่ได้ · ใช้กับหน้าแรกที่อยู่บนสุดตลอดอยู่แล้ว ติดดาวไปก็ซ้ำที่เดิม */
+  noPin?: boolean
 }
 
 /**
@@ -88,9 +90,13 @@ interface Group {
  */
 const GROUPS: Group[] = [
   {
+    /* หน้าแรกอยู่บนสุดตลอด ไม่พับ ไม่ติดดาว · ใต้มันคือกล่องบุ๊กมาร์ก */
     title: null,
+    links: [{ to: '/admin', label: 'หน้าแรก', icon: 'home', end: true, audit: true, noPin: true }],
+  },
+  {
+    title: 'ตรวจสอบ',
     links: [
-      { to: '/admin', label: 'หน้าแรก', icon: 'home', end: true, audit: true },
       { to: '/admin/notices', label: 'ประกาศและแจ้งเตือน', icon: 'bell', audit: true },
       { to: '/admin/evidence', label: 'หลักฐานการเบิก-คืน', icon: 'photo' },
       { to: '/admin/return-status', label: 'สถานะเบิก-คืน', icon: 'clipboard', audit: true },
@@ -204,12 +210,17 @@ export default function AdminLayout() {
   const [menu, setMenu] = useState(false)
   /** กลุ่มไหนพับอยู่ · จำไว้ในเครื่อง จะได้ไม่ต้องพับใหม่ทุกครั้งที่เปิดหน้า */
   const uid = profile?.id ?? 'anon'
+  /**
+   * เปิดมาพับไว้หมดทุกกลุ่ม เหลือแต่หน้าแรกกับบุ๊กมาร์ก ตามที่เจ้าของระบบสั่ง
+   * ใครกางกลุ่มไหนไว้ ครั้งหน้าก็ยังกางอยู่ เพราะจำลงเครื่องให้
+   */
+  const allTitles = GROUPS.map((g) => g.title).filter((t): t is string => Boolean(t))
   const [shut, setShut] = useState<string[]>(() => {
     try {
       const raw = localStorage.getItem('bpl.menu.shut.' + uid)
-      return raw ? (JSON.parse(raw) as string[]) : ['STANDARD']
+      return raw ? (JSON.parse(raw) as string[]) : allTitles
     } catch {
-      return ['STANDARD']
+      return allTitles
     }
   })
   const toggleGroup = (t: string) =>
@@ -259,48 +270,66 @@ export default function AdminLayout() {
    * แถวเมนูหนึ่งแถว · ดาวอยู่นอก NavLink ไม่ใช่ข้างใน
    * เพราะปุ่มซ้อนในลิงก์ กดดาวทีไรจะเด้งไปหน้านั้นด้วยทุกที
    */
-  const item = (l: Link, where = '') => (
-    <div key={where + l.to} className="group/row flex items-center gap-1">
-      <NavLink
-        to={l.to}
-        end={l.end}
-        onClick={() => setMenu(false)}
-        className={({ isActive }) =>
-          `flex min-h-tap flex-1 items-center gap-[10px] rounded-btn px-3 text-base ${
-            isActive ? 'bg-dark-3 text-white' : 'text-dark-text hover:bg-dark-2'
-          }`
-        }
+  /**
+   * แถวเมนูหนึ่งแถว
+   *
+   * พื้นหลังอยู่ที่กรอบนอก ไม่ได้อยู่ที่ตัวลิงก์ เพราะดาวต้องอยู่ในแถบไฮไลต์เดียวกัน
+   * ถ้าพื้นหลังอยู่ที่ลิงก์ ดาวจะลอยอยู่นอกแถบแล้วดูเหมือนคนละของ
+   *
+   * ดาวเป็นคอลัมน์กว้างคงที่ชิดขวาสุดทุกแถว และแถวที่ยังไม่ติดดาวก็ขึ้นดาวโปร่ง
+   * ไม่ใช่เว้นว่าง · ถ้าเว้นว่าง ดาวที่ติดแล้วจะดูกระจัดกระจายไม่เป็นแถว
+   * และคนจะไม่รู้ว่าแถวที่ยังไม่ติดก็กดติดได้
+   *
+   * ดาวอยู่นอก NavLink เพราะปุ่มซ้อนในลิงก์ กดดาวทีไรจะเด้งไปหน้านั้นด้วยทุกที
+   */
+  const item = (l: Link, where = '') => {
+    const on = l.end ? here === l.to : here === l.to || here.startsWith(l.to + '/')
+    const star = pins.includes(l.to)
+    return (
+      <div
+        key={where + l.to}
+        className={`flex items-center rounded-btn ${on ? 'bg-dark-3' : 'hover:bg-dark-2'}`}
       >
-        {({ isActive }) => (
-          <>
-            <Icon name={l.icon} className={isActive ? '' : 'text-dark-muted'} />
-            <span className="flex-1 truncate">{l.label}</span>
-            {l.badge && badgeOf[l.badge] > 0 && (
-              <span className="rounded-pill bg-brand-500 px-2 font-display text-xs text-ink">
-                {badgeOf[l.badge] > 99 ? '99+' : badgeOf[l.badge]}
-              </span>
-            )}
-          </>
+        <NavLink
+          to={l.to}
+          end={l.end}
+          onClick={() => setMenu(false)}
+          className={`flex min-h-tap min-w-0 flex-1 items-center gap-[10px] rounded-btn pl-3 text-base ${
+            on ? 'text-white' : 'text-dark-text'
+          }`}
+        >
+          <Icon name={l.icon} className={on ? '' : 'text-dark-muted'} />
+          <span className="min-w-0 flex-1 truncate">{l.label}</span>
+          {l.badge && badgeOf[l.badge] > 0 && (
+            <span className="rounded-pill bg-brand-500 px-2 font-display text-xs text-ink">
+              {badgeOf[l.badge] > 99 ? '99+' : badgeOf[l.badge]}
+            </span>
+          )}
+        </NavLink>
+        {l.noPin ? (
+          <span className="w-[34px] shrink-0" aria-hidden />
+        ) : (
+        <button
+          type="button"
+          aria-label={star ? `เอา ${l.label} ออกจากบุ๊กมาร์ก` : `ติดดาว ${l.label}`}
+          aria-pressed={star}
+          onClick={() => togglePin(l.to)}
+          className={`flex h-tap w-[34px] shrink-0 items-center justify-center rounded-btn text-[15px] leading-none ${
+            star ? 'text-brand-500' : 'text-dark-muted/40 hover:text-dark-muted'
+          }`}
+        >
+          {star ? '★' : '☆'}
+        </button>
         )}
-      </NavLink>
-      <button
-        type="button"
-        aria-label={pins.includes(l.to) ? `เอา ${l.label} ออกจากบุ๊กมาร์ก` : `ติดดาว ${l.label}`}
-        aria-pressed={pins.includes(l.to)}
-        onClick={() => togglePin(l.to)}
-        className={`h-tap w-[30px] shrink-0 rounded-btn text-base leading-none ${
-          pins.includes(l.to) ? 'text-brand-500' : 'text-dark-3 hover:text-dark-muted'
-        }`}
-      >
-        {pins.includes(l.to) ? '★' : '☆'}
-      </button>
-    </div>
-  )
+      </div>
+    )
+  }
 
   /** ลิงก์ที่ติดดาวไว้ · เรียงตามลำดับเมนูจริง ไม่ใช่ตามลำดับที่กดดาว
       เพราะคนจำตำแหน่งจากเมนูหลัก ไม่ได้จำว่าตัวเองกดดาวอันไหนก่อน */
   const pinned = GROUPS.flatMap((g) => [...(g.links ?? []), ...(g.subs ?? []).flatMap((x) => x.links)])
     .filter((l, i, arr) => arr.findIndex((x) => x.to === l.to) === i)
+    .filter((l) => !l.noPin)
     .filter((l) => pins.includes(l.to))
     .filter((l) => visible([l]).length > 0)
 
@@ -324,11 +353,9 @@ export default function AdminLayout() {
             .map((s) => ({ ...s, links: visible(s.links) }))
             .filter((s) => s.links.length > 0)
           if (subs.length === 0 && own.length === 0) return null
-          const inside =
-            own.some((l) => here.startsWith(l.to)) ||
-            subs.some((s) => s.links.some((l) => here.startsWith(l.to)))
-          // ยืนอยู่ในหน้าของกลุ่มนี้แล้วยังพับไว้ คนจะหาไม่เจอว่าตัวเองอยู่ตรงไหน
-          const on = inside || !shutNow
+          /* ไม่กางเองเวลายืนอยู่ในหน้าของกลุ่มนั้น เพราะเจ้าของระบบสั่งว่าพับไว้เสมอ
+             ทางกลับคือกล่องบุ๊กมาร์กด้านบน ซึ่งเก็บหน้าที่เข้าบ่อยไว้ให้อยู่แล้ว */
+          const on = !shutNow
           return (
             <div key={g.title} className="mt-3 rounded-card border border-dark-3 bg-dark-2/30 p-[6px]">
               {/* หัวกลุ่มใหญ่และเด่นกว่าแถวเมนู เพราะมันคือป้ายบอกทางของทั้งก้อน
