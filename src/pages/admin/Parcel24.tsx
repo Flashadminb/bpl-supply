@@ -87,11 +87,9 @@ export default function Parcel24() {
     void parseP24(f)
       .then(async (p) => {
         const res = await importP24(p, f.name)
-        setLastId(res.is_new ? res.id : null)
+        setLastId(res.id)
         setMsg(
-          res.is_new
-            ? `บันทึกรอบ ${thFull(p.dataAt)} แล้ว · ${nf(res.rows)} ชิ้น · ยกเลิกการส่งต่อ ${nf(res.cancel)} · เก่าสุดค้างมา ${p.oldestHours} ชม`
-            : `ไฟล์นี้เคยอัปแล้ว ไม่ได้บันทึกซ้ำ · รอบ ${thFull(p.dataAt)}`,
+          `อัปทับรอบ ${thFull(p.dataAt)} แล้ว · ${nf(res.rows)} ชิ้น · ยกเลิกการส่งต่อ ${nf(res.cancel)} · เก่าสุดค้างมา ${p.oldestHours} ชม · ของที่ไม่มีในไฟล์ใหม่หายจากจอแล้ว`,
         )
         board.reload()
       })
@@ -185,6 +183,7 @@ export default function Parcel24() {
           </button>
           <span className="text-xs" style={{ color: C.faint }}>
             {snap ? `${nf(snap.row_count)} ชิ้น · ${groups.length} สาขาในหัวข้อนี้` : 'ยังไม่มีข้อมูล'}
+            {' · อัปแล้วทับของเดิม ไม่ได้เก็บย้อนหลัง'}
             {snap?.hidden_count ? ` · ปิดโชว์ไว้ ${nf(snap.hidden_count)} ชิ้น ไม่ได้นับในยอด` : ''}
           </span>
           <span className="flex-1" />
