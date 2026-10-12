@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAsync } from '../lib/useAsync'
 import { exportToSheet, listAssetTransferRows } from '../lib/api'
+import { breakNow } from '../lib/breakPass'
 import { Modal, Spinner } from './ui'
 import { readableError } from '../lib/supabase'
 import type { AssetHolding, AssetIssue, Item, OpenBorrowing } from '../lib/types'
@@ -227,6 +228,18 @@ export function HomeBoard({
       }),
     [],
   )
+  /* สถานะเบรคเดี๋ยวนี้ · ก้อนเดียวได้ทั้งแผนกที่เบรคอยู่และใบที่เกินเวลา
+     ถามใหม่ทุกนาที เพราะเบรคเป็นเรื่องที่เปลี่ยนทุกไม่กี่นาที
+     ต่างจากของค้างคืนที่เปลี่ยนวันละไม่กี่ครั้ง */
+  const [brTick, setBrTick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setBrTick((n) => n + 1), 60_000)
+    return () => clearInterval(t)
+  }, [])
+  const br = useAsync(() => breakNow(), [brTick])
+  const brGroups = br.data?.groups ?? []
+  const brOver = br.data?.over ?? []
+
   const waiting = (moves.data ?? []).filter((m) => m.state === 'waiting')
   const todayMoves = (moves.data ?? []).filter(
     (m) => new Date(m.created_at).toDateString() === new Date().toDateString(),
@@ -311,6 +324,35 @@ export function HomeBoard({
       more: Math.max(0, issues.length - 20),
     },
     {
+      key: 'brover',
+      n: brOver.length,
+      label: 'เบรคเกินเวลา',
+      tone: brOver.length > 0 ? 'bad' : undefined,
+      blink: brOver.length > 0,
+      to: '/admin/break/history',
+      head: 'ใบที่เลยเวลาและยังไม่ได้รับกลับ',
+      rows: brOver
+        .slice(0, 20)
+        .map(
+          (o) =>
+            `${o.card} · ${o.grp} · ${o.people} คน · เกิน ${o.over_min} นาที` +
+            (o.nickname ? ` · ${o.nickname}` : ''),
+        ),
+      more: Math.max(0, brOver.length - 20),
+    },
+    {
+      key: 'brnow',
+      n: brGroups.reduce((n, g) => n + g.open_people, 0),
+      label: 'กำลังเบรคอยู่',
+      tone: brGroups.length > 0 ? 'warn' : undefined,
+      to: '/admin/break/history',
+      head: 'แผนกที่กำลังเบรคอยู่',
+      rows: brGroups.map(
+        (g) =>
+          `${g.name} · ใบ ${g.open_cards}/${g.max_open} · ${g.open_people}/${g.max_people} คน`,
+      ),
+    },
+    {
       key: 'out',
       n: out.length,
       label: 'หมดสต็อก',
@@ -384,6 +426,7 @@ export function HomeBoard({
   }
 
   const ticker = [
+    brOver.length > 0 && { text: `เบรคเกินเวลา ${brOver.length} ใบ`, bad: true },
     fresh.length > 0 && { text: `แจ้งซ่อมใหม่ ${fresh.length} เรื่อง`, bad: true },
     waiting.length > 0 && { text: `โอนรอปลายทางกดรับ ${waiting.length} เครื่อง`, bad: true },
     late.length > 0 && { text: `เลยกำหนดคืน ${late.length} เครื่อง` },
@@ -500,6 +543,77 @@ export function HomeBoard({
                 </p>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/*
+        สถานะเบรค · ขึ้นเฉพาะตอนมีคนเบรคอยู่จริง
+        แผนกที่มีใบเกินเวลาขึ้นกรอบแดง เพราะเป็นคนที่ต้องไปตามเดี๋ยวนี้
+        กดที่ป้ายไหนก็เด้งไปหน้าประวัติเบรคทันที
+      */}
+      {(brGroups.length > 0 || brOver.length > 0) && (
+        <div className="mb-3 rounded-card bg-surface-2 p-3">
+          <div className="mb-2 flex flex-wrap items-baseline gap-2">
+            <span className="font-display text-base">เบรคตอนนี้</span>
+            <span className="text-xs text-ink-500">
+              {brGroups.reduce((n, g) => n + g.open_cards, 0)} ใบ ·{' '}
+              {brGroups.reduce((n, g) => n + g.open_people, 0)} คน
+            </span>
+            <span className="flex-1" />
+            <Link to="/admin/break/history" className="text-xs text-ink-500 underline">
+              ไปหน้าประวัติเบรค
+            </Link>
+          </div>
+
+          {brOver.length > 0 && (
+            <div className="mb-2 rounded-card border-2 border-danger bg-danger-bg p-2">
+              <p className="mb-1 font-display text-danger-txt">เกินเวลาแล้ว {brOver.length} ใบ</p>
+              <div className="flex flex-wrap gap-1">
+                {brOver.slice(0, 10).map((o) => (
+                  <Link
+                    key={o.card + o.due_at}
+                    to="/admin/break/history"
+                    className="rounded-pill bg-surface px-2 py-[3px] text-xs text-danger-txt"
+                  >
+                    <b className="font-mono">{o.card}</b> · {o.grp} · {o.people} คน · เกิน{' '}
+                    {o.over_min} นาที
+                  </Link>
+                ))}
+                {brOver.length > 10 && (
+                  <span className="self-center text-xs text-danger-txt">
+                    และอีก {brOver.length - 10} ใบ
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {brGroups.map((g) => {
+              const leftCards = Math.max(0, g.max_open - g.open_cards)
+              const leftPeople = Math.max(0, g.max_people - g.open_people)
+              return (
+                <Link
+                  key={g.code}
+                  to="/admin/break/history"
+                  className={`rounded-card border-2 px-3 py-2 ${
+                    g.over_cards > 0 ? 'border-danger bg-danger-bg' : 'border-transparent bg-surface'
+                  }`}
+                >
+                  <p className="truncate font-display text-base">{g.name}</p>
+                  <p className="font-mono text-sm">
+                    ใบ {g.open_cards}/{g.max_open} · {g.open_people}/{g.max_people} คน
+                  </p>
+                  <p className="text-xs text-ink-500">
+                    {leftCards === 0 || leftPeople === 0
+                      ? 'เต็มสิทธิแล้ว'
+                      : `เหลือสิทธิอีก ${leftCards} ใบ · ${leftPeople} คน`}
+                    {g.over_cards > 0 && ` · เกินเวลา ${g.over_cards} ใบ`}
+                  </p>
+                </Link>
+              )
+            })}
           </div>
         </div>
       )}

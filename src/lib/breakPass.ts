@@ -378,6 +378,38 @@ export async function breakHistoryFilters(): Promise<BreakFilterOptions> {
   return rpc<BreakFilterOptions>('break_history_filters', {})
 }
 
+/* ───────────────────────── สถานะเบรคเดี๋ยวนี้ ───────────────────────── */
+
+export interface BreakNowGroup {
+  code: string
+  name: string
+  max_open: number
+  max_people: number
+  open_cards: number
+  open_people: number
+  over_cards: number
+}
+
+export interface BreakNowOver {
+  card: string
+  grp: string
+  people: number
+  nickname: string | null
+  issued_by: string | null
+  due_at: string
+  over_min: number
+}
+
+export interface BreakNow {
+  groups: BreakNowGroup[]
+  over: BreakNowOver[]
+}
+
+/** ใครเบรคอยู่ ใครเกินเวลา และแต่ละแผนกเหลือสิทธิเท่าไหร่ · ก้อนเดียวจบ */
+export async function breakNow(): Promise<BreakNow> {
+  return rpc<BreakNow>('break_now', {})
+}
+
 /* ───────────────────── แก้ไขประวัติ และประวัติการแก้ไข ───────────────────── */
 
 export interface BreakEditArgs {
