@@ -180,6 +180,19 @@ export default function BreakCards() {
    * บัตรหนึ่งแผ่นวางได้เก้าใบ แผนกที่มีสี่ใบจึงเสียกระดาษไปครึ่งแผ่นทุกครั้ง
    */
   const [printGroups, setPrintGroups] = useState<string[]>([])
+  /**
+   * บัตรที่ติ๊กไว้เป็นใบ ๆ · ว่าง = พิมพ์ทั้งแผนกที่เลือกไว้ตามเดิม
+   *
+   * มีไว้สำหรับตอนบัตรหายหรือชำรุดแล้วต้องทำใบใหม่ ซึ่งต้องการใบเดียว
+   * ของเดิมเลือกได้แค่ระดับแผนก อยากได้ OUT6-05 ใบเดียวก็ต้องพิมพ์ทั้งแผนก
+   * แล้วทิ้งที่เหลือ หรือไม่ก็ไปปิดบัตรใบอื่นชั่วคราวแล้วเปิดคืนทีหลัง
+   * ซึ่งอันหลังอันตราย เพราะถ้าลืมเปิดคืน หน้างานจะปล่อยบัตรนั้นไม่ได้ทั้งกะ
+   *
+   * ติ๊กแล้วชนะตัวกรองแผนกเสมอ ไม่ใช่เอามาตัดกัน
+   * ไม่งั้นติ๊กไว้แล้วเผลอสลับแผนก รายการจะกลายเป็นศูนย์โดยไม่รู้ว่าเพราะอะไร
+   */
+  const [printCards, setPrintCards] = useState<string[]>([])
+  const [printQ, setPrintQ] = useState('')
 
   const s = settings.data
   const groups = s?.groups ?? []
@@ -189,12 +202,21 @@ export default function BreakCards() {
     [people.data, me],
   )
 
-  const printable = useMemo(
+  /** บัตรที่เปิดใช้งานในแผนกที่เลือกไว้ · เป็นรายการให้ติ๊ก ไม่ใช่รายการที่จะพิมพ์ */
+  const inGroups = useMemo(
     () =>
       cards.filter(
         (c) => c.active && (printGroups.length === 0 || printGroups.includes(c.group_code)),
       ),
     [cards, printGroups],
+  )
+
+  const printable = useMemo(
+    () =>
+      printCards.length > 0
+        ? cards.filter((c) => c.active && printCards.includes(c.code))
+        : inGroups,
+    [cards, inGroups, printCards],
   )
 
   const run: Run = (fn, ok) => {
@@ -526,6 +548,91 @@ export default function BreakCards() {
               })}
             </div>
 
+            {/*
+              เลือกรายใบ · ไว้ใช้ตอนบัตรหายหรือต้องทำใบใหม่
+              ช่องค้นหาอยู่ด้วย เพราะบัตรมีเป็นสิบ ๆ ใบ ไล่หาด้วยตาช้ากว่าพิมพ์รหัส
+            */}
+            <div className="mt-3 rounded-card border border-line p-3">
+              <div className="mb-2 flex flex-wrap items-baseline gap-2">
+                <p className="label mb-0">หรือเลือกเป็นใบ ๆ</p>
+                <span className="text-xs text-ink-400">
+                  ติ๊กไว้แล้วจะพิมพ์เฉพาะใบที่ติ๊ก · ไม่ติ๊กเลย = พิมพ์ทั้งแผนกที่เลือกไว้
+                </span>
+                <span className="flex-1" />
+                {printCards.length > 0 && (
+                  <button
+                    type="button"
+                    className="h-tap rounded-btn px-2 text-sm underline"
+                    onClick={() => setPrintCards([])}
+                  >
+                    ล้างที่ติ๊กไว้ {printCards.length} ใบ
+                  </button>
+                )}
+              </div>
+
+              <input
+                className="input mb-2"
+                placeholder="พิมพ์รหัสบัตร เช่น OUT6-05"
+                value={printQ}
+                onChange={(e) => setPrintQ(e.target.value)}
+              />
+
+              {(() => {
+                const needle = printQ.trim().toLowerCase()
+                const list = needle
+                  ? inGroups.filter((c) => c.code.toLowerCase().includes(needle))
+                  : inGroups
+                if (list.length === 0) {
+                  return (
+                    <p className="py-2 text-sm text-ink-400">
+                      {inGroups.length === 0 ? 'แผนกที่เลือกไว้ไม่มีบัตรที่เปิดใช้งาน' : 'ไม่พบบัตรตามที่ค้น'}
+                    </p>
+                  )
+                }
+                return (
+                  <>
+                    <div className="flex flex-wrap gap-1.5">
+                      {list.map((c) => {
+                        const on = printCards.includes(c.code)
+                        return (
+                          <button
+                            key={c.code}
+                            type="button"
+                            className={`chip font-mono ${on ? 'chip-on' : ''}`}
+                            onClick={() =>
+                              setPrintCards((p) =>
+                                p.includes(c.code) ? p.filter((x) => x !== c.code) : [...p, c.code],
+                              )
+                            }
+                          >
+                            {on ? '✓ ' : ''}
+                            {c.code}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <button
+                      type="button"
+                      className="mt-2 h-tap rounded-btn px-2 text-sm underline"
+                      onClick={() =>
+                        setPrintCards((p) => {
+                          const codes = list.map((c) => c.code)
+                          const all = codes.every((x) => p.includes(x))
+                          return all
+                            ? p.filter((x) => !codes.includes(x))
+                            : [...new Set([...p, ...codes])]
+                        })
+                      }
+                    >
+                      {list.every((c) => printCards.includes(c.code))
+                        ? `เอาออกทั้ง ${list.length} ใบที่เห็น`
+                        : `ติ๊กทั้ง ${list.length} ใบที่เห็น`}
+                    </button>
+                  </>
+                )
+              })()}
+            </div>
+
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -536,13 +643,22 @@ export default function BreakCards() {
                 พิมพ์ {printable.length} ใบ
               </button>
               <span className="text-sm text-ink-500">
-                {printGroups.length === 0
-                  ? 'กำลังจะพิมพ์ทุกแผนก'
-                  : `เลือกไว้ ${printGroups.length} แผนก`}
+                {printCards.length > 0
+                  ? `เฉพาะ ${printable.length} ใบที่ติ๊กไว้`
+                  : printGroups.length === 0
+                    ? 'กำลังจะพิมพ์ทุกแผนก'
+                    : `เลือกไว้ ${printGroups.length} แผนก`}
                 {' · '}
                 {Math.ceil(printable.length / 9)} แผ่น
               </span>
             </div>
+
+            {/* บอกชื่อใบที่จะออกมาจริง ๆ ก่อนกด · กระดาษพิมพ์ผิดแล้วเอาคืนไม่ได้ */}
+            {printCards.length > 0 && (
+              <p className="mt-2 font-mono text-xs text-ink-500">
+                จะพิมพ์ {printable.map((c) => c.code).join(' · ')}
+              </p>
+            )}
 
             <p className="mt-2 text-xs text-ink-500">
               กระดาษ A4 ได้แผ่นละ 3×3 = 9 ใบ · ขนาดเท่าบัตรพนักงาน 54×86 มม.
@@ -552,7 +668,14 @@ export default function BreakCards() {
           </div>
 
           {printable.length === 0 ? (
-            <EmptyState title="ยังไม่มีบัตรที่เปิดใช้งาน" hint="เพิ่มบัตรในแท็บบัตรและสิทธิ์ก่อน" />
+            <EmptyState
+              title={printCards.length > 0 ? 'บัตรที่ติ๊กไว้ถูกปิดใช้งานแล้ว' : 'ยังไม่มีบัตรที่เปิดใช้งาน'}
+              hint={
+                printCards.length > 0
+                  ? 'กดล้างที่ติ๊กไว้ แล้วเลือกใหม่'
+                  : 'เพิ่มบัตรในแท็บบัตรและสิทธิ์ก่อน'
+              }
+            />
           ) : (
             <div className="brk-sheet">
               {printable.map((c) => (
