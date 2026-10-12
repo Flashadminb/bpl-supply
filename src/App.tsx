@@ -66,6 +66,7 @@ const OsCards = lazy(() => import('./pages/admin/OsCards'))
 const OsScans = lazy(() => import('./pages/admin/OsScans'))
 const BreakCards = lazy(() => import('./pages/admin/BreakCards'))
 const BreakHistory = lazy(() => import('./pages/admin/BreakHistory'))
+const BreakAudit = lazy(() => import('./pages/admin/BreakAudit'))
 const BreakIssue = lazy(() => import('./pages/staff/BreakIssue'))
 const BreakGuard = lazy(() => import('./pages/staff/BreakGuard'))
 const BreakMine = lazy(() => import('./pages/staff/BreakMine'))
@@ -352,6 +353,11 @@ export default function App() {
         <Route
           path="break/history"
           element={<Guard roles={MANAGER_ROLES} allowDispatch><BreakHistory /></Guard>}
+        />
+        {/* ประวัติการแก้ไข · อ่านอย่างเดียว ลบไม่ได้ · ผู้ตรวจสอบเข้าได้เหมือนประวัติเบรค */}
+        <Route
+          path="break/audit"
+          element={<Guard roles={MANAGER_ROLES} allowDispatch><BreakAudit /></Guard>}
         />
         <Route path="report/supply" element={<Guard roles={MANAGER_ROLES}><SupplyReport /></Guard>} />
         {/* รายงาน Asset · ผู้ตรวจสอบดูได้ เป็นรายงานล้วน ไม่มีปุ่มคืนแทนหรือปุ่มสั่งการ */}

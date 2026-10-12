@@ -313,26 +313,139 @@ export async function listBreakBoard(
   return (data ?? []) as unknown as BreakBoardRow[]
 }
 
+export interface BreakPage {
+  rows: BreakRow[]
+  /** จำนวนทั้งหมดที่เข้าเงื่อนไข ไม่ใช่เฉพาะหน้านี้ · ไว้คิดว่ามีกี่หน้า */
+  total: number
+}
+
+/**
+ * ประวัติเบรคแบบแบ่งหน้า
+ *
+ * เดิมดึงทีเดียว 1000 แถว ซึ่งพอใช้ตอนเพิ่งเริ่มใช้งาน
+ * แต่ประวัติโตขึ้นทุกวัน วันหนึ่งจะเกินแล้วแถวเก่าจะหายเงียบ ๆ โดยไม่มีใครรู้
+ * ขอ count มาด้วยทุกครั้ง เพื่อให้หน้าจอบอกได้ว่าทั้งหมดมีเท่าไหร่
+ * ไม่ใช่แค่ว่าหน้านี้มีเท่าไหร่ ซึ่งคนละเรื่องกันเวลามีตัวกรอง
+ */
 export async function listBreakRows(args: {
   from: string
   to: string
   onlyOver?: boolean
   onlyBan?: boolean
   onlyProblem?: boolean
-}): Promise<BreakRow[]> {
+  group?: string
+  card?: string
+  /** ค้นที่ฝั่งเซิร์ฟเวอร์ ไม่ใช่กรองเฉพาะหน้าที่เห็น ไม่งั้นค้นแล้วเจอไม่ครบ */
+  q?: string
+  page?: number
+  size?: number
+}): Promise<BreakPage> {
+  const size = Math.max(10, Math.min(args.size ?? 50, 200))
+  const page = Math.max(0, args.page ?? 0)
   let q = supabase
     .from('break_rows')
-    .select('*')
+    .select('*', { count: 'exact' })
     .gte('issued_at', args.from)
     .lte('issued_at', args.to)
     .order('issued_at', { ascending: false })
-    .limit(1000)
+    .range(page * size, page * size + size - 1)
   if (args.onlyBan) q = q.eq('in_ban', true)
   if (args.onlyProblem) q = q.eq('close_kind', 'problem')
   if (args.onlyOver) q = q.gt('over_sec', 0)
-  const { data, error } = await q
+  if (args.group) q = q.eq('group_code', args.group)
+  if (args.card) q = q.eq('card_code', args.card)
+  /* ตัดอักขระที่ทำให้ไวยากรณ์ or ของ PostgREST พัง ก่อนเอาไปต่อสตริง */
+  const needle = (args.q ?? '').replace(/[(),*]/g, ' ').trim()
+  if (needle) {
+    q = q.or(
+      ['card_code', 'ref_no', 'nickname', 'issued_by_name', 'issued_by_code']
+        .map((c) => `${c}.ilike.*${needle}*`)
+        .join(','),
+    )
+  }
+  const { data, error, count } = await q
   if (error) throw new Error(readableError(error))
-  return (data ?? []) as BreakRow[]
+  return { rows: (data ?? []) as BreakRow[], total: count ?? 0 }
+}
+
+export interface BreakFilterOptions {
+  groups: { code: string; name: string | null; n: number }[]
+  cards: { code: string; group_code: string; n: number }[]
+}
+
+/** ตัวเลือกดรอปดาวน์ · มาจากของที่มีอยู่จริงในประวัติ ไม่ใช่รายชื่อบัตรทั้งระบบ */
+export async function breakHistoryFilters(): Promise<BreakFilterOptions> {
+  return rpc<BreakFilterOptions>('break_history_filters', {})
+}
+
+/* ───────────────────── แก้ไขประวัติ และประวัติการแก้ไข ───────────────────── */
+
+export interface BreakEditArgs {
+  id: number
+  reason: string
+  close_kind?: 'guard' | 'problem' | 'supervisor' | 'admin' | null
+  closed_at?: string | null
+  gate_out_at?: string | null
+  issued_at?: string | null
+  due_at?: string | null
+  note?: string | null
+  /** ช่องที่ต้องการล้างค่า · closed_at, close_kind, gate_out_at, note */
+  clear?: string[]
+}
+
+/** แก้สถานะหรือเวลาของใบเดียว · ฝั่งฐานข้อมูลบังคับว่าต้องมีเหตุผลเสมอ */
+export async function breakPassEdit(a: BreakEditArgs) {
+  return rpc<{ ok: true }>('break_pass_edit', {
+    p_id: a.id,
+    p_reason: a.reason,
+    p_close_kind: a.close_kind ?? null,
+    p_closed_at: a.closed_at ?? null,
+    p_gate_out_at: a.gate_out_at ?? null,
+    p_issued_at: a.issued_at ?? null,
+    p_due_at: a.due_at ?? null,
+    p_note: a.note ?? null,
+    p_clear: a.clear ?? [],
+  })
+}
+
+export interface BreakAuditRow {
+  id: number
+  pass_id: number | null
+  ref_no: string | null
+  card_code: string | null
+  action: 'edit' | 'close' | 'reopen' | 'delete'
+  field: string | null
+  before_val: string | null
+  after_val: string | null
+  reason: string | null
+  at: string
+  by_name: string
+  by_code: string | null
+}
+
+export const BREAK_AUDIT_TH: Record<BreakAuditRow['action'], string> = {
+  edit: 'แก้ไข',
+  close: 'ปิดใบ',
+  reopen: 'เปิดใบกลับ',
+  delete: 'ลบทิ้ง',
+}
+
+export async function listBreakAudit(args: {
+  from?: string | null
+  to?: string | null
+  action?: string
+  q?: string
+  limit?: number
+}): Promise<BreakAuditRow[]> {
+  const { data, error } = await supabase.rpc('break_audit_list', {
+    p_from: args.from ?? null,
+    p_to: args.to ?? null,
+    p_action: args.action || null,
+    p_q: args.q?.trim() || null,
+    p_limit: args.limit ?? 300,
+  })
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as BreakAuditRow[]
 }
 
 /**
@@ -499,6 +612,7 @@ export const BREAK_CLOSE_REASONS = [
   { code: 'no_scan_out', label: 'รปภ ไม่ได้สแกนปล่อย' },
   { code: 'wrong_card', label: 'คนปล่อย ปล่อยผิดใบ' },
   { code: 'cancel', label: 'ยกเลิก ไม่ได้ใช้ใบนี้' },
+  { code: 'other', label: 'อื่น ๆ · พิมพ์เหตุผลเอง' },
 ] as const
 
 export type BreakCloseReason = (typeof BREAK_CLOSE_REASONS)[number]['code']

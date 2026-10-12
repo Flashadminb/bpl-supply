@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
 import { DateRangePicker } from '../../components/DateRangePicker'
 import { BulkDeleteBar, PickBox } from '../../components/BulkDeleteBar'
@@ -10,6 +10,8 @@ import { fmtDateTime } from '../../lib/format'
 import { exportToSheet } from '../../lib/api'
 import {
   BREAK_CLOSE_REASONS,
+  breakHistoryFilters,
+  breakPassEdit,
   closeBreakPasses,
   type BreakCloseReason,
   countBreakExportRows,
@@ -140,6 +142,10 @@ export default function BreakHistory() {
   // ค้นหาด้วยรหัสบัตรหรือชื่อคนปล่อย · สองอย่างนี้คือสิ่งที่คนจำได้ตอนตามเรื่องย้อนหลัง
   const [search, setSearch] = useState('')
   const [picked, setPicked] = useState<Set<number>>(new Set())
+  const [group, setGroup] = useState('')
+  const [card, setCard] = useState('')
+  const [page, setPage] = useState(0)
+  const [size, setSize] = useState(50)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
@@ -153,9 +159,20 @@ export default function BreakHistory() {
   )
 
   const rows = useAsync(
-    () => listBreakRows({ ...range, onlyOver, onlyBan, onlyProblem }),
-    [range, onlyOver, onlyBan, onlyProblem, tick],
+    () => listBreakRows({ ...range, onlyOver, onlyBan, onlyProblem, group, card, q: search, page, size }),
+    [range, onlyOver, onlyBan, onlyProblem, group, card, search, page, size, tick],
   )
+  const filters = useAsync(() => breakHistoryFilters(), [tick])
+
+  /* เปลี่ยนตัวกรองแล้วต้องกลับหน้าแรก ไม่งั้นจะค้างอยู่หน้า 7 ของผลลัพธ์ที่มี 2 หน้า */
+  const filterKey = `${from}|${to}|${onlyOver}|${onlyBan}|${onlyProblem}|${group}|${card}|${search}|${size}`
+  const lastKey = useRef(filterKey)
+  useEffect(() => {
+    if (lastKey.current !== filterKey) {
+      lastKey.current = filterKey
+      setPage(0)
+    }
+  }, [filterKey])
   const stuck = useAsync(() => listBreakBoard(), [tick])
   const pendingRange = useAsync(() => countBreakExportRows(range), [range, tick])
   const pendingAll = useAsync(() => countBreakExportRows(), [tick])
@@ -180,16 +197,11 @@ export default function BreakHistory() {
     }
   }
 
-  const all = rows.data ?? []
-  const list = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return all
-    return all.filter((r) =>
-      `${r.card_code} ${r.issued_by_name} ${r.issued_by_code} ${r.nickname ?? ''} ${r.ref_no}`
-        .toLowerCase()
-        .includes(q),
-    )
-  }, [all, search])
+  const list = rows.data?.rows ?? []
+  const total = rows.data?.total ?? 0
+  const pages = Math.max(1, Math.ceil(total / size))
+  const opts = filters.data ?? { groups: [], cards: [] }
+  const cardOpts = group ? opts.cards.filter((c) => c.group_code === group) : opts.cards
   const stuckList = stuck.data ?? []
   const allPicked = list.length > 0 && list.every((r) => picked.has(r.id))
 
@@ -265,12 +277,19 @@ export default function BreakHistory() {
             </button>
           ))}
         </div>
+        {/*
+          เลือก "อื่น ๆ" แล้วต้องพิมพ์เหตุผลเอง เพราะไม่งั้นจะได้ใบที่ปิดโดยไม่มีเหตุผลเลย
+          ซึ่งแย่กว่าตัวเลือกสำเร็จรูปที่ไม่ตรงนัก อย่างน้อยอันนั้นยังบอกทิศทางได้
+        */}
         <input
           className="input"
-          placeholder="รายละเอียดเพิ่มเติม (ไม่บังคับ)"
+          placeholder={reason === 'other' ? 'พิมพ์เหตุผล · บังคับ' : 'รายละเอียดเพิ่มเติม (ไม่บังคับ)'}
           value={closeNote}
           onChange={(e) => setCloseNote(e.target.value)}
         />
+        {reason === 'other' && !closeNote.trim() && (
+          <p className="mt-1 text-xs text-danger-txt">เลือกอื่น ๆ แล้วต้องพิมพ์เหตุผลด้วย</p>
+        )}
         <div className="mt-4 flex flex-wrap justify-end gap-2">
           <button type="button" className="btn-soft text-sm" onClick={() => setClosing(null)}>
             ไม่ปิดแล้ว
@@ -278,7 +297,7 @@ export default function BreakHistory() {
           <button
             type="button"
             className="btn-primary text-sm"
-            disabled={busy || !reason || !closing}
+            disabled={busy || !reason || !closing || (reason === 'other' && !closeNote.trim())}
             onClick={() => {
               if (closing && reason) void closeStuck(closing, reason, closeNote)
             }}
@@ -539,6 +558,47 @@ export default function BreakHistory() {
                 }}
               />
 
+              {/* ตัวกรองแผนกกับบัตร · ทั้งคู่กรองที่ฝั่งเซิร์ฟเวอร์ ไม่ใช่กรองเฉพาะหน้าที่เห็น */}
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <select
+                  className="input h-tap max-w-[220px]"
+                  aria-label="แผนก"
+                  value={group}
+                  onChange={(e) => {
+                    setGroup(e.target.value)
+                    setCard('')
+                  }}
+                >
+                  <option value="">ทุกแผนก</option>
+                  {opts.groups.map((g) => (
+                    <option key={g.code} value={g.code}>
+                      {g.name || g.code} ({g.n})
+                    </option>
+                  ))}
+                </select>
+                <select className="input h-tap max-w-[200px]" aria-label="บัตร" value={card} onChange={(e) => setCard(e.target.value)}>
+                  <option value="">ทุกบัตร</option>
+                  {cardOpts.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.code} ({c.n})
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="input h-tap w-[130px]"
+                  aria-label="กี่แถวต่อหน้า"
+                  value={size}
+                  onChange={(e) => setSize(Number(e.target.value))}
+                >
+                  <option value={25}>25 แถว/หน้า</option>
+                  <option value={50}>50 แถว/หน้า</option>
+                  <option value={100}>100 แถว/หน้า</option>
+                  <option value={200}>200 แถว/หน้า</option>
+                </select>
+                <span className="flex-1" />
+                <Pager page={page} pages={pages} total={total} onGo={setPage} />
+              </div>
+
               <div className="overflow-x-auto rounded-card border border-line">
                 <table className="w-full text-sm">
                   <thead>
@@ -609,6 +669,7 @@ export default function BreakHistory() {
                                 {r.closed_by_name && ` · รับกลับโดย ${r.closed_by_name}`}
                               </p>
                               <Photos passId={r.id} />
+                              <EditPass r={r} onDone={() => setTick((n) => n + 1)} />
                             </td>
                           </tr>
                         )}
@@ -617,11 +678,198 @@ export default function BreakHistory() {
                   </tbody>
                 </table>
               </div>
-              <p className="mt-2 text-xs text-ink-400">กดที่แถวเพื่อดูรูปตอนปล่อยเทียบกับตอนรับกลับ</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <p className="text-xs text-ink-400">กดที่แถวเพื่อดูรูป แก้สถานะ หรือแก้เวลา</p>
+                <span className="flex-1" />
+                <Pager page={page} pages={pages} total={total} onGo={setPage} />
+              </div>
             </>
           )}
         </>
       )}
+    </div>
+  )
+}
+
+/**
+ * ปุ่มเปลี่ยนหน้า
+ *
+ * โชว์เลขหน้าปัจจุบันกับจำนวนทั้งหมดเสมอ ไม่ใช่แค่ปุ่มก่อนหน้า-ถัดไป
+ * เพราะคนที่กำลังไล่ดูย้อนหลังต้องรู้ว่าเหลืออีกเท่าไหร่ ไม่งั้นไม่รู้ว่าจะจบเมื่อไหร่
+ */
+function Pager({
+  page,
+  pages,
+  total,
+  onGo,
+}: {
+  page: number
+  pages: number
+  total: number
+  onGo: (p: number) => void
+}) {
+  return (
+    <span className="flex items-center gap-2">
+      <span className="text-xs text-ink-500">ทั้งหมด {total.toLocaleString('th-TH')} ใบ</span>
+      <button type="button" className="btn-soft h-tap px-3 text-sm" disabled={page <= 0} onClick={() => onGo(page - 1)}>
+        ‹ ก่อนหน้า
+      </button>
+      <span className="text-sm font-semibold">
+        {page + 1} / {pages}
+      </span>
+      <button
+        type="button"
+        className="btn-soft h-tap px-3 text-sm"
+        disabled={page >= pages - 1}
+        onClick={() => onGo(page + 1)}
+      >
+        ถัดไป ›
+      </button>
+    </span>
+  )
+}
+
+/** แปลงเวลา ISO เป็นค่าที่ช่อง datetime-local รับได้ · ต้องเป็นเวลาท้องถิ่น ไม่ใช่ UTC */
+function toLocalInput(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+const KIND_TH: { code: 'guard' | 'problem' | 'supervisor' | 'admin'; label: string }[] = [
+  { code: 'guard', label: 'รปภ รับกลับตามปกติ' },
+  { code: 'problem', label: 'แจ้งปัญหา' },
+  { code: 'supervisor', label: 'หัวหน้าปิดเอง · ไม่นับเวลา' },
+  { code: 'admin', label: 'หลังบ้านปิดเอง · ไม่นับเวลา' },
+]
+
+/**
+ * แก้สถานะและเวลาของใบเดียว
+ *
+ * บังคับใส่เหตุผลเสมอ ทั้งฝั่งหน้าจอและฝั่งฐานข้อมูล
+ * เพราะการแก้เวลาย้อนหลังคือการเปลี่ยนหลักฐาน ถ้าไม่มีเหตุผลติดไว้
+ * เดือนหน้าจะไม่มีใครตอบได้ว่าทำไมเวลาไม่ตรงกับที่ รปภ จำได้
+ * ทุกการแก้ถูกบันทึกลงประวัติการแก้ไขโดยอัตโนมัติจากฝั่งฐานข้อมูล
+ */
+function EditPass({ r, onDone }: { r: BreakRow; onDone: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [kind, setKind] = useState<string>(r.close_kind ?? '')
+  const [gate, setGate] = useState(toLocalInput(r.gate_out_at))
+  const [back, setBack] = useState(toLocalInput(r.closed_at))
+  const [issued, setIssued] = useState(toLocalInput(r.issued_at))
+  const [note, setNote] = useState(r.problem_note ?? '')
+  const [why, setWhy] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const iso = (v: string) => (v ? new Date(v).toISOString() : null)
+  const changed =
+    kind !== (r.close_kind ?? '') ||
+    gate !== toLocalInput(r.gate_out_at) ||
+    back !== toLocalInput(r.closed_at) ||
+    issued !== toLocalInput(r.issued_at) ||
+    note !== (r.problem_note ?? '')
+
+  async function save() {
+    setBusy(true)
+    setErr(null)
+    try {
+      const clear: string[] = []
+      if (!gate && r.gate_out_at) clear.push('gate_out_at')
+      if (!back && r.closed_at) clear.push('closed_at')
+      if (!kind && r.close_kind) clear.push('close_kind')
+      if (!note && r.problem_note) clear.push('note')
+      await breakPassEdit({
+        id: r.id,
+        reason: why,
+        close_kind: (kind || null) as never,
+        closed_at: iso(back),
+        gate_out_at: iso(gate),
+        issued_at: iso(issued),
+        note: note || null,
+        clear,
+      })
+      setOpen(false)
+      setWhy('')
+      onDone()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button type="button" className="btn-soft mt-3 h-tap px-4 text-sm" onClick={() => setOpen(true)}>
+        แก้สถานะ หรือแก้เวลา
+      </button>
+    )
+  }
+
+  return (
+    <div className="mt-3 rounded-card border border-line p-3">
+      {err && (
+        <div className="mb-2">
+          <ErrorBox message={err} />
+        </div>
+      )}
+      <div className="flex flex-wrap gap-3">
+        <label className="block">
+          <span className="label">สถานะการปิด</span>
+          <select className="input h-tap w-[220px]" value={kind} onChange={(e) => setKind(e.target.value)}>
+            <option value="">ยังไม่ปิด</option>
+            {KIND_TH.map((k) => (
+              <option key={k.code} value={k.code}>
+                {k.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="label">เวลายื่นบัตร</span>
+          <input type="datetime-local" className="input h-tap" value={issued} onChange={(e) => setIssued(e.target.value)} />
+        </label>
+        <label className="block">
+          <span className="label">เวลาผ่านประตู</span>
+          <input type="datetime-local" className="input h-tap" value={gate} onChange={(e) => setGate(e.target.value)} />
+        </label>
+        <label className="block">
+          <span className="label">เวลากลับ</span>
+          <input type="datetime-local" className="input h-tap" value={back} onChange={(e) => setBack(e.target.value)} />
+        </label>
+      </div>
+      <label className="mt-2 block">
+        <span className="label">หมายเหตุของใบนี้</span>
+        <input className="input h-tap w-full" value={note} onChange={(e) => setNote(e.target.value)} placeholder="ไม่บังคับ" />
+      </label>
+      <label className="mt-2 block">
+        <span className="label">เหตุผลที่แก้ · บังคับ</span>
+        <input
+          className="input h-tap w-full"
+          value={why}
+          onChange={(e) => setWhy(e.target.value)}
+          placeholder="เช่น รปภ ลืมกดรับกลับ ยืนยันกับหัวหน้าแล้วว่ากลับ 14:35"
+        />
+      </label>
+      <p className="mt-1 text-xs text-ink-400">
+        ทุกการแก้จะถูกบันทึกว่าใครแก้ แก้อะไร จากค่าอะไรเป็นอะไร ดูได้ที่เมนูประวัติการแก้ไข
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="btn-primary h-tap px-4"
+          disabled={busy || !why.trim() || !changed}
+          onClick={save}
+        >
+          {busy ? <Spinner /> : null} บันทึกการแก้
+        </button>
+        <button type="button" className="btn-ghost h-tap px-4" onClick={() => setOpen(false)}>
+          ยกเลิก
+        </button>
+        {!changed && <span className="self-center text-xs text-ink-400">ยังไม่ได้แก้อะไร</span>}
+      </div>
     </div>
   )
 }

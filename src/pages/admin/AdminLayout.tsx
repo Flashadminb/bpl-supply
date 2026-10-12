@@ -65,6 +65,7 @@ const GROUPS: Group[] = [
       // สองอันนี้อยู่ในงาน STANDARD ด้วย ตั้งใจให้ซ้ำ
       // เพราะเปิดบ่อยพอ ๆ กับประวัติเบิก แต่ไปจมอยู่ในกลุ่มที่พับเก็บไว้
       { to: '/admin/break/history', label: 'ประวัติเบรค', icon: 'history', audit: true },
+          { to: '/admin/break/audit', label: 'ประวัติการแก้ไขเบรค', icon: 'clipboard', audit: true },
       { to: '/admin/os/scans', label: 'ประวัติการสแกน', icon: 'history', audit: true },
     ],
   },
@@ -116,6 +117,7 @@ const GROUPS: Group[] = [
         title: 'บัตรเบรค',
         links: [
           { to: '/admin/break/history', label: 'ประวัติเบรค', icon: 'history', audit: true },
+          { to: '/admin/break/audit', label: 'ประวัติการแก้ไขเบรค', icon: 'clipboard', audit: true },
           { to: '/admin/break/cards', label: 'จัดการบัตรเบรค', icon: 'qr', audit: true },
         ],
       },
