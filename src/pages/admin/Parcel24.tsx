@@ -435,8 +435,8 @@ function Graph({
               : 'หัวข้อนี้มีเยอะ จึงกางเท่าที่ไหว สาขาละ 10 เลขแรก · เลือกโซนเพื่อกางครบ หรือกดกางต่อรายสาขา'}
           </p>
           {zones.length > 1 && (
-            <p className="mt-1 text-center text-[11.5px]" style={{ color: subOpen ? C.mute : C.faint }}>
-              {subOpen ? '▾ แยกตามโซน D0' : '▾ ชี้หรือกดเพื่อแยกตามโซน D0'}
+            <p className="mt-1 text-center text-[11.5px]" style={{ color: subOpen ? '#8FD0FF' : C.faint }}>
+              {subOpen ? '▾' : '▾ ชี้หรือกดเพื่อแยกตามโซน D0'}
             </p>
           )}
         </div>
@@ -447,11 +447,28 @@ function Graph({
           ไม่ได้โผล่ตลอดเวลา เพราะจอนี้แน่นอยู่แล้ว และคนส่วนใหญ่ดูทั้งก้อนไม่ได้แยกโซน
         */}
         {zones.length > 1 && subOpen && (
-          <div className="relative mt-[2px] pl-4">
+          /*
+            กรอบของเมนูย่อยใช้ฟ้า ส่วนการ์ดใหญ่ใช้แดง
+            คนละสีเพราะเป็นคนละชั้นของเมนู ถ้าสีเดียวกันจะอ่านเหมือนเป็นการ์ดเดียวที่ยาวลงมา
+            ฟ้าเป็นสีเดียวกับป้ายโซน D0 ที่ใช้อยู่ทั้งระบบ จึงไม่ได้เพิ่มสีใหม่เข้ามาอีก
+          */
+          <div
+            className="mt-[6px] p-2"
+            style={{
+              borderRadius: 13,
+              background: 'linear-gradient(180deg,#0E1A25,#0A121A)',
+              border: `2px solid #2F5A80`,
+              boxShadow: 'inset 0 1px 0 rgba(143,208,255,.07)',
+            }}
+          >
+            <p className="mb-[6px] flex items-baseline gap-2 px-[3px] font-mono text-[12px] font-extrabold" style={{ color: '#8FD0FF' }}>
+              แยกตามโซน D0 <Cn>D0 分区</Cn>
+            </p>
+            <div className="relative pl-4">
             <span
               aria-hidden
               className="absolute"
-              style={{ left: 9, top: -2, bottom: 22, width: 1.5, background: C.line }}
+              style={{ left: 9, top: -2, bottom: 22, width: 1.5, background: '#24445F' }}
             />
             {zones.map((z) => {
               const k = z.zone ?? ''
@@ -461,7 +478,7 @@ function Graph({
                   <span
                     aria-hidden
                     className="absolute"
-                    style={{ left: -7, top: 'calc(50% - 3px)', width: 11, height: 1.5, background: on ? '#3C7099' : C.line }}
+                    style={{ left: -7, top: 'calc(50% - 3px)', width: 11, height: 1.5, background: on ? '#8FD0FF' : '#24445F' }}
                   />
                   {/*
                     ช่องโซนต้องใหญ่พอจะอยู่คู่กับตัวเลขใหญ่กลางการ์ดได้
@@ -474,8 +491,8 @@ function Graph({
                     className="mb-[5px] flex w-full items-center gap-2 px-[10px] py-[7px] text-left"
                     style={{
                       borderRadius: 10,
-                      background: on ? '#15293A' : C.groove,
-                      border: `1.5px solid ${on ? '#3C7099' : C.line2}`,
+                      background: on ? '#19354A' : '#0C1620',
+                      border: `1.5px solid ${on ? '#8FD0FF' : '#24445F'}`,
                     }}
                   >
                     <span className="min-w-0 flex-1">
@@ -499,6 +516,7 @@ function Graph({
                 </div>
               )
             })}
+            </div>
           </div>
         )}
         </div>
