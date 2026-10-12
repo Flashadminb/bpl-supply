@@ -192,14 +192,13 @@ export default function Home() {
             <div className="flex shrink-0 flex-col items-end gap-1">
               <div className="flex items-center gap-1">
                 {/* สแกน · วางไว้ข้างปุ่มหลังบ้านตามที่เจ้าของระบบสั่ง
-                    ปลายทางเลือกตามสิทธิ์ที่มีอยู่แล้ว ไม่ได้สร้างหน้าใหม่ในรอบนี้
-                    รปภ ไปหน้าสแกนบัตร ส่วนคนอื่นไปหน้าเครื่องซึ่งมีตัวสแกนอยู่ในนั้น */}
-                {(profile?.can_guard || profile?.can_assets || can(...MANAGER_ROLES)) && (
-                  <Link
-                    to={profile?.can_guard ? '/guard' : '/assets'}
-                    aria-label="สแกน"
-                    className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink text-white"
-                  >
+                    ทุกคนเห็น เพราะหน้าสแกน QR ใช้ได้ทุกบทบาท
+                    รปภ ไปหน้าสแกนบัตรของเขา ที่เหลือไปหน้าสแกน QR */}
+                <Link
+                  to={profile?.can_guard ? '/guard' : '/scan'}
+                  aria-label="สแกน"
+                  className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink text-white"
+                >
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                       <path d="M4 8.5V6a2 2 0 0 1 2-2h2.5" />
                       <path d="M15.5 4H18a2 2 0 0 1 2 2v2.5" />
@@ -208,7 +207,6 @@ export default function Home() {
                       <path d="M3.5 12h17" />
                     </svg>
                   </Link>
-                )}
                 {(can(...MANAGER_ROLES) || profile?.can_dispatch) && (
                   <Link to="/admin" className="rounded-btn bg-ink px-3 py-2 text-sm text-white">
                     หลังบ้าน
@@ -427,14 +425,13 @@ export default function Home() {
             <div className="flex shrink-0 flex-col items-end gap-1">
               <div className="flex items-center gap-1">
                 {/* สแกน · วางไว้ข้างปุ่มหลังบ้านตามที่เจ้าของระบบสั่ง
-                    ปลายทางเลือกตามสิทธิ์ที่มีอยู่แล้ว ไม่ได้สร้างหน้าใหม่ในรอบนี้
-                    รปภ ไปหน้าสแกนบัตร ส่วนคนอื่นไปหน้าเครื่องซึ่งมีตัวสแกนอยู่ในนั้น */}
-                {(profile?.can_guard || profile?.can_assets || can(...MANAGER_ROLES)) && (
-                  <Link
-                    to={profile?.can_guard ? '/guard' : '/assets'}
-                    aria-label="สแกน"
-                    className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink text-white"
-                  >
+                    ทุกคนเห็น เพราะหน้าสแกน QR ใช้ได้ทุกบทบาท
+                    รปภ ไปหน้าสแกนบัตรของเขา ที่เหลือไปหน้าสแกน QR */}
+                <Link
+                  to={profile?.can_guard ? '/guard' : '/scan'}
+                  aria-label="สแกน"
+                  className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink text-white"
+                >
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                       <path d="M4 8.5V6a2 2 0 0 1 2-2h2.5" />
                       <path d="M15.5 4H18a2 2 0 0 1 2 2v2.5" />
@@ -443,7 +440,6 @@ export default function Home() {
                       <path d="M3.5 12h17" />
                     </svg>
                   </Link>
-                )}
                 {(can(...MANAGER_ROLES) || profile?.can_dispatch) && (
                   <Link to="/admin" className="rounded-btn bg-ink px-3 py-2 text-sm text-white">
                     หลังบ้าน
