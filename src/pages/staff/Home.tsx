@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { useCart } from '../../lib/cart'
@@ -89,6 +90,47 @@ export default function Home() {
    *
    * คนที่เป็นทั้ง รปภ และอย่างอื่นจะได้หน้าปกติ เพราะเขามีงานอื่นต้องทำด้วย
    */
+  /**
+   * เรื่องที่ขึ้นแถบประกาศหมุน · เฉพาะของที่เกิดในแอพ
+   *
+   * กระดานปล่อยรถ รถรอลงงาน ของค้างส่งออก พัสดุ 24 ชม ไม่เอามาที่นี่
+   * เพราะจอพวกนั้นเปิดค้างทั้งกะอยู่แล้ว คนที่ดูแลมันนั่งมองอยู่ตลอด
+   * เอามาเตือนซ้ำคือเตือนคนที่เห็นอยู่แล้ว แล้วจะกลบเรื่องที่ยังไม่มีใครเห็นจริง ๆ
+   *
+   * ใช้ตัวเลขที่หน้านี้ขอมาอยู่แล้วทั้งหมด ไม่ได้ยิงถามเพิ่มแม้แต่ครั้งเดียว
+   */
+  const lateAssets = (heldAssets.data ?? []).filter(
+    (h) => h.due_at && Date.now() > Date.parse(h.due_at),
+  ).length
+  const notices: NoticeItem[] = []
+  if (lateAssets > 0)
+    notices.push({
+      to: '/returns',
+      text: `เลยกำหนดคืนแล้ว ${lateAssets} เครื่อง`,
+      sub: 'แตะเพื่อไปคืน',
+      tone: 'bad',
+    })
+  if (owing > 0)
+    notices.push({
+      to: '/returns',
+      text: `ต้องคืน ${owing} รายการ`,
+      sub: 'ของที่ถืออยู่ในมือคุณ',
+    })
+  if (approvals.count > 0)
+    notices.push({
+      to: '/admin/approvals',
+      text: `คำขอเบิกรออนุมัติ ${approvals.count} ใบ`,
+      sub: 'แตะเพื่อไปอนุมัติ',
+    })
+  if (sackCount > 0)
+    notices.push({ to: '/ship', text: `กระสอบรอส่ง ${sackCount} รายการ`, sub: 'ใครว่างหยิบไปส่งได้' })
+  if (hubOthers > 0)
+    notices.push({
+      to: '/returns',
+      text: `คนอื่นถือของอยู่ ${hubOthers} เครื่อง`,
+      sub: 'คืนแทนได้จากหน้าคืนของ',
+    })
+
   const guardOnly =
     profile?.can_guard === true && profile.role === 'staff' && !profile.can_dispatch
 
@@ -275,6 +317,8 @@ export default function Home() {
             <WorkLinks />
             {can(...MANAGER_ROLES) && <NotifyBell />}
           </div>
+
+          <NoticeStrip items={notices} />
         </div>
       </header>
 
@@ -508,6 +552,8 @@ export default function Home() {
             <WorkLinks />
             {can(...MANAGER_ROLES) && <NotifyBell />}
           </div>
+
+          <NoticeStrip items={notices} />
         </div>
       </header>
 
@@ -719,5 +765,67 @@ export default function Home() {
         </section>
       </StaffPage>
     </div>
+  )
+}
+
+interface NoticeItem {
+  to: string
+  text: string
+  sub: string
+  tone?: 'bad'
+}
+
+/**
+ * แถบประกาศหมุน
+ *
+ * หมุนเองทุกหกวินาที · เลือกหมุนแทนการแบ่งช่อง เพราะแบ่งช่องแล้วแต่ละช่อง
+ * เหลือที่ไม่ถึงครึ่งบรรทัด พอชื่อของยาวก็ตัดหายหมด
+ * แถบเดียวเต็มความกว้างอ่านจบในสายตาเดียว และคนหน้างานถือมือถือมือเดียวอยู่แล้ว
+ *
+ * มีเรื่องเดียวก็ไม่ต้องหมุนและไม่ต้องมีจุด · ไม่มีเรื่องเลยก็ไม่ขึ้นทั้งแถบ
+ * แถบว่างที่ขึ้นค้างไว้คือพื้นที่ที่เสียไปเปล่า ๆ ทุกวัน
+ */
+function NoticeStrip({ items }: { items: NoticeItem[] }) {
+  const [i, setI] = useState(0)
+
+  useEffect(() => {
+    if (items.length < 2) return
+    const t = setInterval(() => setI((n) => (n + 1) % items.length), 6000)
+    return () => clearInterval(t)
+  }, [items.length])
+
+  if (items.length === 0) return null
+  const cur = items[Math.min(i, items.length - 1)]
+
+  return (
+    <Link
+      to={cur.to}
+      className={`mt-3 flex items-center gap-2 rounded-card border-2 bg-surface px-3 py-2 ${
+        cur.tone === 'bad' ? 'border-danger' : 'border-brand-500'
+      }`}
+    >
+      <span
+        aria-hidden
+        className={`flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-btn text-sm ${
+          cur.tone === 'bad' ? 'bg-danger-bg text-danger-txt' : 'bg-brand-50 text-ink'
+        }`}
+      >
+        {cur.tone === 'bad' ? '!' : '↩'}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-display text-base text-ink">{cur.text}</span>
+        <span className="block truncate text-xs text-ink-500">{cur.sub}</span>
+      </span>
+      {items.length > 1 && (
+        <span className="flex shrink-0 gap-[3px]" aria-hidden>
+          {items.map((x, n) => (
+            <i
+              key={x.to + x.text}
+              className={`block h-[5px] w-[5px] rounded-full ${n === i ? 'bg-ink' : 'bg-line'}`}
+            />
+          ))}
+        </span>
+      )}
+    </Link>
   )
 }
