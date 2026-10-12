@@ -12,7 +12,7 @@ import {
   countPendingSacks,
 } from '../../lib/api'
 import { StaffPage } from '../../components/Shell'
-import { EmptyState, ErrorBox, Loading } from '../../components/ui'
+import { EmptyState, ErrorBox, Loading, Sheet } from '../../components/ui'
 import { STATUS_TH, fmtDateTime, statusClass } from '../../lib/format'
 import {
   MANAGER_ROLES,
@@ -130,6 +130,37 @@ export default function Home() {
       text: `คนอื่นถือของอยู่ ${hubOthers} เครื่อง`,
       sub: 'คืนแทนได้จากหน้าคืนของ',
     })
+
+  /** งานที่เกี่ยวกับ OS · รวมเป็นไทล์เดียวเมื่อมีมากกว่าหนึ่งอย่าง */
+  const [osOpen, setOsOpen] = useState(false)
+  const osRows = [
+    ...(mayScan
+      ? [
+          {
+            to: '/guard',
+            icon: '▣',
+            short: 'บัตร OS',
+            title: 'สแกนบัตร OS',
+            sub: 'เช็คมือถือที่ OS นำเข้าพื้นที่ · หน้าจอเดียวกับที่ รปภ ใช้',
+            sub2: 'สแกนเช็คมือถือ',
+          },
+        ]
+      : []),
+    ...(maysSeeBreak
+      ? [
+          {
+            to: '/break',
+            icon: '⏱',
+            short: 'เบรค OS',
+            title: 'เบรค OS',
+            sub: mayIssueBreak
+              ? 'ปล่อยบัตรเบรค · ดูใบที่ยังไม่ได้รับกลับ'
+              : 'สแกนบัตรเบรค · ดูว่าตอนนี้ใครออกไปอยู่',
+            sub2: mayIssueBreak ? 'ปล่อยบัตรเบรค' : 'สแกนบัตรเบรค',
+          },
+        ]
+      : []),
+  ]
 
   const guardOnly =
     profile?.can_guard === true && profile.role === 'staff' && !profile.can_dispatch
@@ -592,136 +623,87 @@ export default function Home() {
           สแกน QR เพื่อเบิก
         </button>
 
-        {(profile?.can_assets || can(...MANAGER_ROLES)) && (
-          <Link
-            to="/assets"
-            className="card mt-3 flex items-center gap-3 border-brand-300 p-4"
-          >
-            <span aria-hidden className="text-md">
-              ⚙
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block font-display text-md">เบิกอุปกรณ์ Asset</span>
-              <span className="block text-sm text-ink-400">
-                ไอดาต้า · Power Pallet · วิทยุ · เลเซอร์ลบ
-              </span>
-            </span>
-            <span aria-hidden className="text-ink-400">
-              ›
-            </span>
-          </Link>
-        )}
-
-        {mayScan && (
-          <Link to="/guard" className="card mt-3 flex items-center gap-3 p-4">
-            <span aria-hidden className="text-md">
-              ▣
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block font-display text-md">สแกนบัตร OS</span>
-              <span className="block text-sm text-ink-400">
-                เช็คมือถือที่ OS นำเข้าพื้นที่ · หน้าจอเดียวกับที่ รปภ ใช้
-              </span>
-            </span>
-            <span aria-hidden className="text-ink-400">
-              ›
-            </span>
-          </Link>
-        )}
-
-        {maysSeeBreak && (
-          <Link to="/break" className="card mt-3 flex items-center gap-3 p-4">
-            <span aria-hidden className="text-md">
-              ⏱
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block font-display text-md">เบรค OS</span>
-              <span className="block text-sm text-ink-400">
-                {mayIssueBreak
-                  ? 'ปล่อยบัตรเบรค · ดูใบที่ยังไม่ได้รับกลับ'
-                  : 'สแกนบัตรเบรค · ดูว่าตอนนี้ใครออกไปอยู่'}
-              </span>
-            </span>
-            <span aria-hidden className="text-ink-400">
-              ›
-            </span>
-          </Link>
-        )}
-
-        {seesSacks && (
-        <Link
-          to="/ship"
-          className={`card mt-3 flex items-center gap-3 p-4 ${
-            sackCount > 0 ? 'border-brand-300 bg-brand-50' : ''
-          }`}
-        >
-          <span aria-hidden className="text-md">
-            ▦
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block font-display text-md">กระสอบรอส่ง</span>
-            <span className="block text-sm text-ink-400">
-              {sackCount > 0
-                ? `มี ${sackCount} รายการรอส่ง · กดส่งแล้วได้ฟอร์มไปแปะในแชท`
-                : 'ตอนนี้ไม่มีรายการรอส่ง'}
-            </span>
-          </span>
-          {sackCount > 0 && (
-            <span className="rounded-pill bg-brand-500 px-2 font-display text-xs text-ink">
-              {sackCount > 99 ? '99+' : sackCount}
-            </span>
+        {/*
+          เมนูดำเนินการ · การ์ดสี่เหลี่ยมสามใบต่อแถว ไม่ใช่แถบยาวเรียงลงมา
+          แถบยาวหนึ่งแถบกินความสูงเท่าการ์ดสามใบ พอมีหกเมนูก็ต้องเลื่อนทั้งหน้า
+          ทั้งที่ของจริงมีไม่กี่อัน · ตารางทำให้เห็นทุกเมนูพร้อมกันโดยไม่ต้องเลื่อน
+          ซึ่งสำคัญกับคนที่เปิดแอพกลางงานแล้วต้องกดให้ถูกตั้งแต่ครั้งแรก
+        */}
+        <p className="label mt-4">เมนูดำเนินการ</p>
+        <div className="grid grid-cols-3 gap-2">
+          {(profile?.can_assets || can(...MANAGER_ROLES)) && (
+            <Tile to="/assets" icon="⚙" title="Asset" sub="เบิก · คืนเครื่อง" hot />
           )}
-          <span aria-hidden className="text-ink-400">
-            ›
-          </span>
-        </Link>
-        )}
 
-        <Link to="/by" className="card mt-3 flex items-center gap-3 p-4">
-          <span aria-hidden className="text-md">
-            ▤
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block font-display text-md">ส่งบาร์โค้ดจาก BY</span>
-            <span className="block text-sm text-ink-400">
-              ของที่ไม่ได้กดเบิกในระบบนี้ · ถ่ายบาร์โค้ดส่งให้แอดมินตัดสต็อก
-            </span>
-          </span>
-          <span aria-hidden className="text-ink-400">
-            ›
-          </span>
-        </Link>
+          {osRows.length === 1 && (
+            <Tile to={osRows[0].to} icon={osRows[0].icon} title={osRows[0].short} sub={osRows[0].sub2} />
+          )}
+          {osRows.length > 1 && (
+            <Tile onClick={() => setOsOpen(true)} icon="▣" title="งาน OS" sub="บัตร · เบรค" />
+          )}
 
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <Link to="/items" className="card flex min-h-[92px] flex-col justify-between p-3">
-            <span className="text-md" aria-hidden>
-              ☰
-            </span>
-            <span className="font-display text-md">เบิกวัสดุ</span>
-            <span className="text-sm text-ink-400">เลือกจากรายการ</span>
-          </Link>
-          <Link to="/returns" className="card flex min-h-[92px] flex-col justify-between p-3">
-            <span className="text-md" aria-hidden>
-              ↩
-            </span>
-            <span className="font-display text-md">คืนของ</span>
-            <span className={`text-sm ${owing > 0 ? 'text-warn-txt' : 'text-ink-400'}`}>
-              {borrow.loading || heldAssets.loading
+          <Tile to="/items" icon="☰" title="วัสดุ" sub="เบิกของใช้" />
+
+          <Tile
+            to="/returns"
+            icon="↩"
+            title="คืนของ"
+            sub={
+              borrow.loading || heldAssets.loading
                 ? 'กำลังตรวจ…'
                 : owing > 0
-                  ? [
-                      assetCount > 0 ? `อุปกรณ์ ${assetCount} เครื่อง` : null,
-                      openCount > 0 ? `วัสดุ ${openCount} ชิ้น` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')
-                  : 'ไม่มีของค้าง'}
-            </span>
-            {mayProxy && hubOthers > 0 && (
-              <span className="text-xs text-ink-400">คนอื่นถืออยู่ {hubOthers} เครื่อง</span>
-            )}
-          </Link>
+                  ? `ค้าง ${owing} รายการ`
+                  : 'ไม่มีของค้าง'
+            }
+            badge={owing > 0 ? owing : 0}
+            hot={owing > 0}
+          />
+
+          {seesSacks && (
+            <Tile
+              to="/ship"
+              icon="▦"
+              title="กระสอบ"
+              sub={sackCount > 0 ? `รอส่ง ${sackCount}` : 'ไม่มีรอส่ง'}
+              badge={sackCount}
+              hot={sackCount > 0}
+            />
+          )}
+
+          <Tile to="/by" icon="▤" title="บาร์โค้ด BY" sub="ของนอกระบบ" />
         </div>
+
+        {mayProxy && hubOthers > 0 && (
+          <p className="mt-2 text-center text-sm text-ink-400">
+            คนอื่นถืออยู่ {hubOthers} เครื่อง · คืนแทนได้จากหน้าคืนของ
+          </p>
+        )}
+
+        {/* เลือกงาน OS · ใช้แผ่นเลื่อนขึ้นแทนการพาไปอีกหน้า
+            จะได้ไม่ต้องกดสามครั้งกว่าจะถึงของที่เมื่อวานกดสองครั้ง */}
+        <Sheet open={osOpen} onClose={() => setOsOpen(false)} title="งาน OS">
+          <div className="space-y-2">
+            {osRows.map((r) => (
+              <Link
+                key={r.to}
+                to={r.to}
+                onClick={() => setOsOpen(false)}
+                className="card flex items-center gap-3 p-4"
+              >
+                <span aria-hidden className="text-md">
+                  {r.icon}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-display text-md">{r.title}</span>
+                  <span className="block text-sm text-ink-400">{r.sub}</span>
+                </span>
+                <span aria-hidden className="text-ink-400">
+                  ›
+                </span>
+              </Link>
+            ))}
+          </div>
+        </Sheet>
 
         {cart.count > 0 && (
           <Link to="/cart" className="card mt-3 flex items-center gap-3 border-brand-300 bg-brand-50 p-3">
@@ -829,3 +811,64 @@ function NoticeStrip({ items }: { items: NoticeItem[] }) {
     </Link>
   )
 }
+
+/**
+ * ไทล์งาน OS · รวมของที่เกี่ยวกับ OS ไว้ที่เดียวตามที่เจ้าของระบบสั่ง
+ *
+ * รวมเฉพาะตอนที่คนนั้นเห็นทั้งสองอย่างจริง ถ้ามีสิทธิ์อย่างเดียว
+ * ก็โชว์อันนั้นตรง ๆ เหมือนเดิม · กล่องห่อที่มีของอยู่ชิ้นเดียวคือ
+ * การเพิ่มจำนวนครั้งที่ต้องกดโดยไม่ได้อะไรกลับมา
+ *
+ * กางในที่เดิม ไม่ได้พาไปหน้าใหม่ เพราะถ้าพาไปหน้ารวมอีกหน้า
+ * คนจะต้องกดสามครั้งกว่าจะถึงของที่เมื่อวานกดสองครั้ง
+ *
+ * หน้าของ รปภ เป็นคนละหน้ากันอยู่แล้ว จึงไม่โดนรวมตามที่สั่งไว้
+ */
+/**
+ * การ์ดเมนูทรงสี่เหลี่ยม
+ *
+ * สูงเท่ากันทุกใบด้วย min-h เพราะคำบรรยายยาวไม่เท่ากัน
+ * ถ้าปล่อยให้สูงตามเนื้อหา แถวจะเป็นฟันปลาแล้วดูเหมือนจัดวางพลาด
+ */
+function Tile({
+  to,
+  onClick,
+  icon,
+  title,
+  sub,
+  badge = 0,
+  hot = false,
+}: {
+  to?: string
+  onClick?: () => void
+  icon: string
+  title: string
+  sub: string
+  badge?: number
+  hot?: boolean
+}) {
+  const cls = `card relative flex min-h-[96px] flex-col justify-between p-3 text-left ${
+    hot ? 'border-brand-300 bg-brand-50' : ''
+  }`
+  const inner = (
+    <>
+      <span aria-hidden className="text-md">
+        {icon}
+      </span>
+      <span className="block font-display text-base leading-tight">{title}</span>
+      <span className="block text-xs text-ink-400">{sub}</span>
+      {badge > 0 && (
+        <span className="absolute right-2 top-2 min-w-[20px] rounded-pill bg-brand-500 px-1 text-center font-display text-[11px] text-ink">
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
+    </>
+  )
+  if (to) return <Link to={to} className={cls}>{inner}</Link>
+  return (
+    <button type="button" onClick={onClick} className={cls}>
+      {inner}
+    </button>
+  )
+}
+
