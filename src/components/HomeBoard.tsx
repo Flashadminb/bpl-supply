@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAsync } from '../lib/useAsync'
 import { exportToSheet, listAssetTransferRows } from '../lib/api'
 import { breakNow } from '../lib/breakPass'
+import { isLate, listAssetOtOpen } from '../lib/assetOt'
 import { Modal, Spinner } from './ui'
 import { readableError } from '../lib/supabase'
 import type { AssetHolding, AssetIssue, Item, OpenBorrowing } from '../lib/types'
@@ -240,17 +241,38 @@ export function HomeBoard({
   const brGroups = br.data?.groups ?? []
   const brOver = br.data?.over ?? []
 
+  /* ใบที่ขอ OT ไว้ · เอามาต่อกับรายการถือครองด้วย txn_id
+     ที่แยกคำถามเพราะเพิ่มคอลัมน์กลาง view asset_holdings ไม่ได้
+     ต้องเขียน view ใหม่ทั้งก้อน ซึ่งเสี่ยงกับของที่หน้างานใช้อยู่ทุกวัน */
+  const ot = useAsync(() => listAssetOtOpen(), [])
+  const otBy = useMemo(() => {
+    const m = new Map<string, { until: string; hours: number }>()
+    for (const o of ot.data ?? []) m.set(o.txn_id, { until: o.ot_until, hours: o.ot_hours })
+    return m
+  }, [ot.data])
+
   const waiting = (moves.data ?? []).filter((m) => m.state === 'waiting')
   const todayMoves = (moves.data ?? []).filter(
     (m) => new Date(m.created_at).toDateString() === new Date().toDateString(),
   )
 
+  /** เลยกำหนดจริง ๆ · ใบที่ยังอยู่ในช่วง OT ไม่นับ เพราะมีคนจัดการแล้ว */
   const late = useMemo(
     () =>
       holdings
-        .filter((h) => h.due_at && Date.now() > Date.parse(h.due_at))
+        .filter((h) => isLate(h.due_at, otBy.get(h.txn_id)?.until))
         .sort((a, b) => Date.parse(a.due_at as string) - Date.parse(b.due_at as string)),
-    [holdings],
+    [holdings, otBy],
+  )
+
+  /** ขอ OT ไว้และยังไม่เลยเวลาที่ขอ */
+  const otOpen = useMemo(
+    () =>
+      holdings.filter((h) => {
+        const u = otBy.get(h.txn_id)?.until
+        return u ? Date.now() <= Date.parse(u) : false
+      }),
+    [holdings, otBy],
   )
 
   /** เรียงจากใกล้ครบกำหนดสุด · ของที่เลยแล้วขึ้นก่อน เพราะต้องตามก่อน */
@@ -277,6 +299,21 @@ export function HomeBoard({
       head: `เลยกำหนดคืน · ${new Set(late.map((h) => h.holder_code)).size} คน`,
       rows: late.slice(0, 20).map((h) => `${h.asset_code} · ${h.holder_name ?? '—'} · ${leftText(minsLeft(h.due_at as string))}`),
       more: Math.max(0, late.length - 20),
+    },
+    {
+      key: 'ot',
+      n: otOpen.length,
+      label: 'ขอ OT ไว้',
+      tone: otOpen.length > 0 ? 'warn' : undefined,
+      to: '/admin/assets-out',
+      head: 'ต่อเวลาไว้ ยังไม่เลยที่ขอ',
+      note: 'กำหนดเดิมยังอยู่ ไม่ได้ถูกลบ',
+      rows: otOpen.slice(0, 20).map((h) => {
+        const o = otBy.get(h.txn_id)
+        const until = o ? new Date(o.until).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '—'
+        return `${h.asset_code} · ${h.holder_name ?? '—'} · ถึง ${until} (+${o?.hours ?? 0})`
+      }),
+      more: Math.max(0, otOpen.length - 20),
     },
     {
       key: 'wait',
@@ -633,7 +670,10 @@ export function HomeBoard({
         */}
         <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {soon.slice(0, 12).map((h) => {
-            const m = minsLeft(h.due_at as string)
+            const o = otBy.get(h.txn_id)
+            /* มี OT ให้นับถอยหลังจากเวลาที่ขอต่อ ไม่ใช่กำหนดเดิม
+               เพราะสิ่งที่คนอยากรู้คือเหลือเวลาอีกเท่าไหร่จริง ๆ */
+            const m = minsLeft((o?.until ?? h.due_at) as string)
             const over = m < 0
             const warn = !over && m <= 60
             const col = over ? '#A32D2D' : warn ? '#BA7517' : '#0F6E56'
@@ -644,12 +684,20 @@ export function HomeBoard({
               <li key={h.out_item_id} className="rounded-card bg-surface px-2 py-[6px]">
                 <span className="flex items-center gap-2">
                   <b className="shrink-0 font-mono text-xs">{h.asset_code}</b>
+                  {o && (
+                    <span className="shrink-0 rounded-pill bg-warn px-[5px] py-[1px] font-mono text-[9.5px] font-bold text-ink">
+                      +OT {o.hours}
+                    </span>
+                  )}
                   <span className="min-w-0 flex-1 truncate text-[12.5px]">{h.holder_name ?? '—'}</span>
                   <span className={`shrink-0 whitespace-nowrap rounded-pill px-2 py-[2px] font-mono text-[11.5px] font-bold ${bg}`}>
                     {leftText(m)}
                   </span>
                 </span>
-                <span className="mt-[1px] block truncate text-[10px] text-ink-400">{h.type_name}</span>
+                <span className="mt-[1px] block truncate text-[10px] text-ink-400">
+                  {h.type_name}
+                  {o && ` · เดิม ${new Date(h.due_at as string).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}`}
+                </span>
                 <span className="mt-1 block h-[6px] overflow-hidden rounded-pill bg-ink/10">
                   <i className="block h-full rounded-pill" style={{ width: `${pct}%`, background: col }} />
                 </span>
