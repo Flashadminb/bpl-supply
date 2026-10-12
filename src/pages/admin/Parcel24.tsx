@@ -6,6 +6,7 @@ import { readableError } from '../../lib/supabase'
 import { C, CARD, HEAT_RED, field, heat, nf, tabOff, tabOn, thFull } from '../../lib/boardTheme'
 import {
   CANCEL,
+  byCust,
   byAction,
   byDest,
   heldHours,
@@ -621,6 +622,11 @@ function Cards({
   const over48 = rows.filter((r) => (heldHours(r, snapAt) ?? 0) > 48).length
   const dests = byDest(rows)
   const max = Math.max(1, ...actions.map((a) => a.n))
+  /* ไฟล์รุ่นเก่าไม่มีคอลัมน์นี้เลย · ทั้งกองเป็น "ไม่ระบุ" ก็ไม่ต้องขึ้นแถบ
+     แต่ถ้ามีของจริงปนอยู่ ให้ "ไม่ระบุ" ขึ้นด้วย ไม่งั้นเปอร์เซ็นต์รวมไม่ถึงร้อย
+     แล้วคนจะนึกว่าตัวเลขผิด */
+  const custAll = byCust(rows)
+  const custs = custAll.length === 1 && custAll[0].cust === 'ไม่ระบุ' ? [] : custAll
 
   return (
     <>
@@ -630,6 +636,38 @@ function Cards({
         <Tile label="ค้างเกิน 48 ชม" n={over48} prev={null} color={C.amberInk} edge={C.amber} vs={vs} />
         <Tile label="สาขาปลายทางที่มีของค้าง" n={dests.length} prev={null} color={C.ink} edge={C.line} vs={vs} />
       </div>
+
+      {/*
+        ประเภทลูกค้า · เจ้าของระบบบอกว่าไม่ได้สำคัญมาก แค่อยากมี
+        จึงวางเป็นแถบเดียวนอนไป ไม่ได้กินช่องของสองแผงที่คนใช้ทำงานจริง
+        ไฟล์รุ่นเก่าไม่มีคอลัมน์นี้ ถ้าไม่มีก็ไม่ขึ้นทั้งแถบ ไม่ใช่ขึ้นว่า "ไม่ระบุ 6,460"
+      */}
+      {custs.length > 0 && (
+        <section className="mb-3 p-3" style={CARD}>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h2 className="text-[13px] font-extrabold" style={{ color: C.mute }}>
+              ประเภทลูกค้า <Cn>客户类型</Cn>
+            </h2>
+            {custs.map((c) => (
+              <span
+                key={c.cust}
+                className="flex items-baseline gap-[6px] px-2 py-[3px]"
+                style={{ borderRadius: 999, background: C.groove, border: `1px solid ${C.line2}` }}
+              >
+                <span className="text-[12px]" style={{ color: C.mute }}>
+                  {c.cust}
+                </span>
+                <b className="font-mono text-[13px]" style={{ color: C.lhHi }}>
+                  {nf(c.n)}
+                </b>
+                <span className="font-mono text-[10.5px]" style={{ color: C.faint }}>
+                  {Math.round((c.n / Math.max(1, rows.length)) * 100)}%
+                </span>
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="grid gap-3 xl:grid-cols-2">
         <section className="p-4" style={CARD}>
@@ -771,12 +809,13 @@ function Table({ rows, snapAt, onCopy }: { rows: P24Row[]; snapAt: string; onCop
       </div>
 
       <section className="overflow-x-auto p-2" style={CARD}>
-        <table className="w-full min-w-[900px] text-left text-sm">
+        <table className="w-full min-w-[1000px] text-left text-sm">
           <thead style={{ color: C.faint }}>
             <tr style={{ borderBottom: `1px solid ${C.line2}` }}>
               <th className="px-3 py-2 text-xs font-medium">เลขพัสดุ</th>
               <th className="px-3 py-2 text-xs font-medium">สาขาปลายทาง</th>
               <th className="w-[70px] px-3 py-2 text-xs font-medium">โซน</th>
+              <th className="w-[92px] px-3 py-2 text-xs font-medium">ลูกค้า</th>
               <th className="px-3 py-2 text-xs font-medium">การดำเนินการล่าสุด</th>
               <th className="w-[150px] px-3 py-2 text-xs font-medium">เวลาล่าสุด</th>
               <th className="w-[100px] px-3 py-2 text-right text-xs font-medium">ค้างมาแล้ว</th>
@@ -801,6 +840,9 @@ function Table({ rows, snapAt, onCopy }: { rows: P24Row[]; snapAt: string; onCop
                   <td className="px-3 py-[6px]">
                     <Zone z={r.zone} />
                   </td>
+                  <td className="px-3 py-[6px] text-[12px]" style={{ color: C.faint }}>
+                    {r.cust_type ?? '—'}
+                  </td>
                   <td className="px-3 py-[6px]" style={{ color: r.action === CANCEL ? C.redInk : C.mute }}>
                     {r.action || 'ยังไม่มีการดำเนินการ'}
                   </td>
@@ -815,7 +857,7 @@ function Table({ rows, snapAt, onCopy }: { rows: P24Row[]; snapAt: string; onCop
             })}
             {shown.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center" style={{ color: C.faint }}>
+                <td colSpan={7} className="px-3 py-8 text-center" style={{ color: C.faint }}>
                   ไม่พบพัสดุตามเงื่อนไข
                 </td>
               </tr>

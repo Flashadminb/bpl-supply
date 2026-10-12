@@ -1,5 +1,5 @@
 import { supabase, readableError } from './supabase'
-import { readXlsx } from './xlsx'
+import { maybeDate, readXlsx } from './xlsx'
 
 /**
  * พัสดุค้างเกิน 24 ชม — ของที่นอนอยู่ในฮับเกินกรอบเวลา รายชิ้น
@@ -17,6 +17,61 @@ import { readXlsx } from './xlsx'
 
 export const CANCEL = 'ยกเลิกการส่งต่อพัสดุ'
 
+/**
+ * รหัสอังกฤษของระบบต้นทาง เป็นคำไทยที่หน้างานอ่านอยู่แล้ว
+ *
+ * ไฟล์ที่โหลดมาจากระบบมีสองแบบ แล้วแต่ภาษาที่เลือกตอนกดออกรายงาน
+ *   แบบไทย      หัวตารางไทย ค่าก็ไทย — "ยกเลิกการส่งต่อพัสดุ"
+ *   แบบจีน-ไทย  หัวตารางจีนต่อไทย แต่ค่ากลับเป็นรหัสดิบ — CANCEL_SHIPMENT_WAREHOUSE
+ * ของที่ไม่ได้แปลคือค่าในคอลัมน์การดำเนินการ ซึ่งบังเอิญเป็นคอลัมน์ที่หน้านี้ทั้งหน้าอิงอยู่
+ *
+ * คำไทยในตารางนี้ไม่ได้แปลเอง · ดึงจากของจริงที่เคยนำเข้าไปแล้วในฐานข้อมูล
+ * เทียบกับไฟล์ใหม่ทีละรหัสจากสัดส่วนที่ตรงกัน จึงเป็นคำเดียวกับที่หน้างานเห็นมาตลอด
+ * ถ้าแปลเอง หน้าจอจะมีสองคำเรียกของอย่างเดียวกัน แล้วสถิติเทียบรอบก่อนจะพัง
+ *
+ * รหัสที่ไม่มีในตารางปล่อยผ่านเป็นรหัสดิบ ไม่เดาคำแปล
+ * ตัวพิมพ์ใหญ่ทั้งคำบนจอคือสัญญาณให้คนบอกเรามาว่าอันนี้ภาษาไทยว่าอะไร
+ * ดีกว่าขึ้นคำไทยที่ผิดแล้วไม่มีใครรู้ว่าผิด
+ */
+export const P24_ACTION_TH: Record<string, string> = {
+  LOSE_PARCEL_TEAM_OPERATION: 'ทีมจัดการพัสดุสูญหายดำเนินการ',
+  SEAL: 'แบ๊กกิ้ง',
+  ARRIVAL_WAREHOUSE_SCAN: 'สแกนพัสดุเข้าคลัง',
+  RECEIVE_WAREHOUSE_SCAN: 'รับเข้าพัสดุ',
+  MANUAL_REMARK: 'Package note',
+  CANCEL_SHIPMENT_WAREHOUSE: CANCEL,
+  SHIPMENT_WAREHOUSE_SCAN: 'สแกนพัสดุออกคลัง',
+  REPLY_WORK_ORDER: 'ตอบกลับ Ticket',
+  PRINTING: 'ปริ้นท์ใบลาเบล',
+  CONTINUE_TRANSPORT: 'Problem shipment Re-delivery',
+  PENDING_RETURN: 'พัสดุรอตีกลับ',
+  CHANGE_PARCEL_CLOSE: 'ปิดงาน',
+  CREATE_WORK_ORDER: 'สร้าง Ticket',
+  REPLACE_PNO: 'เปลี่ยนเลเบล',
+}
+
+/** รหัสดิบเป็นคำไทย · ไม่รู้จักก็คืนของเดิมไป ไม่เดา */
+export function actionTH(v: string): string {
+  const s = v.trim()
+  return P24_ACTION_TH[s] ?? s
+}
+
+/**
+ * ประเภทลูกค้า · ส่วนใหญ่เป็นชื่อแพลตฟอร์มอยู่แล้ว ปล่อยไว้ตามเดิม
+ *
+ * มีสามค่าที่มาเป็นภาษาจีน แปลเฉพาะสามตัวนั้น
+ * สองตัวเป็นชื่อแบรนด์ซึ่งถอดเสียงตรงตัวได้ ไม่ได้ตีความอะไรเพิ่ม
+ * ส่วน 小C คือลูกค้ารายย่อยที่ส่งเองหน้าร้าน ไม่ใช่ร้านบนแพลตฟอร์ม
+ */
+export function custTypeTH(v: string | null | undefined): string {
+  const s = String(v ?? '').trim()
+  if (!s) return ''
+  if (s.includes('小C')) return 'รายย่อย'
+  if (s.includes('天猫')) return 'Tmall · เถาเป่า'
+  if (s.includes('菜鸟')) return 'Cainiao App'
+  return s
+}
+
 export interface P24Row {
   tracking: string
   dest: string
@@ -27,6 +82,8 @@ export interface P24Row {
   in_wh_at: string | null
   actor: string | null
   province: string | null
+  /** ประเภทลูกค้า เช่น shopee tiktok KA · เก็บไว้ดูเฉย ๆ ไม่ได้ใช้ตัดสินใจอะไร */
+  cust_type: string | null
 }
 
 export interface P24Snapshot {
@@ -59,9 +116,16 @@ export interface P24Run {
 
 /* ------------------------------------------------------------- อ่านไฟล์ */
 
-/** เวลาในไฟล์เป็นเวลาไทยแต่ไม่ได้เขียนโซนไว้ · ปักให้ชัด ไม่งั้นเบราว์เซอร์เดาเอง */
-function thToIso(s: string): string | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(String(s ?? '').trim())
+/**
+ * เวลาในไฟล์เป็นเวลาไทยแต่ไม่ได้เขียนโซนไว้ · ปักให้ชัด ไม่งั้นเบราว์เซอร์เดาเอง
+ *
+ * ไฟล์บางแบบส่งเวลามาเป็นเลขซีเรียลของ Excel (46296.2155…) ไม่ใช่ข้อความ
+ * ถ้าไม่แปลงก่อน ทุกแถวจะอ่านเวลาไม่ได้พร้อมกันทั้งไฟล์
+ * แล้วจะล้มที่ "ไฟล์นี้ไม่มีเวลาดำเนินการล่าสุด" โดยที่ความจริงมีครบทุกแถว
+ */
+function thToIso(v: string): string | null {
+  const s = maybeDate(String(v ?? '').trim())
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(s)
   if (!m) return null
   return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6] ?? '00'}+07:00`
 }
@@ -94,17 +158,54 @@ export async function parseP24(file: File): Promise<ParsedP24> {
   const rows = sheet.rows
   if (rows.length < 2) throw new Error('ไฟล์นี้ไม่มีข้อมูล')
 
+  /*
+    ชื่อหัวตารางมีสองชุด แล้วแต่ภาษาที่เลือกตอนกดออกรายงาน
+    ชุดไทยล้วนเป็นของเดิม ชุดจีนต่อไทยเป็นของที่เจอวันที่ 13 ต.ค. 2569
+    ใส่ไว้ทั้งคู่ ไม่ได้ย้ายไปใช้ชุดใหม่อย่างเดียว เพราะไฟล์เก่ายังต้องอัปได้
+
+    คอลัมน์การดำเนินการของชุดใหม่ต้องเลือกให้ถูกตัว ไฟล์มีสองคอลัมน์ที่คล้ายกัน
+      สถานะปฏิบัติงานสุดท้ายที่เป็นผลของฮับ  มีแต่สแกนตามจุด ไม่มีการยกเลิกเลยสักแถว
+      สถานะการทำงานสุดท้าย                 มีครบทุกค่าที่ไฟล์เก่าเคยมี รวมการยกเลิก
+    จึงใช้ตัวหลัง · ยืนยันจากการเทียบชุดค่ากับของที่นำเข้าไปแล้วในฐานข้อมูล
+    ไม่ได้เดาจากชื่อคอลัมน์
+  */
   const head = (rows[0] ?? []).map((x) => String(x ?? ''))
   const cTrack = findCol(head, 'เลขพัสดุ')
   const cDest = findCol(head, 'สาขาปลายทาง')
-  const cAction = findCol(head, 'การดำเนินการล่าสุด')
-  const cLastAt = findCol(head, 'เวลาที่ดำเนินการล่าสุด')
+  const cAction = findCol(head, 'การดำเนินการล่าสุด', 'สถานะการทำงานสุดท้าย')
+  const cLastAt = findCol(head, 'เวลาที่ดำเนินการล่าสุด', 'สถานะเวลาการทำงานสุดท้าย')
   const cInWh = findCol(head, 'เวลารับพัสดุเข้าคลัง')
-  const cActor = findCol(head, 'สาขา/หัวหน้าสาขา', 'ที่ดำเนินการล่าสุด')
-  const cProv = findCol(head, 'จังหวัด-ที่อยู่ผู้รับ', 'จังหวัด')
+  /*
+    ชุดจีน-ไทยมีสองคอลัมน์ชื่อ "สาขาสุดท้าย" ติดกัน ต่างกันแค่คำว่า id ในหัวจีน
+    ตัวแรกเก็บรหัสสาขาเป็นเลข (6, TH02030116) ซึ่งอ่านแล้วไม่ได้ความอะไร
+    ตัวหลังเก็บชื่อสาขาจริง (21 BPL_BHUB-บางพลี) ซึ่งเป็นสิ่งที่คนอยากเห็น
+    จึงต้องระบุหัวจีนเต็ม ๆ ให้ชนตัวหลังก่อน ไม่งั้นได้เลขรหัสมาทั้งคอลัมน์
+  */
+  const cActor = findCol(
+    head,
+    'สาขา/หัวหน้าสาขา',
+    'ที่ดำเนินการล่าสุด',
+    '最后操作网点สาขาสุดท้าย',
+    'รายชื่อพนักงาน',
+  )
+  const cProv = findCol(head, 'จังหวัด-ที่อยู่ผู้รับ', 'จังหวัดผู้รับ', 'จังหวัด')
+  /* ไม่บังคับ · ไฟล์ที่ไม่มีคอลัมน์นี้ก็ยังอัปได้ตามปกติ ช่องนี้จะว่างเฉย ๆ */
+  const cCust = findCol(head, 'ประเภทลูกค้า')
 
-  if (cTrack < 0 || cDest < 0 || cAction < 0) {
-    throw new Error('ไฟล์นี้ไม่มีคอลัมน์ เลขพัสดุ สาขาปลายทาง หรือการดำเนินการล่าสุด')
+  /*
+    บอกให้ชัดว่าขาดคอลัมน์ไหน พร้อมแปะหัวตารางที่เจอจริงมาด้วย
+    ของเดิมบอกรวมสามชื่อเสมอ คนอ่านจึงไปไล่หาผิดคอลัมน์
+    รอบนี้ไฟล์มีสาขาปลายทางครบ แต่ข้อความบอกว่าไม่มี
+  */
+  const missing: string[] = []
+  if (cTrack < 0) missing.push('เลขพัสดุ')
+  if (cDest < 0) missing.push('สาขาปลายทาง')
+  if (cAction < 0) missing.push('การดำเนินการล่าสุด')
+  if (missing.length) {
+    const seen = head.filter(Boolean).slice(0, 10).join(' / ')
+    throw new Error(
+      `ไฟล์นี้ไม่มีคอลัมน์ ${missing.join(' และ ')} · หัวตารางที่เจอคือ ${seen}`,
+    )
   }
 
   const out: Record<string, unknown>[] = []
@@ -132,11 +233,15 @@ export async function parseP24(file: File): Promise<ParsedP24> {
     out.push({
       tracking,
       dest: clean(r[cDest]) ?? '',
-      action: clean(r[cAction]) ?? '',
+      /* แปลรหัสดิบเป็นคำไทยตั้งแต่ตอนอ่านไฟล์ ไม่ใช่ตอนโชว์
+         เพราะค่านี้ถูกเก็บลงฐานข้อมูลและเอาไปเทียบกับรอบก่อน
+         ถ้าแปลตอนโชว์ ของเก่ากับของใหม่จะเป็นคนละคำทั้งที่เป็นเรื่องเดียวกัน */
+      action: actionTH(clean(r[cAction]) ?? ''),
       last_at: lastAt,
       in_wh_at: inAt,
       actor: cActor >= 0 ? clean(r[cActor]) : null,
       province: cProv >= 0 ? clean(r[cProv]) : null,
+      cust_type: cCust >= 0 ? custTypeTH(clean(r[cCust]) ?? '') || null : null,
     })
   }
 
@@ -205,6 +310,16 @@ export function byAction(rows: P24Row[]): { action: string; n: number }[] {
     m.set(k, (m.get(k) ?? 0) + 1)
   }
   return [...m.entries()].map(([action, n]) => ({ action, n })).sort((a, b) => b.n - a.n)
+}
+
+/** นับว่าเป็นของลูกค้าประเภทไหนบ้าง ประเภทละกี่ชิ้น · ไม่ระบุก็นับรวมเป็นกองเดียว */
+export function byCust(rows: P24Row[]): { cust: string; n: number }[] {
+  const m = new Map<string, number>()
+  for (const r of rows) {
+    const k = r.cust_type || 'ไม่ระบุ'
+    m.set(k, (m.get(k) ?? 0) + 1)
+  }
+  return [...m.entries()].map(([cust, n]) => ({ cust, n })).sort((a, b) => b.n - a.n)
 }
 
 /** ค้างมากี่ชั่วโมง นับจากเวลารับเข้าคลัง เทียบกับเวลาของไฟล์ ไม่ใช่นาฬิกาเครื่อง */
