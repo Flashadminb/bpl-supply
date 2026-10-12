@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Suspense, lazy, useEffect, type ReactNode } from 'react'
+import { useFallbackTitle } from './lib/pageTitle'
 import { useAuth } from './lib/auth'
 import type { UserRole } from './lib/types'
 import { MANAGER_ROLES, canSeeSacks, canBreakIssue, canBreakGuard } from './lib/roles'
@@ -193,6 +194,12 @@ function AdminHome() {
   return <Navigate to="/" replace />
 }
 
+/** เรียก hook ชื่อแท็บสำรอง · ต้องอยู่ในคอมโพเนนต์ จึงห่อเป็นตัวเปล่า */
+function TitleFromPath() {
+  useFallbackTitle()
+  return null
+}
+
 function Fallback() {
   return (
     <div className="flex min-h-dvh items-center justify-center bg-canvas">
@@ -228,6 +235,10 @@ export default function App() {
   return (
     <Suspense fallback={<Fallback />}>
     <ScrollToTop />
+    {/* ชื่อแท็บสำรองจาก path · ไว้ให้หน้าเต็มจอที่ไม่มีแถบหัว
+        อย่างกระดานปล่อยรถ รถรอลงงาน ของค้างส่งออก จอทีวี
+        หน้าที่รู้ชื่อตัวเองอยู่แล้วไม่ถูกทับ */}
+    <TitleFromPath />
     {/* เด้งขอเปิดแจ้งเตือนถ้าบัญชีนี้ยังไม่มีเครื่องไหนเปิดไว้ · เงียบเองถ้าเปิดแล้ว */}
     <PushNag />
     <Routes>
