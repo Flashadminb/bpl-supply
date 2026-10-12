@@ -435,8 +435,8 @@ function Graph({
               : 'หัวข้อนี้มีเยอะ จึงกางเท่าที่ไหว สาขาละ 10 เลขแรก · เลือกโซนเพื่อกางครบ หรือกดกางต่อรายสาขา'}
           </p>
           {zones.length > 1 && (
-            <p className="mt-1 text-center text-[10px]" style={{ color: C.faint }}>
-              {subOpen ? '▾ แยกตามโซน' : '▾ ชี้หรือกดเพื่อแยกตามโซน'}
+            <p className="mt-1 text-center text-[11.5px]" style={{ color: subOpen ? C.mute : C.faint }}>
+              {subOpen ? '▾ แยกตามโซน D0' : '▾ ชี้หรือกดเพื่อแยกตามโซน D0'}
             </p>
           )}
         </div>
@@ -451,7 +451,7 @@ function Graph({
             <span
               aria-hidden
               className="absolute"
-              style={{ left: 9, top: -2, bottom: 14, width: 1, background: C.line }}
+              style={{ left: 9, top: -2, bottom: 22, width: 1.5, background: C.line }}
             />
             {zones.map((z) => {
               const k = z.zone ?? ''
@@ -461,25 +461,38 @@ function Graph({
                   <span
                     aria-hidden
                     className="absolute"
-                    style={{ left: -7, top: '50%', width: 11, height: 1, background: on ? '#2F5A80' : C.line }}
+                    style={{ left: -7, top: 'calc(50% - 3px)', width: 11, height: 1.5, background: on ? '#3C7099' : C.line }}
                   />
+                  {/*
+                    ช่องโซนต้องใหญ่พอจะอยู่คู่กับตัวเลขใหญ่กลางการ์ดได้
+                    ชื่อโซนกับจำนวนคือสองอย่างที่คนอ่าน ส่วนจำนวนสาขาเป็นของรอง
+                    จึงให้สองอันแรกตัวโต แล้วดันจำนวนสาขาไปเป็นบรรทัดเล็กใต้ชื่อ
+                  */}
                   <button
                     type="button"
                     onClick={() => setZone(on ? null : k)}
-                    className="mb-[3px] flex w-full items-center gap-2 px-2 py-[5px] text-left"
+                    className="mb-[5px] flex w-full items-center gap-2 px-[10px] py-[7px] text-left"
                     style={{
-                      borderRadius: 7,
+                      borderRadius: 10,
                       background: on ? '#15293A' : C.groove,
-                      border: `1px solid ${on ? '#2F5A80' : C.line2}`,
+                      border: `1.5px solid ${on ? '#3C7099' : C.line2}`,
                     }}
                   >
-                    <span className="font-mono text-[11.5px] font-bold" style={{ color: on ? '#8FD0FF' : C.mute }}>
-                      {z.zone ?? 'ไม่มีโซน'}
+                    <span className="min-w-0 flex-1">
+                      <b
+                        className="block font-mono text-[19px] font-extrabold leading-none"
+                        style={{ color: on ? '#8FD0FF' : C.mute }}
+                      >
+                        {z.zone ?? 'ไม่มีโซน'}
+                      </b>
+                      <span className="mt-[2px] block text-[10.5px]" style={{ color: C.faint }}>
+                        {z.branches} สาขา
+                      </span>
                     </span>
-                    <span className="flex-1 text-[10px]" style={{ color: C.faint }}>
-                      {z.branches} สาขา
-                    </span>
-                    <span className="font-mono text-[12.5px] font-bold" style={{ color: on ? '#8FD0FF' : C.lhHi }}>
+                    <span
+                      className="font-mono text-[24px] font-extrabold leading-none"
+                      style={{ color: on ? '#8FD0FF' : C.lhHi }}
+                    >
                       {nf(z.items)}
                     </span>
                   </button>
