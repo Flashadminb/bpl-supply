@@ -80,7 +80,15 @@ function Clock({ due }: { due: DueItem[] }) {
           </p>
           <p className="font-mono text-xl font-bold leading-tight text-brand-500">{hms(sec)}</p>
 
-          <span className="pointer-events-none absolute left-0 top-[calc(100%+6px)] z-30 hidden w-[272px] overflow-hidden rounded-card border border-line bg-surface text-ink shadow-lg group-hover:block group-focus-within:block">
+          {/*
+            กล่องนี้เคยชี้ไปไม่ถึง เพราะเว้นช่องว่าง 6px ไว้ใต้ตัวการ์ด
+            พอเมาส์เลื่อนลงมาในช่องว่างนั้นก็หลุดจากทั้งการ์ดและกล่อง มันเลยดับ
+            แก้โดยให้กล่องเริ่มชิดขอบการ์ดเลย แล้วดันระยะห่างเข้าไปเป็น padding ข้างใน
+            ช่องว่างยังดูเหมือนเดิม แต่เมาส์เดินผ่านได้เพราะยังอยู่ในกล่อง
+            และเอา pointer-events-none ออก ไม่งั้นเลื่อนในกล่องไม่ได้
+          */}
+          <span className="absolute left-0 top-full z-30 hidden w-[272px] pt-[6px] group-hover:block group-focus-within:block">
+          <span className="block overflow-hidden rounded-card border border-line bg-surface text-ink shadow-lg">
             <span className="block border-b border-line-2 px-3 py-2 text-xs font-bold">
               ใกล้ครบกำหนด · {due.length} เครื่อง
             </span>
@@ -100,6 +108,7 @@ function Clock({ due }: { due: DueItem[] }) {
                 )
               })}
             </span>
+          </span>
           </span>
         </div>
       )}
@@ -168,7 +177,9 @@ function Card({ c }: { c: CardDef }) {
       <span className="mt-[2px] block text-[10.5px] opacity-80">{c.label}</span>
 
       {/* กล่องรายละเอียด · ชี้หรือโฟกัสแล้วกาง เลื่อนในกล่องได้ถ้าของเยอะ */}
-      <span className="pointer-events-none absolute left-0 top-[calc(100%+6px)] z-20 hidden w-[264px] overflow-hidden rounded-card border border-line bg-surface text-ink shadow-lg group-hover:block group-focus-within:block">
+      {/* เหตุผลเดียวกับกล่องของนาฬิกา · ไม่มีช่องว่างตาย และเลื่อนในกล่องได้ */}
+      <span className="absolute left-0 top-full z-20 hidden w-[264px] pt-[6px] group-hover:block group-focus-within:block">
+      <span className="block overflow-hidden rounded-card border border-line bg-surface text-ink shadow-lg">
         <span className="block border-b border-line-2 px-3 py-2 text-xs font-bold">{c.head}</span>
         {c.note && <span className="block px-3 pt-1 text-[10.5px] text-ink-400">{c.note}</span>}
         <span className="block max-h-[188px] overflow-auto px-3 py-1">
@@ -184,6 +195,7 @@ function Card({ c }: { c: CardDef }) {
             และอีก {c.more} รายการ · กดเพื่อดูทั้งหมด
           </span>
         ) : null}
+      </span>
       </span>
     </Tag>
   )
