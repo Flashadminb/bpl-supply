@@ -31,6 +31,37 @@ interface Link {
   ownerOnly?: boolean
 }
 
+/**
+ * บุ๊กมาร์ก · เก็บในเครื่องแยกตามคนที่ล็อกอิน
+ *
+ * ที่ไม่เก็บลงฐานข้อมูล เพราะเป็นความชอบส่วนตัวของแต่ละคนที่เปลี่ยนบ่อย
+ * และไม่มีใครอื่นต้องรู้ · เก็บในเครื่องจึงกดแล้วติดทันทีโดยไม่ต้องรอเน็ตฮับ
+ * ข้อแลกคือเปลี่ยนเครื่องแล้วต้องติดดาวใหม่ ซึ่งใช้เวลาไม่กี่วินาที
+ */
+const PIN_KEY = 'bpl.menu.pins.'
+
+/** ติดดาวให้อัตโนมัติตั้งแต่แรก ตามที่เจ้าของระบบสั่ง · เอาออกเองได้ทุกอัน */
+const PIN_DEFAULT = [
+  '/admin/notices',
+  '/admin/evidence',
+  '/admin/return-status',
+  '/admin/asset-moves',
+  '/admin/outstanding',
+  '/admin/assets-out',
+  '/admin/approvals',
+]
+
+function readPins(uid: string): string[] {
+  try {
+    const raw = localStorage.getItem(PIN_KEY + uid)
+    if (raw === null) return PIN_DEFAULT
+    const v = JSON.parse(raw) as unknown
+    return Array.isArray(v) ? (v as string[]) : PIN_DEFAULT
+  } catch {
+    return PIN_DEFAULT
+  }
+}
+
 interface Group {
   title: string | null
   links?: Link[]
@@ -171,8 +202,38 @@ export default function AdminLayout() {
   /** ผู้ตรวจสอบล้วน · ไม่ใช่แอดมินที่ติดธงนี้มาด้วย */
   const isAudit = !isManager && Boolean(profile?.can_dispatch)
   const [menu, setMenu] = useState(false)
-  // null = ยังไม่เคยกด ให้ตัดสินจากหน้าที่ยืนอยู่ · true/false = คนกดเลือกเอง
-  const [openStd, setOpenStd] = useState<boolean | null>(null)
+  /** กลุ่มไหนพับอยู่ · จำไว้ในเครื่อง จะได้ไม่ต้องพับใหม่ทุกครั้งที่เปิดหน้า */
+  const uid = profile?.id ?? 'anon'
+  const [shut, setShut] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('bpl.menu.shut.' + uid)
+      return raw ? (JSON.parse(raw) as string[]) : ['STANDARD']
+    } catch {
+      return ['STANDARD']
+    }
+  })
+  const toggleGroup = (t: string) =>
+    setShut((cur) => {
+      const next = cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]
+      try {
+        localStorage.setItem('bpl.menu.shut.' + uid, JSON.stringify(next))
+      } catch {
+        /* เบราว์เซอร์ปิด storage ก็แค่ไม่จำ ไม่ใช่เรื่องคอขาดบาดตาย */
+      }
+      return next
+    })
+
+  const [pins, setPins] = useState<string[]>(() => readPins(uid))
+  const togglePin = (to: string) =>
+    setPins((cur) => {
+      const next = cur.includes(to) ? cur.filter((x) => x !== to) : [...cur, to]
+      try {
+        localStorage.setItem(PIN_KEY + uid, JSON.stringify(next))
+      } catch {
+        /* เหมือนกัน */
+      }
+      return next
+    })
   const here = useLocation().pathname
   const pending = usePendingApprovals()
   const exports = usePendingExports()
@@ -194,37 +255,71 @@ export default function AdminLayout() {
       .filter((l) => !l.ownerOnly || isOwner(profile))
       .filter((l) => (isAudit ? Boolean(l.audit) : !l.adminOnly || can('admin')))
 
-  const item = (l: Link) => (
-    <NavLink
-      key={l.to}
-      to={l.to}
-      end={l.end}
-      onClick={() => setMenu(false)}
-      className={({ isActive }) =>
-        `flex min-h-tap items-center gap-[10px] rounded-btn px-3 text-base ${
-          isActive ? 'bg-dark-3 text-white' : 'text-dark-text hover:bg-dark-2'
-        }`
-      }
-    >
-      {({ isActive }) => (
-        <>
-          <Icon name={l.icon} className={isActive ? '' : 'text-dark-muted'} />
-          <span className="flex-1 truncate">{l.label}</span>
-          {l.badge && badgeOf[l.badge] > 0 && (
-            <span className="rounded-pill bg-brand-500 px-2 font-display text-xs text-ink">
-              {badgeOf[l.badge] > 99 ? '99+' : badgeOf[l.badge]}
-            </span>
-          )}
-        </>
-      )}
-    </NavLink>
+  /**
+   * แถวเมนูหนึ่งแถว · ดาวอยู่นอก NavLink ไม่ใช่ข้างใน
+   * เพราะปุ่มซ้อนในลิงก์ กดดาวทีไรจะเด้งไปหน้านั้นด้วยทุกที
+   */
+  const item = (l: Link, where = '') => (
+    <div key={where + l.to} className="group/row flex items-center gap-1">
+      <NavLink
+        to={l.to}
+        end={l.end}
+        onClick={() => setMenu(false)}
+        className={({ isActive }) =>
+          `flex min-h-tap flex-1 items-center gap-[10px] rounded-btn px-3 text-base ${
+            isActive ? 'bg-dark-3 text-white' : 'text-dark-text hover:bg-dark-2'
+          }`
+        }
+      >
+        {({ isActive }) => (
+          <>
+            <Icon name={l.icon} className={isActive ? '' : 'text-dark-muted'} />
+            <span className="flex-1 truncate">{l.label}</span>
+            {l.badge && badgeOf[l.badge] > 0 && (
+              <span className="rounded-pill bg-brand-500 px-2 font-display text-xs text-ink">
+                {badgeOf[l.badge] > 99 ? '99+' : badgeOf[l.badge]}
+              </span>
+            )}
+          </>
+        )}
+      </NavLink>
+      <button
+        type="button"
+        aria-label={pins.includes(l.to) ? `เอา ${l.label} ออกจากบุ๊กมาร์ก` : `ติดดาว ${l.label}`}
+        aria-pressed={pins.includes(l.to)}
+        onClick={() => togglePin(l.to)}
+        className={`h-tap w-[30px] shrink-0 rounded-btn text-base leading-none ${
+          pins.includes(l.to) ? 'text-brand-500' : 'text-dark-3 hover:text-dark-muted'
+        }`}
+      >
+        {pins.includes(l.to) ? '★' : '☆'}
+      </button>
+    </div>
   )
+
+  /** ลิงก์ที่ติดดาวไว้ · เรียงตามลำดับเมนูจริง ไม่ใช่ตามลำดับที่กดดาว
+      เพราะคนจำตำแหน่งจากเมนูหลัก ไม่ได้จำว่าตัวเองกดดาวอันไหนก่อน */
+  const pinned = GROUPS.flatMap((g) => [...(g.links ?? []), ...(g.subs ?? []).flatMap((x) => x.links)])
+    .filter((l, i, arr) => arr.findIndex((x) => x.to === l.to) === i)
+    .filter((l) => pins.includes(l.to))
+    .filter((l) => visible([l]).length > 0)
 
   const nav = (
     <nav className="flex flex-col gap-1">
+      {/* บุ๊กมาร์ก · ต่อจากหน้าแรกตามที่สั่ง · ไม่มีดาวค้างไว้ก็ไม่ขึ้นทั้งกล่อง */}
+      {pinned.length > 0 && (
+        <div className="rounded-card border border-brand-500/40 bg-dark-2/40 p-[6px]">
+          <p className="mb-1 flex items-center gap-2 px-3 pt-1 font-display text-sm text-brand-500">
+            <span aria-hidden>★</span> บุ๊กมาร์ก
+          </p>
+          {pinned.map((l) => item(l, 'pin:'))}
+        </div>
+      )}
+
       {GROUPS.map((g) => {
-        if (g.collapsible) {
+        if (g.title && (g.collapsible || true)) {
           const own = visible(g.links ?? [])
+          const shutNow = shut.includes(g.title)
           const subs = (g.subs ?? [])
             .map((s) => ({ ...s, links: visible(s.links) }))
             .filter((s) => s.links.length > 0)
@@ -233,26 +328,30 @@ export default function AdminLayout() {
             own.some((l) => here.startsWith(l.to)) ||
             subs.some((s) => s.links.some((l) => here.startsWith(l.to)))
           // ยืนอยู่ในหน้าของกลุ่มนี้แล้วยังพับไว้ คนจะหาไม่เจอว่าตัวเองอยู่ตรงไหน
-          const on = openStd ?? inside
+          const on = inside || !shutNow
           return (
             <div key={g.title} className="mt-3 rounded-card border border-dark-3 bg-dark-2/30 p-[6px]">
+              {/* หัวกลุ่มใหญ่และเด่นกว่าแถวเมนู เพราะมันคือป้ายบอกทางของทั้งก้อน
+                  ของเดิมตัวเล็กสีจางกว่าเมนูข้างใน ซึ่งกลับหัวกลับหาง */}
               <button
                 type="button"
-                className="flex min-h-tap w-full items-center gap-2 rounded-btn px-3 text-left font-mono text-xs uppercase tracking-widest text-dark-muted hover:bg-dark-2"
-                onClick={() => setOpenStd(!on)}
+                className="flex min-h-tap w-full items-center gap-2 rounded-btn px-3 text-left font-display text-sm tracking-wide text-white hover:bg-dark-2"
+                onClick={() => toggleGroup(g.title as string)}
                 aria-expanded={on}
               >
                 <span className="flex-1">{g.title}</span>
-                <span aria-hidden>{on ? '▾' : '▸'}</span>
+                <span className="font-mono text-xs text-dark-muted" aria-hidden>
+                  {on ? '▾' : '▸'}
+                </span>
               </button>
-              {on && own.map(item)}
+              {on && own.map((l) => item(l))}
               {on &&
                 subs.map((s) => (
                   <div key={s.title} className="mt-1">
                     <p className="mb-1 px-3 pl-5 font-mono text-[11px] uppercase tracking-widest text-dark-muted">
                       {s.title}
                     </p>
-                    {s.links.map(item)}
+                    {s.links.map((l) => item(l))}
                   </div>
                 ))}
             </div>
@@ -276,13 +375,13 @@ export default function AdminLayout() {
                 {g.title}
               </p>
             )}
-            {links.map(item)}
+            {links.map((l) => item(l))}
             {plain.map((s) => (
               <div key={s.title} className="mt-1">
                 <p className="mb-1 px-3 pl-5 font-mono text-[11px] uppercase tracking-widest text-dark-muted">
                   {s.title}
                 </p>
-                {s.links.map(item)}
+                {s.links.map((l) => item(l))}
               </div>
             ))}
           </div>
@@ -300,6 +399,13 @@ export default function AdminLayout() {
         <div className="shrink-0 px-4 pb-3 pt-4">
           <Link
             to="/admin"
+            onClick={() => {
+              /* เด้งขึ้นบนสุดทั้งหน้าและทั้งแถบเมนู · กดจากหน้าที่เลื่อนลงไปลึก ๆ
+                 แล้วไปโผล่หน้าแรกตรงกลางหน้า คือสิ่งที่ทำให้คนงงว่ากดติดไหม */
+              setMenu(false)
+              window.scrollTo({ top: 0 })
+              document.getElementById('admin-nav')?.scrollTo({ top: 0 })
+            }}
             className="block rounded-card border border-dark-3 bg-dark-2 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,.08),0_6px_14px_-10px_#000] hover:bg-dark-3"
           >
             <span className="block font-mono text-xs tracking-widest text-dark-muted">FLASH EXPRESS</span>
@@ -308,7 +414,7 @@ export default function AdminLayout() {
         </div>
 
         {/* min-h-0 จำเป็น ไม่งั้น flex ไม่ยอมให้ลูกหดแล้วการเลื่อนจะไม่ทำงาน */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-4">{nav}</div>
+        <div id="admin-nav" className="min-h-0 flex-1 overflow-y-auto px-4">{nav}</div>
 
         <div className="shrink-0 border-t border-dark-3 px-4 pb-4 pt-3 text-sm text-dark-muted">
           {/* ลิงก์งาน — เดิมมีแต่ในแอพ เปิดหน้าเว็บบนคอมแล้วหาไม่เจอ */}
