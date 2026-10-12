@@ -101,6 +101,16 @@ export default function Parcel24() {
 
   const vs = snap?.prev_at ? `เทียบรอบ ${thFull(snap.prev_at)}` : 'ยังไม่มีรอบก่อนหน้าให้เทียบ'
 
+  /** อายุของข้อมูลนับจากเวลาในไฟล์ ไม่ใช่เวลาที่กดอัป · ไฟล์เก่าที่เพิ่งอัปก็ยังเก่าอยู่ดี */
+  const ageMin = snap ? Math.max(0, Math.round((clock.getTime() - new Date(snap.data_at).getTime()) / 60000)) : 0
+  const stale = ageMin > 120
+  const ageTxt =
+    ageMin < 60
+      ? `${ageMin} นาทีที่แล้ว`
+      : ageMin < 1440
+        ? `${Math.floor(ageMin / 60)} ชม ${ageMin % 60} นาทีที่แล้ว`
+        : `${Math.floor(ageMin / 1440)} วันที่แล้ว`
+
   return (
     <div style={{ background: C.bg, color: C.ink, minHeight: '100vh' }}>
       <div className="mx-auto max-w-[1900px] p-3">
@@ -122,9 +132,35 @@ export default function Parcel24() {
             พัสดุค้างเกิน 24 ชม <Cn>24小时滞留包裹</Cn> · 21BPL
           </span>
           <span className="flex-1" />
+          {/*
+            เวลาของข้อมูลต้องเด่น เพราะจอนี้เปิดค้างทั้งกะ
+            ถ้าไฟล์ค้างไม่ได้อัป คนจะยืนอ่านตัวเลขเก่าโดยไม่รู้ตัว
+            เลยทำเป็นป้ายมีกรอบ ไม่ใช่ตัวหนังสือจาง ๆ และเปลี่ยนเป็นสีส้มเมื่อเกินสองชั่วโมง
+          */}
           {snap && (
-            <span className="text-xs" style={{ color: C.faint }}>
-              ข้อมูลถึง {thFull(snap.data_at)} · อัปเข้าระบบ {thFull(snap.uploaded_at)} · {vs}
+            <span
+              className="flex items-center gap-3 px-3 py-[5px]"
+              style={{
+                borderRadius: 12,
+                background: stale ? C.amberBg : C.panel2,
+                border: `1.5px solid ${stale ? C.amber : C.line}`,
+              }}
+            >
+              <span className="text-right">
+                <span className="block font-mono text-[10px] uppercase tracking-wider" style={{ color: C.faint }}>
+                  ข้อมูลถึง 更新时间
+                </span>
+                <b className="block font-mono text-[19px] font-extrabold leading-tight" style={{ color: stale ? C.amberInk : C.brand }}>
+                  {thFull(snap.data_at)}
+                </b>
+              </span>
+              <span className="text-[10px] leading-tight" style={{ color: C.faint }}>
+                {ageTxt}
+                <br />
+                อัปเข้าระบบ {thFull(snap.uploaded_at)}
+                <br />
+                {vs}
+              </span>
             </span>
           )}
           <span className="font-mono text-2xl font-extrabold" style={{ color: C.brand }}>
