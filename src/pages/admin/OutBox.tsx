@@ -17,23 +17,20 @@ import {
 } from '../../lib/hubOut'
 
 /**
- * ของค้างส่งออก — หน้าเต็มจอของตัวเอง
+ * ของค้างส่งออก
  *
  * จุดประสงค์มีข้อเดียว · ดูสองตัวเลขนี้ให้เห็นเร็วที่สุด
- *   เข้าคลังแต่ไม่สแกนออก
- *   สแกนออกแต่รถไม่ออก
- * ที่เหลือทั้งหมดเป็นของประกอบ ถ้าอันไหนแย่งความสนใจจากสองตัวนี้ ต้องตัดทิ้ง
+ *   เข้าคลังแต่ไม่สแกนออก · สแกนออกแต่รถไม่ออก
+ * ที่เหลือเป็นของประกอบ อันไหนแย่งความสนใจจากสองตัวนี้ต้องตัดทิ้ง
  *
- * สองหน้า
- *   หน้าหลัก  การ์ดสรุป → สามอันดับของแต่ละตัวเลข → จอแยกสาย เปิดค้างไว้ดูได้
+ * สามหน้า
+ *   หน้าหลัก  ตัวเลขรวม แล้วกราฟแท่งสองฝั่ง LH ซ้าย FD ขวา
+ *   จอทีวี    เวลาอัปเดต สาขาที่หนักสุดของแต่ละตัวเลข และบันไดรายสาขาแยกสาย
  *   ตาราง     ค้นหาเจาะสาขา แทนการ VLOOKUP ในไฟล์
  *
- * ทุกที่ที่โชว์บวกลบ ต้องบอกด้วยว่าเทียบกับรอบไหน
- * เลข +11,333 ที่ไม่บอกว่าเทียบกับอะไร คือเลขที่เอาไปใช้ตัดสินใจไม่ได้
+ * หน้าหลักกับจอทีวีสลับกันเองได้ เพื่อเปิดค้างบนจอในคลังโดยไม่ต้องมีคนกด
  *
  * ชุดสีเดียวกับตารางปล่อยรถและรถรอลงงาน เพราะเป็นจอประเภทเดียวกัน
- * คือเปิดค้างไว้ดูในคลัง ไม่ใช่หน้าตั้งค่าที่เข้าไปทำแล้วออก
- *
  * เปิดให้เจ้าของระบบคนเดียว · ด่านจริงอยู่ที่ RLS ของ hub_out_*
  */
 
@@ -41,6 +38,7 @@ const C = {
   bg: '#0B0E11',
   panel: '#121820',
   panel2: '#151C26',
+  groove: '#0A0E13',
   line: '#243040',
   line2: '#1E2733',
   ink: '#F0F4F9',
@@ -57,7 +55,13 @@ const C = {
   greenBg: '#11301F',
   greenInk: '#8FE8BC',
   green: '#35D98A',
-  blue: '#7FD1FF',
+  /* สายหลัก ฟ้า · สายรอง เหลือง · สามเฉดต่อสาย ไว้ไล่สีให้แท่งนูน */
+  lh: '#4FA3E3',
+  lhHi: '#9BD4FF',
+  lhLo: '#1E5C92',
+  fd: '#F0B21E',
+  fdHi: '#FFE089',
+  fdLo: '#9A6E06',
 }
 
 const LANE: Record<'LH' | 'FD', string> = { LH: 'สายหลัก LH', FD: 'สายรอง FD' }
@@ -72,23 +76,32 @@ function thFull(iso: string | null | undefined): string {
   return `${d.getDate()} ${TH_MON[d.getMonth()]} ${String((d.getFullYear() + 543) % 100)} ${p2(d.getHours())}:${p2(d.getMinutes())}`
 }
 
-/** บวกลบแบบสั้น · ใช้ในแถวที่มีที่น้อย */
-function Delta({ now, prev }: { now: number; prev: number | null }) {
+/** การ์ดมาตรฐานของหน้านี้ · ไล่สีอ่อน ๆ กับเงาใต้การ์ด ให้ลอยขึ้นจากพื้น */
+const CARD: React.CSSProperties = {
+  borderRadius: 16,
+  border: `1px solid ${C.line2}`,
+  background:
+    'radial-gradient(120% 90% at 50% -20%, rgba(255,255,255,.045), transparent 60%), linear-gradient(180deg, #161D27, #10151C)',
+  boxShadow: '0 18px 40px -22px #000, inset 0 1px 0 rgba(255,255,255,.05)',
+}
+
+function Delta({ now, prev, big }: { now: number; prev: number | null; big?: boolean }) {
+  const cls = big ? 'font-mono text-sm' : 'font-mono text-xs'
   if (prev === null)
     return (
-      <span className="font-mono text-xs" style={{ color: C.faint }}>
+      <span className={cls} style={{ color: C.faint }}>
         สาขาใหม่
       </span>
     )
   const d = now - prev
   if (d === 0)
     return (
-      <span className="font-mono text-xs" style={{ color: C.faint }}>
+      <span className={cls} style={{ color: C.faint }}>
         เท่าเดิม
       </span>
     )
   return (
-    <span className="font-mono text-xs" style={{ color: d > 0 ? C.redInk : C.greenInk }}>
+    <span className={cls} style={{ color: d > 0 ? C.redInk : C.greenInk }}>
       {d > 0 ? `▲ +${nf(d)}` : `▼ ${nf(d)}`}
     </span>
   )
@@ -97,7 +110,7 @@ function Delta({ now, prev }: { now: number; prev: number | null }) {
 function Tag({ state, text }: { state: OutState; text: string }) {
   if (!text) return null
   const bg = state === 'late' ? C.redBg : state === 'soon' ? C.amberBg : state === 'clear' ? C.greenBg : C.chip
-  const fg = state === 'late' ? C.redInk : state === 'soon' ? C.amberInk : state === 'clear' ? C.greenInk : C.blue
+  const fg = state === 'late' ? C.redInk : state === 'soon' ? C.amberInk : state === 'clear' ? C.greenInk : C.lhHi
   return (
     <span
       className="inline-block whitespace-nowrap rounded-md px-2 py-[2px] font-mono text-xs"
@@ -123,11 +136,32 @@ const EDGE: Record<OutState, string> = {
   new: '#2A3542',
 }
 
+/** ร่องของแท่ง · จมลงไปในพื้น ให้แท่งที่อยู่ข้างในดูลอยขึ้นมา */
+const groove: React.CSSProperties = {
+  borderRadius: 7,
+  background: C.groove,
+  boxShadow: 'inset 0 2px 4px rgba(0,0,0,.65), inset 0 -1px 0 rgba(255,255,255,.035)',
+}
+
+/** แท่งนูน · ไล่สีบนลงล่าง ขอบบนสว่าง ใต้แท่งมีเงา */
+function barStyle(lane: 'LH' | 'FD', side: 'l' | 'r', pct: number): React.CSSProperties {
+  const [hi, mid, lo] = lane === 'LH' ? [C.lhHi, C.lh, C.lhLo] : [C.fdHi, C.fd, C.fdLo]
+  return {
+    width: `${Math.max(1.5, pct)}%`,
+    height: '100%',
+    background: `linear-gradient(180deg, ${hi} 0%, ${mid} 38%, ${lo} 100%)`,
+    boxShadow:
+      'inset 0 1px 0 rgba(255,255,255,.55), inset 0 -2px 3px rgba(0,0,0,.35), 0 3px 7px -2px rgba(0,0,0,.75)',
+    borderRadius: side === 'l' ? '7px 0 0 7px' : '0 7px 7px 0',
+  }
+}
+
 export default function OutBox() {
   const nav = useNavigate()
   const board = useAsync(() => outBoard(), [])
-  const [tick, setTick] = useState(0)
-  const [page, setPage] = useState<'main' | 'table'>('main')
+  const [page, setPage] = useState<'main' | 'tv' | 'table'>('main')
+  const [swap, setSwap] = useState(true)
+  const [swapSec, setSwapSec] = useState(20)
   const [clock, setClock] = useState(() => new Date())
 
   const [q, setQ] = useState('')
@@ -146,6 +180,14 @@ export default function OutBox() {
     const t = setInterval(() => setClock(new Date()), 1000)
     return () => clearInterval(t)
   }, [])
+
+  /* สลับหน้าหลักกับจอทีวีเอง · ไม่แตะหน้าตาราง เพราะหน้านั้นคนกำลังค้นอยู่
+     ถ้าสลับทิ้งกลางคันตอนเขาพิมพ์ค้นหา คือแย่งงานจากมือคน */
+  useEffect(() => {
+    if (!swap || page === 'table') return
+    const t = setInterval(() => setPage((p) => (p === 'main' ? 'tv' : 'main')), swapSec * 1000)
+    return () => clearInterval(t)
+  }, [swap, swapSec, page])
 
   const snap = board.data?.snapshot ?? null
   const rows = useMemo<OutCalc[]>(
@@ -179,10 +221,8 @@ export default function OutBox() {
     }
   }, [rows])
 
-  /* สามอันดับของแต่ละตัวเลข แยกกัน ไม่ใช่เอามาบวกกัน
-     เพราะสาขาที่ติดที่คัดแยกกับสาขาที่ติดที่ปล่อยรถ ต้องไปตามคนละคน */
-  const topIn = useMemo(() => [...rows].sort((a, b) => b.in_wh - a.in_wh).slice(0, 3), [rows])
-  const topOut = useMemo(() => [...rows].sort((a, b) => b.on_truck - a.on_truck).slice(0, 3), [rows])
+  const topIn = useMemo(() => [...rows].sort((a, b) => b.in_wh - a.in_wh)[0] ?? null, [rows])
+  const topOut = useMemo(() => [...rows].sort((a, b) => b.on_truck - a.on_truck)[0] ?? null, [rows])
 
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase()
@@ -220,7 +260,6 @@ export default function OutBox() {
           `(ปริ้นใบแล้ว ${parsed.printed} ยังไม่ปริ้น ${parsed.notPrinted})`,
       )
       board.reload()
-      setTick((n) => n + 1)
     } catch (e) {
       setErr(readableError(e))
     } finally {
@@ -236,11 +275,8 @@ export default function OutBox() {
       : ageMin < 1440
         ? `${Math.floor(ageMin / 60)} ชั่วโมง ${ageMin % 60} นาทีที่แล้ว`
         : `${Math.floor(ageMin / 1440)} วันที่แล้ว`
-
-  /** ข้อความเทียบรอบ · ติดไว้ทุกการ์ดที่โชว์บวกลบ */
   const vs = snap?.prev_at ? `เทียบรอบ ${thFull(snap.prev_at)}` : 'ยังไม่มีรอบก่อนหน้าให้เทียบ'
 
-  const box = { background: C.panel, border: `1px solid ${C.line2}` }
   const field = { background: C.panel2, border: `1px solid ${C.line2}`, color: C.ink }
   const tabOn = { background: C.brand, color: C.bg, fontWeight: 700 }
   const tabOff = { background: C.chip, color: C.mute }
@@ -251,13 +287,7 @@ export default function OutBox() {
         className="safe-t sticky top-0 z-20 flex flex-wrap items-center gap-3 px-4 py-3"
         style={{ background: C.bg, borderBottom: `1px solid ${C.line}` }}
       >
-        <button
-          type="button"
-          aria-label="ย้อนกลับ"
-          className="h-tap w-tap rounded-btn text-xl"
-          style={{ color: C.mute }}
-          onClick={() => nav('/')}
-        >
+        <button type="button" aria-label="ย้อนกลับ" className="h-tap w-tap rounded-btn text-xl" style={{ color: C.mute }} onClick={() => nav('/')}>
           ←
         </button>
         <span className="rounded-md px-2.5 py-1 text-sm font-extrabold" style={{ background: C.brand, color: C.bg }}>
@@ -266,8 +296,7 @@ export default function OutBox() {
         <span className="text-lg font-bold">ของค้างส่งออก · 21BPL</span>
         <span className="flex-1" />
         <span className="text-sm" style={{ color: C.mute }}>
-          {DAY_TH[clock.getDay()]} {clock.getDate()} {TH_MON[clock.getMonth()]}{' '}
-          {String((clock.getFullYear() + 543) % 100)}
+          {DAY_TH[clock.getDay()]} {clock.getDate()} {TH_MON[clock.getMonth()]} {String((clock.getFullYear() + 543) % 100)}
         </span>
         <span className="font-mono text-xl font-bold" style={{ color: C.brand }}>
           {p2(clock.getHours())}:{p2(clock.getMinutes())}:{p2(clock.getSeconds())}
@@ -275,18 +304,9 @@ export default function OutBox() {
       </header>
 
       <div className="px-4 py-4">
-        {/* ───────── อัปไฟล์ + สลับหน้า ───────── */}
-        <section
-          className="mb-3 flex flex-wrap items-center gap-3 rounded-xl px-3 py-3"
-          style={{ ...box, borderLeft: `4px solid ${C.brand}` }}
-        >
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".xlsx"
-            className="hidden"
-            onChange={(e) => void pickFile(e.target.files?.[0] ?? null)}
-          />
+        {/* ───────── อัปไฟล์ · สลับหน้า ───────── */}
+        <section className="mb-3 flex flex-wrap items-center gap-3 px-3 py-3" style={{ ...CARD, borderLeft: `4px solid ${C.brand}` }}>
+          <input ref={fileRef} type="file" accept=".xlsx" className="hidden" onChange={(e) => void pickFile(e.target.files?.[0] ?? null)} />
           <button
             type="button"
             className="h-tap rounded-btn px-5 font-bold"
@@ -296,26 +316,39 @@ export default function OutBox() {
           >
             {busy ? <Spinner /> : null} อัปไฟล์รอบใหม่
           </button>
-          <span className="flex-1 text-sm" style={{ color: C.mute }}>
-            {snap ? `${snap.row_count} สาขา · ${snap.truck_count} คัน` : 'ยังไม่มีข้อมูล · เลือกไฟล์ .xlsx จากระบบ HUB'}
+          <span className="text-sm" style={{ color: C.mute }}>
+            {snap ? `${snap.row_count} สาขา · ${snap.truck_count} คัน` : 'ยังไม่มีข้อมูล'}
           </span>
+          <span className="flex-1" />
+
+          <label className="flex items-center gap-2 text-sm" style={{ color: C.mute }}>
+            <input type="checkbox" className="h-[18px] w-[18px]" checked={swap} onChange={(e) => setSwap(e.target.checked)} />
+            สลับหน้าเอง
+          </label>
+          <select
+            className="h-tap rounded-btn px-2 text-sm"
+            style={field}
+            value={swapSec}
+            aria-label="สลับทุกกี่วินาที"
+            disabled={!swap}
+            onChange={(e) => setSwapSec(Number(e.target.value))}
+          >
+            <option value={10}>ทุก 10 วิ</option>
+            <option value={20}>ทุก 20 วิ</option>
+            <option value={30}>ทุก 30 วิ</option>
+            <option value={60}>ทุก 60 วิ</option>
+          </select>
+
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="h-tap rounded-btn px-4 text-sm"
-              style={page === 'main' ? tabOn : tabOff}
-              onClick={() => setPage('main')}
-            >
-              หน้าหลัก
-            </button>
-            <button
-              type="button"
-              className="h-tap rounded-btn px-4 text-sm"
-              style={page === 'table' ? tabOn : tabOff}
-              onClick={() => setPage('table')}
-            >
-              ตารางรายสาขา
-            </button>
+            {([
+              ['main', 'หน้าหลัก'],
+              ['tv', 'จอทีวี'],
+              ['table', 'ตาราง'],
+            ] as const).map(([k, label]) => (
+              <button key={k} type="button" className="h-tap rounded-btn px-4 text-sm" style={page === k ? tabOn : tabOff} onClick={() => setPage(k)}>
+                {label}
+              </button>
+            ))}
             {lastId !== null && (
               <button
                 type="button"
@@ -340,35 +373,23 @@ export default function OutBox() {
           </div>
         </section>
 
-        {msg && (
-          <p className="mb-3 rounded-lg px-3 py-2 text-sm" style={{ background: 'rgba(53,217,138,.12)', color: C.greenInk }}>
-            {msg}
-          </p>
-        )}
-        {err && (
-          <p className="mb-3 rounded-lg px-3 py-2 text-sm" style={{ background: 'rgba(255,92,92,.12)', color: C.redInk }}>
-            {err}
-          </p>
-        )}
+        {msg && <p className="mb-3 rounded-lg px-3 py-2 text-sm" style={{ background: 'rgba(53,217,138,.12)', color: C.greenInk }}>{msg}</p>}
+        {err && <p className="mb-3 rounded-lg px-3 py-2 text-sm" style={{ background: 'rgba(255,92,92,.12)', color: C.redInk }}>{err}</p>}
         {board.loading && <p style={{ color: C.mute }}>กำลังโหลด…</p>}
-        {board.error && (
-          <p className="rounded-lg px-3 py-2" style={{ background: 'rgba(255,92,92,.12)', color: C.redInk }}>
-            {board.error}
-          </p>
-        )}
+        {board.error && <p className="rounded-lg px-3 py-2" style={{ background: 'rgba(255,92,92,.12)', color: C.redInk }}>{board.error}</p>}
         {!board.loading && !snap && (
-          <p className="rounded-xl py-16 text-center text-lg" style={{ ...box, color: C.mute }}>
+          <p className="py-16 text-center text-lg" style={{ ...CARD, color: C.mute }}>
             ยังไม่เคยอัปไฟล์ · กดปุ่มด้านบนเพื่อเริ่ม
           </p>
         )}
 
-        {/* ═════════════════════════════════════════ หน้าหลัก */}
+        {/* ═══════════════════════ หน้าหลัก */}
         {snap && page === 'main' && (
           <>
             <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <BigTile label="เข้าคลังแต่ไม่สแกนออก" n={t.inWh} prev={t.pIn} color={C.blue} vs={vs} />
-              <BigTile label="สแกนออกแต่รถไม่ออก" n={t.onTruck} prev={t.pOn} color={C.brand} vs={vs} />
-              <div className="rounded-xl p-3" style={box}>
+              <BigTile label="เข้าคลังแต่ไม่สแกนออก" n={t.inWh} prev={t.pIn} color={C.lhHi} edge={C.lh} vs={vs} />
+              <BigTile label="สแกนออกแต่รถไม่ออก" n={t.onTruck} prev={t.pOn} color={C.fdHi} edge={C.fd} vs={vs} />
+              <div className="p-3" style={CARD}>
                 <span className="block text-sm" style={{ color: C.mute }}>
                   รถยังไม่ปล่อยตามแผน
                 </span>
@@ -377,47 +398,28 @@ export default function OutBox() {
                   คัน · รอส่งออกทั้งหมด {nf(t.waiting)} · ยังไม่ถึงฮับ {nf(t.inTransit)}
                 </span>
               </div>
-              <div className="rounded-xl p-3" style={{ ...box, borderColor: ageMin > 45 ? C.amber : C.line2 }}>
-                <span className="block text-sm" style={{ color: C.mute }}>
-                  อัปเดตล่าสุด
-                </span>
-                <span className="mt-1 block font-mono text-2xl font-extrabold leading-tight">
-                  {thFull(snap.snap_at)}
-                </span>
-                <span className="text-xs" style={{ color: ageMin > 45 ? C.amberInk : C.faint }}>
-                  {ageTxt}
-                </span>
-                <span className="block font-mono text-[11px]" style={{ color: C.faint }}>
-                  อัปเข้าระบบ {thFull(snap.uploaded_at)}
-                </span>
-              </div>
+              <UpdateCard snapAt={snap.snap_at} uploadedAt={snap.uploaded_at} ageTxt={ageTxt} warn={ageMin > 45} />
             </div>
 
-            {/* ───────── สามอันดับของแต่ละตัวเลข ───────── */}
-            <div className="mb-3 grid gap-3 lg:grid-cols-2">
-              <TopCard
-                title="เข้าคลังแต่ไม่สแกนออก เยอะสุด"
-                rows={topIn}
-                pick={(r) => r.in_wh}
-                prev={(r) => r.prev_in}
-                color={C.blue}
-                vs={vs}
-              />
-              <TopCard
-                title="สแกนออกแต่รถไม่ออก เยอะสุด"
-                rows={topOut}
-                pick={(r) => r.on_truck}
-                prev={(r) => r.prev_on}
-                color={C.brand}
-                vs={vs}
-              />
-            </div>
-
-            <TvSplit rows={rows} tick={tick} />
+            <TwoSide rows={rows} metric="in_wh" title="เข้าคลังแต่ไม่สแกนออก" vs={vs} />
+            <div className="h-3" />
+            <TwoSide rows={rows} metric="on_truck" title="สแกนออกแต่รถไม่ออก" vs={vs} />
           </>
         )}
 
-        {/* ═════════════════════════════════════════ หน้าตาราง */}
+        {/* ═══════════════════════ จอทีวี */}
+        {snap && page === 'tv' && (
+          <>
+            <div className="mb-3 grid gap-3 lg:grid-cols-3">
+              <UpdateCard snapAt={snap.snap_at} uploadedAt={snap.uploaded_at} ageTxt={ageTxt} warn={ageMin > 45} big />
+              <TopOne label="เข้าคลังแต่ไม่สแกนออก เยอะสุด" r={topIn} value={(x) => x.in_wh} prev={(x) => x.prev_in} color={C.lhHi} edge={C.lh} />
+              <TopOne label="สแกนออกแต่รถไม่ออก เยอะสุด" r={topOut} value={(x) => x.on_truck} prev={(x) => x.prev_on} color={C.fdHi} edge={C.fd} />
+            </div>
+            <Ladders rows={rows} />
+          </>
+        )}
+
+        {/* ═══════════════════════ ตาราง */}
         {snap && page === 'table' && (
           <>
             <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -450,38 +452,35 @@ export default function OutBox() {
               </span>
             </div>
 
-            <section className="overflow-x-auto rounded-xl p-2" style={box}>
-              <table className="w-full min-w-[820px] text-left text-sm">
+            <section className="overflow-x-auto p-2" style={CARD}>
+              <table className="w-full min-w-[860px] text-left text-sm">
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${C.line}`, color: C.faint }}>
                     <th className="px-3 py-2 text-xs font-medium">สาขาปลายทาง</th>
                     <th className="w-[150px] px-3 py-2 text-xs font-medium">สถานะ</th>
-                    <th className="w-[110px] px-3 py-2 text-right text-xs font-medium">
-                      เข้าคลัง
-                      <br />
-                      ไม่สแกนออก
+                    <th className="w-[200px] px-3 py-2 text-xs font-medium" style={{ color: C.lhHi }}>
+                      เข้าคลัง ไม่สแกนออก
                     </th>
-                    <th className="w-[110px] px-3 py-2 text-right text-xs font-medium">
-                      สแกนออก
-                      <br />
-                      รถไม่ออก
+                    <th className="w-[200px] px-3 py-2 text-xs font-medium" style={{ color: C.fdHi }}>
+                      สแกนออก รถไม่ออก
                     </th>
-                    <th className="w-[80px] px-3 py-2 text-right text-xs font-medium">รวม</th>
                     <th className="w-[110px] px-3 py-2 text-right text-xs font-medium">เทียบรอบก่อน</th>
-                    <th className="w-[70px] px-3 py-2 text-right text-xs font-medium">
-                      รถยัง
-                      <br />
-                      ไม่ปล่อย
-                    </th>
+                    <th className="w-[70px] px-3 py-2 text-right text-xs font-medium">รถยังไม่ปล่อย</th>
                   </tr>
                 </thead>
                 <tbody>
                   {shown.map((r) => (
-                    <RowItem key={r.dir + r.station} r={r} open={open === r.station} onToggle={() => setOpen(open === r.station ? null : r.station)} />
+                    <RowItem
+                      key={r.dir + r.station}
+                      r={r}
+                      max={Math.max(1, ...shown.map((x) => Math.max(x.in_wh, x.on_truck)))}
+                      open={open === r.station}
+                      onToggle={() => setOpen(open === r.station ? null : r.station)}
+                    />
                   ))}
                   {shown.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-3 py-10 text-center" style={{ color: C.faint }}>
+                      <td colSpan={6} className="px-3 py-10 text-center" style={{ color: C.faint }}>
                         ไม่พบสาขาตามเงื่อนไข
                       </td>
                     </tr>
@@ -496,29 +495,16 @@ export default function OutBox() {
   )
 }
 
-/* ------------------------------------------------------------- ชิ้นส่วน */
+/* ------------------------------------------------------------- การ์ด */
 
-/** การ์ดตัวเลขหลัก · ตัวใหญ่ที่สุดบนจอ เพราะเป็นเหตุผลที่หน้านี้มีอยู่ */
-function BigTile({
-  label,
-  n,
-  prev,
-  color,
-  vs,
-}: {
-  label: string
-  n: number
-  prev: number
-  color: string
-  vs: string
-}) {
+function BigTile({ label, n, prev, color, edge, vs }: { label: string; n: number; prev: number; color: string; edge: string; vs: string }) {
   const d = n - prev
   return (
-    <div className="rounded-xl p-3" style={{ background: C.panel, border: `2px solid ${color}` }}>
+    <div className="p-3" style={{ ...CARD, border: `2px solid ${edge}` }}>
       <span className="block text-sm font-semibold" style={{ color: C.mute }}>
         {label}
       </span>
-      <span className="mt-1 block text-5xl font-extrabold leading-none" style={{ color }}>
+      <span className="mt-1 block text-5xl font-extrabold leading-none" style={{ color, textShadow: `0 0 22px ${edge}44` }}>
         {nf(n)}
       </span>
       <span className="mt-1 block font-mono text-sm" style={{ color: d > 0 ? C.redInk : d < 0 ? C.greenInk : C.faint }}>
@@ -531,88 +517,361 @@ function BigTile({
   )
 }
 
-/**
- * สามอันดับของตัวเลขเดียว · เป็นแท่งยาวตามสัดส่วนจริง
- *
- * แท่งอ่านได้เร็วกว่าตัวเลขเรียงกัน เพราะตาเทียบความยาวได้โดยไม่ต้องอ่านเลข
- * และต้องแยกสองตัวเลขเป็นคนละการ์ด ไม่ใช่เอามาบวกกันแล้วจัดอันดับเดียว
- * เพราะสาขาที่ติดที่คัดแยกกับสาขาที่ติดที่ปล่อยรถ ต้องไปตามคนละคน
- */
-function TopCard({
-  title,
-  rows,
-  pick,
-  prev,
-  color,
-  vs,
+function UpdateCard({
+  snapAt,
+  uploadedAt,
+  ageTxt,
+  warn,
+  big,
 }: {
-  title: string
-  rows: OutCalc[]
-  pick: (r: OutCalc) => number
-  prev: (r: OutCalc) => number | null
-  color: string
-  vs: string
+  snapAt: string
+  uploadedAt: string
+  ageTxt: string
+  warn: boolean
+  big?: boolean
 }) {
-  const max = Math.max(1, ...rows.map(pick))
   return (
-    <div className="rounded-xl p-3" style={{ background: C.panel, border: `1px solid ${C.line2}` }}>
-      <h2 className="font-bold" style={{ color }}>
-        {title}
-      </h2>
-      <p className="mb-3 text-[11px]" style={{ color: C.faint }}>
-        {vs}
-      </p>
-      <ul className="space-y-3">
-        {rows.map((r, i) => {
-          const v = pick(r)
-          const p = prev(r)
-          const d = p === null ? null : v - p
-          return (
-            <li key={r.station}>
-              <div className="mb-1 flex items-baseline gap-2">
-                <span className="font-mono text-sm" style={{ color: C.faint }}>
-                  {i + 1}
-                </span>
-                <span className="min-w-0 flex-1 break-words text-base font-bold leading-tight">{r.station}</span>
-                <span className="font-mono text-xs" style={{ color: C.faint }}>
-                  {r.dir}
-                </span>
-                <span className="text-2xl font-extrabold leading-none" style={{ color }}>
-                  {nf(v)}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-[10px] flex-1 overflow-hidden rounded" style={{ background: C.line2 }}>
-                  <i className="block h-full rounded" style={{ width: `${(v / max) * 100}%`, background: color }} />
-                </div>
-                <span
-                  className="w-[86px] shrink-0 text-right font-mono text-xs"
-                  style={{ color: d === null ? C.faint : d > 0 ? C.redInk : d < 0 ? C.greenInk : C.faint }}
-                >
-                  {d === null ? 'สาขาใหม่' : d > 0 ? `▲ +${nf(d)}` : d < 0 ? `▼ ${nf(d)}` : 'เท่าเดิม'}
-                </span>
-              </div>
-            </li>
-          )
-        })}
-        {rows.length === 0 && (
-          <li className="text-sm" style={{ color: C.faint }}>
-            ยังไม่มีข้อมูล
-          </li>
-        )}
-      </ul>
+    <div className="p-3" style={{ ...CARD, border: `2px solid ${warn ? C.amber : C.line2}` }}>
+      <span className="block text-sm" style={{ color: C.mute }}>
+        อัปเดตล่าสุด
+      </span>
+      <span className={`mt-1 block font-mono font-extrabold leading-tight ${big ? 'text-3xl' : 'text-2xl'}`}>
+        {thFull(snapAt)}
+      </span>
+      <span className="text-xs" style={{ color: warn ? C.amberInk : C.faint }}>
+        {ageTxt}
+      </span>
+      <span className="block font-mono text-[11px]" style={{ color: C.faint }}>
+        อัปเข้าระบบ {thFull(uploadedAt)}
+      </span>
     </div>
   )
 }
 
-function RowItem({ r, open, onToggle }: { r: OutCalc; open: boolean; onToggle: () => void }) {
+/** สาขาที่หนักสุดของตัวเลขหนึ่งตัว · ชื่อใหญ่ ตัวเลขใหญ่กว่า อ่านจากไกลได้ */
+function TopOne({
+  label,
+  r,
+  value,
+  prev,
+  color,
+  edge,
+}: {
+  label: string
+  r: OutCalc | null
+  value: (x: OutCalc) => number
+  prev: (x: OutCalc) => number | null
+  color: string
+  edge: string
+}) {
+  return (
+    <div className="p-3" style={{ ...CARD, border: `2px solid ${edge}` }}>
+      <span className="block text-sm font-semibold" style={{ color: C.mute }}>
+        {label}
+      </span>
+      {r ? (
+        <>
+          <span className="mt-1 block break-words text-xl font-extrabold leading-tight">{r.station}</span>
+          <span className="font-mono text-xs" style={{ color: C.faint }}>
+            {LANE[r.dir]}
+          </span>
+          <div className="mt-1 flex items-baseline gap-3">
+            <span className="text-5xl font-extrabold leading-none" style={{ color, textShadow: `0 0 22px ${edge}44` }}>
+              {nf(value(r))}
+            </span>
+            <Delta now={value(r)} prev={prev(r)} big />
+          </div>
+        </>
+      ) : (
+        <span className="text-sm" style={{ color: C.faint }}>
+          ยังไม่มีข้อมูล
+        </span>
+      )}
+    </div>
+  )
+}
+
+/* ------------------------------------------------- กราฟแท่งสองฝั่ง */
+
+function TwoSide({
+  rows,
+  metric,
+  title,
+  vs,
+  n = 8,
+}: {
+  rows: OutCalc[]
+  metric: 'in_wh' | 'on_truck'
+  title: string
+  vs: string
+  n?: number
+}) {
+  const l = useMemo(() => rows.filter((r) => r.dir === 'LH').sort((a, b) => b[metric] - a[metric]).slice(0, n), [rows, metric, n])
+  const r = useMemo(() => rows.filter((r) => r.dir === 'FD').sort((a, b) => b[metric] - a[metric]).slice(0, n), [rows, metric, n])
+  const max = Math.max(1, ...l.map((x) => x[metric]), ...r.map((x) => x[metric]))
+  const headColor = metric === 'in_wh' ? C.lhHi : C.fdHi
+
+  return (
+    <section className="p-4" style={CARD}>
+      <h2 className="mb-1 flex flex-wrap items-baseline gap-3 text-lg font-extrabold" style={{ color: headColor }}>
+        {title}
+        <span className="text-[11px] font-normal" style={{ color: C.faint }}>
+          {vs} · โชว์ {n} อันดับแรกของแต่ละสาย · สเกลร่วมกันทั้งสองฝั่ง
+        </span>
+      </h2>
+      <div className="grid items-center gap-x-2" style={{ gridTemplateColumns: '1fr 32px 1fr' }}>
+        <div className="pb-2 text-right font-mono text-[10px] uppercase tracking-wider" style={{ color: C.faint }}>
+          {LANE.LH}
+        </div>
+        <div />
+        <div className="pb-2 font-mono text-[10px] uppercase tracking-wider" style={{ color: C.faint }}>
+          {LANE.FD}
+        </div>
+
+        {Array.from({ length: n }, (_, i) => {
+          const a = l[i]
+          const b = r[i]
+          return (
+            <Row key={i} i={i}>
+              {a ? (
+                <div className="grid items-center gap-2" style={{ gridTemplateColumns: 'minmax(0,1fr) auto 56%' }}>
+                  <span className="truncate text-right text-[13.5px]">{a.station}</span>
+                  <span className="font-mono text-base font-bold" style={{ color: C.lhHi }}>
+                    {nf(a[metric])}
+                  </span>
+                  <span className="flex h-[24px] justify-end" style={groove}>
+                    <i style={barStyle('LH', 'l', (a[metric] / max) * 100)} />
+                  </span>
+                </div>
+              ) : (
+                <span />
+              )}
+              {b ? (
+                <div className="grid items-center gap-2" style={{ gridTemplateColumns: '56% auto minmax(0,1fr)' }}>
+                  <span className="flex h-[24px]" style={groove}>
+                    <i style={barStyle('FD', 'r', (b[metric] / max) * 100)} />
+                  </span>
+                  <span className="font-mono text-base font-bold" style={{ color: C.fdHi }}>
+                    {nf(b[metric])}
+                  </span>
+                  <span className="truncate text-[13.5px]">{b.station}</span>
+                </div>
+              ) : (
+                <span />
+              )}
+            </Row>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function Row({ i, children }: { i: number; children: [React.ReactNode, React.ReactNode] }) {
   return (
     <>
-      <tr
-        className="cursor-pointer"
-        style={{ borderBottom: `1px solid ${C.line2}`, background: open ? C.panel2 : undefined }}
+      <div className="py-[3px]">{children[0]}</div>
+      <div className="text-center font-mono text-xs" style={{ color: C.faint }}>
+        {i + 1}
+      </div>
+      <div className="py-[3px]">{children[1]}</div>
+    </>
+  )
+}
+
+/* ------------------------------------------------- บันไดรายสาขา */
+
+function Ladders({ rows }: { rows: OutCalc[] }) {
+  const [auto, setAuto] = useState(true)
+  const [open, setOpen] = useState<string | null>(null)
+  const lh = useRef<HTMLDivElement>(null)
+  const fd = useRef<HTMLDivElement>(null)
+
+  /** เลื่อนหนึ่งขั้น · ใช้ทั้งตอนเลื่อนเองและตอนกดปุ่ม */
+  function step(box: HTMLDivElement | null, back = false) {
+    if (!box) return
+    const items = [...box.querySelectorAll<HTMLElement>('[data-row]')]
+    if (items.length < 2) return
+    const bottom = box.scrollHeight - box.clientHeight
+    if (bottom <= 2) return
+    if (back) {
+      const prev = [...items].reverse().find((el) => el.offsetTop < box.scrollTop - 4)
+      box.scrollTo({ top: box.scrollTop <= 2 ? bottom : prev ? prev.offsetTop : 0, behavior: 'smooth' })
+      return
+    }
+    const next = items.find((el) => el.offsetTop > box.scrollTop + 4)
+    box.scrollTo({ top: !next || box.scrollTop >= bottom - 2 ? 0 : next.offsetTop, behavior: 'smooth' })
+  }
+
+  useEffect(() => {
+    if (!auto || open) return
+    const id = setInterval(() => {
+      step(lh.current)
+      step(fd.current)
+    }, 3000)
+    return () => clearInterval(id)
+  }, [auto, open, rows])
+
+  const mask = 'linear-gradient(180deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%)'
+
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap items-center gap-3">
+        <h2 className="text-lg font-bold">รายสาขา แยกสาย</h2>
+        <span className="text-xs" style={{ color: C.faint }}>
+          เรียงจากที่ต้องลงมือก่อน
+        </span>
+        <label className="ml-auto flex items-center gap-2 text-sm" style={{ color: C.mute }}>
+          <input type="checkbox" className="h-[19px] w-[19px]" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
+          เลื่อนเองทุก 3 วิ
+        </label>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        {(['LH', 'FD'] as const).map((d) => {
+          const g = rows.filter((r) => r.dir === d).sort((a, b) => OUT_RANK[a.state] - OUT_RANK[b.state] || b.work - a.work)
+          const gi = g.reduce((n, r) => n + r.in_wh, 0)
+          const go = g.reduce((n, r) => n + r.on_truck, 0)
+          const ref = d === 'LH' ? lh : fd
+          const edge = d === 'LH' ? C.lh : C.fd
+          return (
+            <div key={d} className="p-3" style={{ ...CARD, border: `2px solid ${edge}55` }}>
+              <div className="mb-2 flex flex-wrap items-baseline gap-2">
+                <h3 className="text-xl font-extrabold">{LANE[d]}</h3>
+                <span className="text-sm font-normal" style={{ color: C.mute }}>
+                  {g.length} สาขา
+                </span>
+                <span className="flex-1" />
+                <button
+                  type="button"
+                  aria-label="เลื่อนขึ้น"
+                  className="h-tap w-tap rounded-btn text-base"
+                  style={{ background: C.chip, color: C.mute }}
+                  onClick={() => step(ref.current, true)}
+                >
+                  ▲
+                </button>
+                <button
+                  type="button"
+                  aria-label="เลื่อนลง"
+                  className="h-tap w-tap rounded-btn text-base"
+                  style={{ background: C.chip, color: C.mute }}
+                  onClick={() => step(ref.current)}
+                >
+                  ▼
+                </button>
+              </div>
+              <div className="mb-3 grid grid-cols-2 gap-2">
+                <div className="p-2" style={{ borderRadius: 12, background: C.groove, border: `1px solid ${C.line2}` }}>
+                  <span className="block text-sm" style={{ color: C.mute }}>
+                    เข้าคลัง ไม่สแกนออก
+                  </span>
+                  <span className="block text-4xl font-extrabold leading-none" style={{ color: C.lhHi }}>
+                    {nf(gi)}
+                  </span>
+                </div>
+                <div className="p-2" style={{ borderRadius: 12, background: C.groove, border: `1px solid ${C.line2}` }}>
+                  <span className="block text-sm" style={{ color: C.mute }}>
+                    สแกนออก รถไม่ออก
+                  </span>
+                  <span className="block text-4xl font-extrabold leading-none" style={{ color: C.fdHi }}>
+                    {nf(go)}
+                  </span>
+                </div>
+              </div>
+              <div
+                ref={ref}
+                className="space-y-[6px] overflow-hidden"
+                style={{ maxHeight: '52vh', scrollBehavior: 'smooth', maskImage: mask, WebkitMaskImage: mask }}
+              >
+                {g.map((r) => (
+                  <TvRow key={r.station} r={r} open={open === r.station} onToggle={() => setOpen(open === r.station ? null : r.station)} />
+                ))}
+                {g.length === 0 && (
+                  <p className="text-sm" style={{ color: C.faint }}>
+                    ไม่มีสาขาในสายนี้
+                  </p>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function TvRow({ r, open, onToggle }: { r: OutCalc; open: boolean; onToggle: () => void }) {
+  const foot = [r.trucks ? `รถ ${r.trucks}` : '', r.no_print ? `ไม่ปริ้นใบ ${r.no_print}` : '', r.finding ? `จัดหา ${r.finding}` : '']
+    .filter(Boolean)
+    .join(' · ')
+
+  return (
+    <div data-row>
+      <button
+        type="button"
         onClick={onToggle}
+        className="flex w-full items-center gap-3 px-3 py-2 text-left"
+        style={{
+          borderRadius: 13,
+          background: 'linear-gradient(180deg, #121922, #0C1116)',
+          border: `1px solid ${C.line2}`,
+          borderLeft: `6px solid ${EDGE[r.state]}`,
+          boxShadow: '0 6px 14px -10px #000, inset 0 1px 0 rgba(255,255,255,.04)',
+        }}
       >
+        <span className="min-w-0 flex-1">
+          <b className="block break-words text-lg font-extrabold leading-tight">{r.station}</b>
+          {foot && (
+            <span className="block font-mono text-xs" style={{ color: C.faint }}>
+              {foot}
+            </span>
+          )}
+        </span>
+        <span className="shrink-0 text-right" style={{ minWidth: 84 }}>
+          <em className="block text-2xl font-extrabold not-italic leading-none" style={{ color: C.lhHi }}>
+            {nf(r.in_wh)}
+          </em>
+          <Delta now={r.in_wh} prev={r.prev_in} />
+        </span>
+        <span className="shrink-0 text-right" style={{ minWidth: 84 }}>
+          <em className="block text-2xl font-extrabold not-italic leading-none" style={{ color: C.fdHi }}>
+            {nf(r.on_truck)}
+          </em>
+          <Delta now={r.on_truck} prev={r.prev_on} />
+        </span>
+        <Tag state={r.state} text={tagText(r)} />
+      </button>
+      {open && (
+        <div className="mt-1 p-3" style={{ borderRadius: 13, background: C.panel2, border: `1px solid ${C.line2}` }}>
+          <TruckList r={r} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------- ตาราง */
+
+function RowItem({ r, max, open, onToggle }: { r: OutCalc; max: number; open: boolean; onToggle: () => void }) {
+  const cell = (v: number, prev: number | null, lane: 'LH' | 'FD') => (
+    <td className="px-3 py-2">
+      <div className="flex items-center gap-2">
+        <span className="w-[62px] shrink-0 text-right font-mono text-base font-bold" style={{ color: lane === 'LH' ? C.lhHi : C.fdHi }}>
+          {nf(v)}
+        </span>
+        <span className="flex h-[16px] flex-1" style={groove}>
+          <i style={barStyle(lane, 'r', (v / max) * 100)} />
+        </span>
+      </div>
+      <div className="pl-[70px]">
+        <Delta now={v} prev={prev} />
+      </div>
+    </td>
+  )
+  return (
+    <>
+      <tr className="cursor-pointer" style={{ borderBottom: `1px solid ${C.line2}`, background: open ? C.panel2 : undefined }} onClick={onToggle}>
         <td className="px-3 py-2">
           <span className="block">{r.station}</span>
           <span className="block font-mono text-xs" style={{ color: C.faint }}>
@@ -622,13 +881,8 @@ function RowItem({ r, open, onToggle }: { r: OutCalc; open: boolean; onToggle: (
         <td className="px-3 py-2">
           <Tag state={r.state} text={tagText(r)} />
         </td>
-        <td className="px-3 py-2 text-right text-base font-bold" style={{ color: C.blue }}>
-          {nf(r.in_wh)}
-        </td>
-        <td className="px-3 py-2 text-right text-base font-bold" style={{ color: C.brand }}>
-          {nf(r.on_truck)}
-        </td>
-        <td className="px-3 py-2 text-right font-mono text-xs">{nf(r.work)}</td>
+        {cell(r.in_wh, r.prev_in, 'LH')}
+        {cell(r.on_truck, r.prev_on, 'FD')}
         <td className="px-3 py-2 text-right">
           <Delta now={r.work} prev={r.chg === null ? null : r.work - r.chg} />
         </td>
@@ -636,7 +890,7 @@ function RowItem({ r, open, onToggle }: { r: OutCalc; open: boolean; onToggle: (
       </tr>
       {open && (
         <tr>
-          <td colSpan={7} className="px-3 py-3" style={{ background: C.panel2 }}>
+          <td colSpan={6} className="px-3 py-3" style={{ background: C.panel2 }}>
             <TruckList r={r} />
           </td>
         </tr>
@@ -675,7 +929,7 @@ function TruckList({ r }: { r: OutCalc }) {
           const isLate = !tk.p && lateSet.has(tk.at)
           const isSoon = !tk.p && soonSet.has(tk.at)
           return (
-            <li key={i} className="flex items-center gap-2 rounded-lg px-2 py-1" style={{ background: C.bg }}>
+            <li key={i} className="flex items-center gap-2 px-2 py-1" style={{ borderRadius: 9, background: C.groove }}>
               <span className="font-mono text-sm font-bold" style={{ color: isLate ? C.redInk : isSoon ? C.amberInk : C.ink }}>
                 {tk.at.slice(11, 16)}
               </span>
@@ -696,154 +950,5 @@ function TruckList({ r }: { r: OutCalc }) {
         })}
       </ul>
     </>
-  )
-}
-
-/* ------------------------------------------------- จอแยกสาย อยู่ในหน้าหลัก */
-
-function TvSplit({ rows, tick }: { rows: OutCalc[]; tick: number }) {
-  const [auto, setAuto] = useState(true)
-  const [open, setOpen] = useState<string | null>(null)
-  const lh = useRef<HTMLDivElement>(null)
-  const fd = useRef<HTMLDivElement>(null)
-
-  /* เลื่อนทีละแถวทุกสามวินาที · ถึงล่างแล้ววนกลับบน
-     ไม่กระโดดทีละหน้า เพราะคนที่กำลังอ่านแถวล่างจะเสียที่อ่านทุกครั้ง */
-  useEffect(() => {
-    if (!auto || open) return
-    const step = () => {
-      for (const b of [lh.current, fd.current]) {
-        if (!b) continue
-        const items = [...b.querySelectorAll<HTMLElement>('[data-row]')]
-        if (items.length < 2) continue
-        const bottom = b.scrollHeight - b.clientHeight
-        if (bottom <= 2) continue
-        const next = items.find((el) => el.offsetTop > b.scrollTop + 4)
-        b.scrollTo({ top: !next || b.scrollTop >= bottom - 2 ? 0 : next.offsetTop, behavior: 'smooth' })
-      }
-    }
-    const id = setInterval(step, 3000)
-    return () => clearInterval(id)
-  }, [auto, open, tick, rows])
-
-  const mask = 'linear-gradient(180deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%)'
-
-  return (
-    <div>
-      <div className="mb-2 flex flex-wrap items-center gap-3">
-        <h2 className="text-lg font-bold">รายสาขา แยกสาย</h2>
-        <span className="text-xs" style={{ color: C.faint }}>
-          เรียงจากที่ต้องลงมือก่อน · เลื่อนเองทีละแถวทุกสามวินาที
-        </span>
-        <label className="ml-auto flex items-center gap-2 text-sm" style={{ color: C.mute }}>
-          <input type="checkbox" className="h-[19px] w-[19px]" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
-          เลื่อนอัตโนมัติ
-        </label>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        {(['LH', 'FD'] as const).map((d) => {
-          const g = rows
-            .filter((r) => r.dir === d)
-            .sort((a, b) => OUT_RANK[a.state] - OUT_RANK[b.state] || b.work - a.work)
-          const gi = g.reduce((n, r) => n + r.in_wh, 0)
-          const go = g.reduce((n, r) => n + r.on_truck, 0)
-          return (
-            <div
-              key={d}
-              className="rounded-2xl p-3"
-              style={{ background: C.panel, border: `2px solid ${d === 'LH' ? '#27405A' : '#4A3C14'}` }}
-            >
-              <h3 className="mb-2 flex flex-wrap items-baseline gap-2 text-xl font-extrabold">
-                {LANE[d]}
-                <span className="text-sm font-normal" style={{ color: C.mute }}>
-                  {g.length} สาขา
-                </span>
-              </h3>
-              <div className="mb-3 grid grid-cols-2 gap-2">
-                <div className="rounded-xl p-2" style={{ background: C.bg, border: `1px solid ${C.line2}` }}>
-                  <span className="block text-sm" style={{ color: C.mute }}>
-                    เข้าคลัง ไม่สแกนออก
-                  </span>
-                  <span className="block text-4xl font-extrabold leading-none" style={{ color: C.blue }}>
-                    {nf(gi)}
-                  </span>
-                </div>
-                <div className="rounded-xl p-2" style={{ background: C.bg, border: `1px solid ${C.line2}` }}>
-                  <span className="block text-sm" style={{ color: C.mute }}>
-                    สแกนออก รถไม่ออก
-                  </span>
-                  <span className="block text-4xl font-extrabold leading-none" style={{ color: C.brand }}>
-                    {nf(go)}
-                  </span>
-                </div>
-              </div>
-              <div
-                ref={d === 'LH' ? lh : fd}
-                className="space-y-[6px] overflow-hidden"
-                style={{ maxHeight: '58vh', scrollBehavior: 'smooth', maskImage: mask, WebkitMaskImage: mask }}
-              >
-                {g.map((r) => (
-                  <TvRow key={r.station} r={r} open={open === r.station} onToggle={() => setOpen(open === r.station ? null : r.station)} />
-                ))}
-                {g.length === 0 && (
-                  <p className="text-sm" style={{ color: C.faint }}>
-                    ไม่มีสาขาในสายนี้
-                  </p>
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-function TvRow({ r, open, onToggle }: { r: OutCalc; open: boolean; onToggle: () => void }) {
-  const foot = [
-    r.trucks ? `รถ ${r.trucks}` : '',
-    r.no_print ? `ไม่ปริ้นใบ ${r.no_print}` : '',
-    r.finding ? `จัดหา ${r.finding}` : '',
-  ]
-    .filter(Boolean)
-    .join(' · ')
-
-  return (
-    <div data-row>
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left"
-        style={{ background: C.bg, border: `2px solid ${C.line2}`, borderLeftWidth: 6, borderLeftColor: EDGE[r.state] }}
-      >
-        <span className="min-w-0 flex-1">
-          <b className="block break-words text-lg font-extrabold leading-tight">{r.station}</b>
-          {foot && (
-            <span className="block font-mono text-xs" style={{ color: C.faint }}>
-              {foot}
-            </span>
-          )}
-        </span>
-        <span className="shrink-0 text-right" style={{ minWidth: 84 }}>
-          <em className="block text-2xl font-extrabold not-italic leading-none" style={{ color: C.blue }}>
-            {nf(r.in_wh)}
-          </em>
-          <Delta now={r.in_wh} prev={r.prev_in} />
-        </span>
-        <span className="shrink-0 text-right" style={{ minWidth: 84 }}>
-          <em className="block text-2xl font-extrabold not-italic leading-none" style={{ color: C.brand }}>
-            {nf(r.on_truck)}
-          </em>
-          <Delta now={r.on_truck} prev={r.prev_on} />
-        </span>
-        <Tag state={r.state} text={tagText(r)} />
-      </button>
-      {open && (
-        <div className="mt-1 rounded-xl p-3" style={{ background: C.panel2, border: `1px solid ${C.line2}` }}>
-          <TruckList r={r} />
-        </div>
-      )}
-    </div>
   )
 }
