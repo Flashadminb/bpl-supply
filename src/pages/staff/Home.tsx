@@ -203,6 +203,42 @@ export default function Home() {
               </Link>
             )}
 
+            {/*
+              พัสดุค้างเกิน 24 ชม · เจ้าของระบบกับผู้ดูแลระบบ เหมือนของค้างส่งออก
+              ไอคอนเป็นเลข 24 ในกรอบ ไม่ใช่รูปนาฬิกาหรือกล่อง เพราะเจ้าของระบบ
+              เรียกหน้านี้ว่าไอคอนเลข 24 และเลขคือสิ่งที่คนจำได้ก่อนรูป
+            */}
+            {can('admin') && (
+              <Link
+                to="/parcel24"
+                aria-label="พัสดุค้างเกิน 24 ชม"
+                className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink/10"
+              >
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" aria-hidden>
+                  <rect
+                    x="2.6"
+                    y="4.4"
+                    width="18.8"
+                    height="15.2"
+                    rx="3.4"
+                    stroke="currentColor"
+                    strokeWidth="1.9"
+                  />
+                  <text
+                    x="12"
+                    y="16.3"
+                    textAnchor="middle"
+                    fontSize="10"
+                    fontWeight="800"
+                    fill="currentColor"
+                    fontFamily="ui-monospace, monospace"
+                  >
+                    24
+                  </text>
+                </svg>
+              </Link>
+            )}
+
             {/* ลิงก์งาน — เห็นเฉพาะแอดมิน เจ้าของระบบ และผู้ตรวจสอบ */}
             <WorkLinks />
             {can(...MANAGER_ROLES) && <NotifyBell />}
@@ -373,6 +409,42 @@ export default function Home() {
                   <path d="M5 5h8v2H5z" />
                   <path d="M14 10h7" />
                   <path d="M18 7l3 3-3 3" />
+                </svg>
+              </Link>
+            )}
+
+            {/*
+              พัสดุค้างเกิน 24 ชม · เจ้าของระบบกับผู้ดูแลระบบ เหมือนของค้างส่งออก
+              ไอคอนเป็นเลข 24 ในกรอบ ไม่ใช่รูปนาฬิกาหรือกล่อง เพราะเจ้าของระบบ
+              เรียกหน้านี้ว่าไอคอนเลข 24 และเลขคือสิ่งที่คนจำได้ก่อนรูป
+            */}
+            {can('admin') && (
+              <Link
+                to="/parcel24"
+                aria-label="พัสดุค้างเกิน 24 ชม"
+                className="flex h-tap w-tap items-center justify-center rounded-btn bg-ink/10"
+              >
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" aria-hidden>
+                  <rect
+                    x="2.6"
+                    y="4.4"
+                    width="18.8"
+                    height="15.2"
+                    rx="3.4"
+                    stroke="currentColor"
+                    strokeWidth="1.9"
+                  />
+                  <text
+                    x="12"
+                    y="16.3"
+                    textAnchor="middle"
+                    fontSize="10"
+                    fontWeight="800"
+                    fill="currentColor"
+                    fontFamily="ui-monospace, monospace"
+                  >
+                    24
+                  </text>
                 </svg>
               </Link>
             )}

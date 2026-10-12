@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import { Spinner } from '../../components/ui'
 import { readableError } from '../../lib/supabase'
+import { heat } from '../../lib/boardTheme'
 import {
   OUT_RANK,
   OUT_STATE_TH,
@@ -396,6 +397,7 @@ export default function OutBox() {
           </button>
           <span className="text-sm" style={{ color: C.mute }}>
             {snap ? `${snap.row_count} สาขา · ${snap.truck_count} คัน` : 'ยังไม่มีข้อมูล'}
+            {snap?.hidden_count ? ` · ปิดโชว์ไว้ ${snap.hidden_count} สาขา ไม่ได้นับในยอด` : ''}
           </span>
           <span className="flex-1" />
 
@@ -737,8 +739,8 @@ function ZoneRank({ rows, vs }: { rows: OutCalc[]; vs: string }) {
         รวมยอดของทุกสาขาในโซนนั้น · สายหลักไม่มีโซนจึงรวมเป็น LH · เรียงจากค้างรวมมากสุด · {vs}
       </p>
       <ul className="space-y-3">
-        {g.map((x) => (
-          <li key={x.zone ?? 'none'}>
+        {g.map((x, i) => (
+          <li key={x.zone ?? 'none'} className="px-1" style={{ background: heat(i, g.length), borderRadius: 8 }}>
             <div className="mb-1 flex items-baseline gap-2">
               <Zone z={x.zone} />
               <span className="text-sm" style={{ color: C.faint }}>
@@ -1010,7 +1012,11 @@ function ZonePanel({
         }}
       >
         {shown.map((r, i) => (
-          <span key={r.dir + r.station} className="flex items-center gap-2 overflow-hidden">
+          <span
+            key={r.dir + r.station}
+            className="flex items-center gap-2 overflow-hidden px-1"
+            style={{ background: heat(i, shown.length), borderRadius: 5 }}
+          >
             <span className="w-[14px] shrink-0 text-right font-mono text-[10px]" style={{ color: C.faint }}>
               {i + 1}
             </span>

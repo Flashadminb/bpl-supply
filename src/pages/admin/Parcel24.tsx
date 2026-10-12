@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import { Spinner } from '../../components/ui'
 import { readableError } from '../../lib/supabase'
-import { C, CARD, field, nf, tabOff, tabOn, thFull } from '../../lib/boardTheme'
+import { C, CARD, HEAT_RED, field, heat, nf, tabOff, tabOn, thFull } from '../../lib/boardTheme'
 import {
   CANCEL,
   byAction,
@@ -149,6 +149,7 @@ export default function Parcel24() {
           </button>
           <span className="text-xs" style={{ color: C.faint }}>
             {snap ? `${nf(snap.row_count)} ชิ้น · ${groups.length} สาขาในหัวข้อนี้` : 'ยังไม่มีข้อมูล'}
+            {snap?.hidden_count ? ` · ปิดโชว์ไว้ ${nf(snap.hidden_count)} ชิ้น ไม่ได้นับในยอด` : ''}
           </span>
           <span className="flex-1" />
           {lastId !== null && (
@@ -344,8 +345,8 @@ function Graph({
 
       {/* ---- กิ่งสาขา ---- */}
       <div className="grid gap-2 xl:grid-cols-2" style={{ alignContent: 'start' }}>
-        {groups.map((g) => (
-          <Branch key={g.dest} g={g} open={open} onCopy={onCopy} />
+        {groups.map((g, i) => (
+          <Branch key={g.dest} g={g} i={i} n={groups.length} open={open} onCopy={onCopy} />
         ))}
         {groups.length === 0 && (
           <p className="text-sm" style={{ color: C.faint }}>
@@ -357,7 +358,19 @@ function Graph({
   )
 }
 
-function Branch({ g, open, onCopy }: { g: P24Group; open: boolean; onCopy: (t: string, w: string) => void }) {
+function Branch({
+  g,
+  i,
+  n,
+  open,
+  onCopy,
+}: {
+  g: P24Group
+  i: number
+  n: number
+  open: boolean
+  onCopy: (t: string, w: string) => void
+}) {
   const [more, setMore] = useState(false)
   const show = open || more ? g.rows : g.rows.slice(0, 10)
   const left = g.rows.length - show.length
@@ -368,7 +381,7 @@ function Branch({ g, open, onCopy }: { g: P24Group; open: boolean; onCopy: (t: s
       className="p-2"
       style={{
         borderRadius: 12,
-        background: C.groove,
+        background: `${heat(i, n, HEAT_RED)}, ${C.groove}`,
         border: `1px solid ${big ? '#55202A' : C.line2}`,
         gridColumn: big ? '1 / -1' : undefined,
       }}
@@ -470,8 +483,12 @@ function Cards({
           <h2 className="mb-2 text-lg font-extrabold">
             สาขาที่ค้างเยอะสุด <Cn>积压最多网点</Cn>
           </h2>
-          {dests.slice(0, 14).map((g) => (
-            <div key={g.dest} className="mb-[5px] flex items-center gap-2 px-2 py-[5px]" style={{ borderRadius: 10, background: C.groove, border: `1px solid ${C.line2}` }}>
+          {dests.slice(0, 14).map((g, i) => (
+            <div
+              key={g.dest}
+              className="mb-[5px] flex items-center gap-2 px-2 py-[5px]"
+              style={{ borderRadius: 10, background: `${heat(i, Math.min(dests.length, 14))}, ${C.groove}`, border: `1px solid ${C.line2}` }}
+            >
               <Zone z={g.zone} />
               <span className="min-w-0 flex-1 truncate text-[13px]">{g.dest}</span>
               <span className="font-mono text-[15px] font-extrabold" style={{ color: C.lhHi }}>

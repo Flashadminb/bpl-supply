@@ -46,6 +46,8 @@ export interface OutRow {
 }
 
 export interface OutSnapshot {
+  /** กี่สาขาที่ถูกปิดการโชว์ไว้ · ต้องโชว์ตัวเลขนี้เสมอ ไม่งั้นยอดจะไม่ตรงไฟล์แบบไร้เหตุผล */
+  hidden_count?: number
   id: number
   snap_at: string
   uploaded_at: string
@@ -338,12 +340,19 @@ export const OUT_RANK: Record<OutState, number> = {
  */
 export interface OutZoneRow {
   station: string
-  dir: 'LH' | 'FD'
+  /** ว่างได้ · สาขาที่เพิ่มเองหรือมีเฉพาะในไฟล์พัสดุ 24 ชม ยังไม่รู้ว่าอยู่สายไหน */
+  dir: 'LH' | 'FD' | ''
   in_wh: number
   on_truck: number
+  /** จำนวนพัสดุค้างเกิน 24 ชม ของสาขานี้ในรอบล่าสุด */
+  p24: number
   zone: string | null
   note: string | null
   from_seed: boolean
+  /** ปิดการโชว์ · ไม่ขึ้นบนกระดานและไม่ถูกนับในยอดรวม */
+  hidden: boolean
+  /** มาจากไหน · out ของค้างส่งออก · p24 พัสดุ 24 ชม · both ทั้งคู่ · manual เพิ่มเอง */
+  src: 'out' | 'p24' | 'both' | 'manual'
 }
 
 export async function outZoneRows(): Promise<OutZoneRow[]> {
@@ -359,13 +368,30 @@ export async function seedOutZones(): Promise<{ added: number; left: number }> {
   return data as { added: number; left: number }
 }
 
-export async function setOutZone(station: string, zone: string, note?: string | null) {
+export async function setOutZone(station: string, zone: string, note?: string | null, hidden?: boolean) {
   const { error } = await supabase.rpc('hub_out_zone_set', {
     p_station: station,
     p_zone: zone,
     p_note: note ?? null,
+    p_hidden: hidden ?? null,
   })
   if (error) throw new Error(readableError(error))
+}
+
+/** ลบแถวทิ้ง · ถ้าสาขายังอยู่ในไฟล์ มันจะกลับมาแบบไม่มีโซน ไม่ได้หายจากกระดาน */
+export async function deleteOutZone(station: string) {
+  const { error } = await supabase.rpc('hub_out_zone_delete', { p_station: station })
+  if (error) throw new Error(readableError(error))
+}
+
+/** ปิดหรือเปิดการโชว์ทีละหลายสาขา */
+export async function hideOutZoneMany(stations: string[], hidden: boolean): Promise<number> {
+  const { data, error } = await supabase.rpc('hub_out_zone_hide_many', {
+    p_stations: stations,
+    p_hidden: hidden,
+  })
+  if (error) throw new Error(readableError(error))
+  return (data as { n: number }).n
 }
 
 export async function setOutZoneMany(stations: string[], zone: string): Promise<number> {

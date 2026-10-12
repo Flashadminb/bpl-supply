@@ -69,3 +69,23 @@ export function thFull(iso: string | null | undefined): string {
   const d = new Date(iso)
   return `${d.getDate()} ${TH_MON[d.getMonth()]} ${String((d.getFullYear() + 543) % 100)} ${p2(d.getHours())}:${p2(d.getMinutes())}`
 }
+
+/**
+ * ไล่สีพื้นตามอันดับ · อันดับแรกเข้มสุดแล้วจางลงเรื่อย ๆ
+ *
+ * ไว้ใช้กับรายการที่เรียงจากมากไปน้อยอยู่แล้ว เพื่อให้ตาจับหัวแถวได้ก่อนอ่านตัวเลข
+ * ใช้กำลังสองไม่ใช่เส้นตรง เพราะที่คนต้องรีบไปทำคือสามสี่อันดับแรก
+ * ถ้าไล่เป็นเส้นตรง อันดับกลาง ๆ จะยังเข้มพอ ๆ กับหัวแถวจนแยกไม่ออกว่าอันไหนด่วนกว่า
+ *
+ * จางหายทางขวาเสมอ เพื่อไม่ให้พื้นไปทับตัวเลขที่ชิดขวา
+ */
+export function heat(i: number, n: number, rgb = '79,163,227'): string {
+  if (n <= 1) return 'transparent'
+  const t = 1 - i / (n - 1)
+  const a = 0.015 + t * t * 0.215
+  return `linear-gradient(90deg, rgba(${rgb},${a.toFixed(3)}), rgba(${rgb},0) 88%)`
+}
+
+/** สีของไล่เฉด · ฟ้าสำหรับของค้างทั่วไป แดงสำหรับของที่ต้องรีบ */
+export const HEAT_BLUE = '79,163,227'
+export const HEAT_RED = '226,75,74'

@@ -31,6 +31,8 @@ export interface P24Row {
 
 export interface P24Snapshot {
   id: number
+  /** กี่สาขาที่ถูกปิดการโชว์ไว้ที่หน้าหลังบ้าน · ของพวกนี้ไม่ถูกนับในยอดบนจอ */
+  hidden_count?: number
   data_at: string
   uploaded_at: string
   file_name: string | null
