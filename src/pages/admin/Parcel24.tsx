@@ -273,6 +273,8 @@ function Graph({
   onCopy: (text: string, what: string) => void
 }) {
   const [zone, setZone] = useState<string | null>(null)
+  const [hover, setHover] = useState(false)
+  const [stick, setStick] = useState(false)
 
   /**
    * โซนย่อยของหัวข้อที่เลือกอยู่
@@ -298,6 +300,8 @@ function Graph({
     [groups, zone],
   )
   const shownItems = shownGroups.reduce((a, g) => a + g.rows.length, 0)
+  /** เมนูย่อยค้างไว้ถ้ากำลังเลือกโซนอยู่ ไม่งั้นพอเลื่อนเมาส์ออกจะไม่เหลือทางกลับ */
+  const subOpen = hover || stick || zone !== null
   const allText = shownGroups.flatMap((g) => g.rows.map((r) => r.tracking)).join('\n')
   const open = shownItems <= MAX_OPEN
 
@@ -344,50 +348,42 @@ function Graph({
 
       {/* ---- โหนดกลาง ---- */}
       <div className="relative">
-        <div className="sticky top-3 p-3" style={{ ...CARD, border: `2px solid #A32D2D` }}>
-          <span className="block text-[13px] font-bold" style={{ color: current === CANCEL ? C.redInk : C.ink }}>
+        <div
+          className="sticky top-3"
+          onMouseEnter={() => setHover(true)}
+          onMouseLeave={() => setHover(false)}
+        >
+        <div className="p-3" style={{ ...CARD, border: `2px solid #A32D2D` }}>
+          <span className="block text-center text-[14px] font-bold" style={{ color: current === CANCEL ? C.redInk : C.ink }}>
             {current}
           </span>
-          {/* ตัวเลขใหญ่กดได้ · กดแล้วกลับไปเห็นทุกโซน เป็นทางกลับที่อยู่ตรงที่ตามองอยู่แล้ว */}
-          <button type="button" className="mt-1 flex w-full items-baseline gap-2 text-left" onClick={() => setZone(null)}>
-            <span className="font-mono text-4xl font-extrabold leading-none" style={{ color: current === CANCEL ? C.redInk : C.lhHi }}>
-              {nf(total)}
+          {/*
+            ตัวเลขคือพระเอกของการ์ดนี้ จึงใหญ่สุดในจอและอยู่กลาง
+            กดได้ด้วย · กดแล้วกลับไปเห็นทุกโซน เป็นทางกลับที่อยู่ตรงที่ตามองอยู่แล้ว
+          */}
+          <button
+            type="button"
+            className="mt-1 block w-full text-center"
+            onClick={() => {
+              if (zone !== null) setZone(null)
+              else setStick((v) => !v)
+            }}
+          >
+            <span
+              className="block font-mono font-extrabold leading-[0.9]"
+              style={{
+                fontSize: 'clamp(56px, 7vw, 104px)',
+                color: current === CANCEL ? C.redInk : C.lhHi,
+                textShadow: current === CANCEL ? '0 0 34px rgba(226,75,74,.45)' : '0 0 34px rgba(79,163,227,.4)',
+              }}
+            >
+              {nf(zone === null ? total : shownItems)}
             </span>
-            <span className="text-[11px]" style={{ color: C.faint }}>
-              {groups.length} สาขา{zone !== null && ' · ทั้งหมด'}
+            <span className="mt-1 block text-[12px]" style={{ color: C.faint }}>
+              {zone === null ? `${groups.length} สาขา` : `${zone || 'ไม่มีโซน'} · ${shownGroups.length} สาขา · กดเพื่อดูทั้งหมด`}
             </span>
           </button>
 
-          {/* โซนย่อย · มีเกินหนึ่งโซนถึงจะมีความหมาย */}
-          {zones.length > 1 && (
-            <div className="mt-2">
-              <p className="mb-1 text-[10px]" style={{ color: C.faint }}>
-                แยกตามโซน D0 <Cn>D0 分区</Cn>
-              </p>
-              <div className="flex flex-wrap gap-1">
-                {zones.map((z) => {
-                  const k = z.zone ?? ''
-                  const on = zone === k
-                  return (
-                    <button
-                      key={k || 'none'}
-                      type="button"
-                      onClick={() => setZone(on ? null : k)}
-                      className="flex items-center gap-1 rounded-lg px-[7px] py-[4px] font-mono text-[11px]"
-                      style={{
-                        background: on ? '#1E3246' : C.groove,
-                        color: on ? '#8FD0FF' : C.mute,
-                        border: `1px solid ${on ? '#2F5A80' : C.line2}`,
-                      }}
-                    >
-                      <b>{z.zone ?? 'ไม่มีโซน'}</b>
-                      <span style={{ color: on ? '#8FD0FF' : C.faint }}>{nf(z.items)}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
 
           <button
             type="button"
@@ -403,6 +399,60 @@ function Graph({
               ? 'กางครบทุกเลขในหน้าเดียว · กดที่เลขเพื่อคัดลอกทีละเลข'
               : 'หัวข้อนี้มีเยอะ จึงกางเท่าที่ไหว สาขาละ 10 เลขแรก · เลือกโซนเพื่อกางครบ หรือกดกางต่อรายสาขา'}
           </p>
+          {zones.length > 1 && (
+            <p className="mt-1 text-center text-[10px]" style={{ color: C.faint }}>
+              {subOpen ? '▾ แยกตามโซน' : '▾ ชี้หรือกดเพื่อแยกตามโซน'}
+            </p>
+          )}
+        </div>
+
+        {/*
+          เมนูย่อยของโซน · ห้อยลงมาจากการ์ดกลางเหมือนกิ่งที่แตกต่อ
+          โผล่ตอนเอาเมาส์ชี้หรือกดที่การ์ด และค้างไว้ถ้ากำลังเลือกโซนอยู่
+          ไม่ได้โผล่ตลอดเวลา เพราะจอนี้แน่นอยู่แล้ว และคนส่วนใหญ่ดูทั้งก้อนไม่ได้แยกโซน
+        */}
+        {zones.length > 1 && subOpen && (
+          <div className="relative mt-[2px] pl-4">
+            <span
+              aria-hidden
+              className="absolute"
+              style={{ left: 9, top: -2, bottom: 14, width: 1, background: C.line }}
+            />
+            {zones.map((z) => {
+              const k = z.zone ?? ''
+              const on = zone === k
+              return (
+                <div key={k || 'none'} className="relative">
+                  <span
+                    aria-hidden
+                    className="absolute"
+                    style={{ left: -7, top: '50%', width: 11, height: 1, background: on ? '#2F5A80' : C.line }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setZone(on ? null : k)}
+                    className="mb-[3px] flex w-full items-center gap-2 px-2 py-[5px] text-left"
+                    style={{
+                      borderRadius: 7,
+                      background: on ? '#15293A' : C.groove,
+                      border: `1px solid ${on ? '#2F5A80' : C.line2}`,
+                    }}
+                  >
+                    <span className="font-mono text-[11.5px] font-bold" style={{ color: on ? '#8FD0FF' : C.mute }}>
+                      {z.zone ?? 'ไม่มีโซน'}
+                    </span>
+                    <span className="flex-1 text-[10px]" style={{ color: C.faint }}>
+                      {z.branches} สาขา
+                    </span>
+                    <span className="font-mono text-[12.5px] font-bold" style={{ color: on ? '#8FD0FF' : C.lhHi }}>
+                      {nf(z.items)}
+                    </span>
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
         </div>
       </div>
 
