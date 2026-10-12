@@ -272,8 +272,34 @@ function Graph({
   total: number
   onCopy: (text: string, what: string) => void
 }) {
-  const allText = groups.flatMap((g) => g.rows.map((r) => r.tracking)).join('\n')
-  const open = total <= MAX_OPEN
+  const [zone, setZone] = useState<string | null>(null)
+
+  /**
+   * โซนย่อยของหัวข้อที่เลือกอยู่
+   *
+   * นับจากกิ่งที่มีอยู่จริงในหัวข้อนี้ ไม่ใช่รายชื่อโซนทั้งระบบ
+   * เพราะโซนที่ไม่มีของในหัวข้อนี้เลย ขึ้นมาเป็นปุ่มที่กดแล้วว่างเปล่าก็ไม่มีประโยชน์
+   */
+  const zones = useMemo(() => {
+    const m = new Map<string, { zone: string | null; items: number; branches: number }>()
+    for (const g of groups) {
+      const k = g.zone ?? ''
+      const cur = m.get(k) ?? { zone: g.zone, items: 0, branches: 0 }
+      cur.items += g.rows.length
+      cur.branches += 1
+      m.set(k, cur)
+    }
+    return [...m.values()].sort((a, b) => b.items - a.items)
+  }, [groups])
+
+  /** กดโซนไหนก็เห็นเฉพาะโซนนั้น · กดตัวเลขใหญ่กลับไปเห็นทั้งหมด */
+  const shownGroups = useMemo(
+    () => (zone === null ? groups : groups.filter((g) => (g.zone ?? '') === zone)),
+    [groups, zone],
+  )
+  const shownItems = shownGroups.reduce((a, g) => a + g.rows.length, 0)
+  const allText = shownGroups.flatMap((g) => g.rows.map((r) => r.tracking)).join('\n')
+  const open = shownItems <= MAX_OPEN
 
   return (
     <div className="grid gap-3" style={{ gridTemplateColumns: 'minmax(190px,220px) minmax(200px,240px) minmax(0,1fr)' }}>
@@ -290,7 +316,10 @@ function Graph({
               <button
                 key={a.action}
                 type="button"
-                onClick={() => onPick(a.action)}
+                onClick={() => {
+                  onPick(a.action)
+                  setZone(null)
+                }}
                 className="flex w-full items-center gap-2 px-[9px] py-[7px] text-left"
                 style={{
                   borderRadius: 10,
@@ -319,36 +348,70 @@ function Graph({
           <span className="block text-[13px] font-bold" style={{ color: current === CANCEL ? C.redInk : C.ink }}>
             {current}
           </span>
-          <div className="mt-1 flex items-baseline gap-2">
+          {/* ตัวเลขใหญ่กดได้ · กดแล้วกลับไปเห็นทุกโซน เป็นทางกลับที่อยู่ตรงที่ตามองอยู่แล้ว */}
+          <button type="button" className="mt-1 flex w-full items-baseline gap-2 text-left" onClick={() => setZone(null)}>
             <span className="font-mono text-4xl font-extrabold leading-none" style={{ color: current === CANCEL ? C.redInk : C.lhHi }}>
               {nf(total)}
             </span>
             <span className="text-[11px]" style={{ color: C.faint }}>
-              {groups.length} สาขา
+              {groups.length} สาขา{zone !== null && ' · ทั้งหมด'}
             </span>
-          </div>
+          </button>
+
+          {/* โซนย่อย · มีเกินหนึ่งโซนถึงจะมีความหมาย */}
+          {zones.length > 1 && (
+            <div className="mt-2">
+              <p className="mb-1 text-[10px]" style={{ color: C.faint }}>
+                แยกตามโซน D0 <Cn>D0 分区</Cn>
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {zones.map((z) => {
+                  const k = z.zone ?? ''
+                  const on = zone === k
+                  return (
+                    <button
+                      key={k || 'none'}
+                      type="button"
+                      onClick={() => setZone(on ? null : k)}
+                      className="flex items-center gap-1 rounded-lg px-[7px] py-[4px] font-mono text-[11px]"
+                      style={{
+                        background: on ? '#1E3246' : C.groove,
+                        color: on ? '#8FD0FF' : C.mute,
+                        border: `1px solid ${on ? '#2F5A80' : C.line2}`,
+                      }}
+                    >
+                      <b>{z.zone ?? 'ไม่มีโซน'}</b>
+                      <span style={{ color: on ? '#8FD0FF' : C.faint }}>{nf(z.items)}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <button
             type="button"
             className="mt-2 w-full rounded-lg px-3 py-2 text-[12px] font-bold"
             style={{ background: '#2A1116', color: C.redInk, border: `1px solid #5A2127` }}
-            onClick={() => onCopy(allText, `ทั้งหมด ${nf(total)} เลข`)}
+            onClick={() => onCopy(allText, zone === null ? `ทั้งหมด ${nf(shownItems)} เลข` : `${zone || 'ไม่มีโซน'} ${nf(shownItems)} เลข`)}
           >
-            คัดลอกทั้ง {nf(total)} เลข
+            คัดลอก{zone === null ? 'ทั้ง' : `${zone || 'ไม่มีโซน'} `}
+            {nf(shownItems)} เลข
           </button>
           <p className="mt-2 text-[11px] leading-relaxed" style={{ color: C.faint }}>
             {open
               ? 'กางครบทุกเลขในหน้าเดียว · กดที่เลขเพื่อคัดลอกทีละเลข'
-              : `หัวข้อนี้มีเยอะ จึงกางเท่าที่ไหว สาขาละ 10 เลขแรก · ปุ่มคัดลอกยังได้ครบทุกเลข`}
+              : 'หัวข้อนี้มีเยอะ จึงกางเท่าที่ไหว สาขาละ 10 เลขแรก · เลือกโซนเพื่อกางครบ หรือกดกางต่อรายสาขา'}
           </p>
         </div>
       </div>
 
       {/* ---- กิ่งสาขา ---- */}
       <div className="grid gap-2 xl:grid-cols-2" style={{ alignContent: 'start' }}>
-        {groups.map((g, i) => (
-          <Branch key={g.dest} g={g} i={i} n={groups.length} open={open} onCopy={onCopy} />
+        {shownGroups.map((g, i) => (
+          <Branch key={g.dest} g={g} i={i} n={shownGroups.length} open={open} onCopy={onCopy} />
         ))}
-        {groups.length === 0 && (
+        {shownGroups.length === 0 && (
           <p className="text-sm" style={{ color: C.faint }}>
             หัวข้อนี้ไม่มีพัสดุในรอบนี้
           </p>
