@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import { Spinner } from '../../components/ui'
@@ -65,6 +65,21 @@ const C = {
 }
 
 const LANE: Record<'LH' | 'FD', string> = { LH: 'สายหลัก LH', FD: 'สายรอง FD' }
+/**
+ * คำจีนกำกับ · ใช้คำเดียวกับที่อยู่ในไฟล์ต้นทางของบริษัท
+ *
+ * หน้างานเปิดไฟล์ต้นฉบับที่เป็นจีนล้วนอยู่ทุกวัน พอมาดูจอไทยแล้วต้องแปลในหัวเอง
+ * ว่าหัวข้อไหนตรงกับคอลัมน์ไหน · ใส่คำจีนที่ใช้ในไฟล์ไว้ข้าง ๆ เลย จะได้เทียบได้ทันที
+ * ไม่ได้แปลเอาเอง แต่หยิบคำจากหัวคอลัมน์ในไฟล์มาตรง ๆ เช่น 入仓未发出单量 กับ 装车未出港单量
+ */
+const CN = {
+  lane: { LH: '干线', FD: '支线' } as Record<'LH' | 'FD', string>,
+  inWh: '入仓未发出',
+  onTruck: '装车未出港',
+  station: '下一站网点',
+  update: '更新时间',
+  zone: 'D0 分区',
+}
 const DAY_TH = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
 const TH_MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 const p2 = (n: number) => String(n).padStart(2, '0')
@@ -166,6 +181,15 @@ function Zone({ z, dim, big, huge }: { z: string | null; dim?: boolean; big?: bo
   return (
     <span className={box} style={{ background: dim ? C.chip : '#1E3246', color: '#8FD0FF', ...w }}>
       {z}
+    </span>
+  )
+}
+
+/** คำจีนตัวเล็กสีจาง · อยู่ข้างคำไทยเสมอ ไม่ได้มาแทนที่ */
+function Cn({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="font-normal" style={{ color: C.faint, fontSize: '0.78em' }}>
+      {children}
     </span>
   )
 }
@@ -345,7 +369,9 @@ export default function OutBox() {
         <span className="rounded-md px-2.5 py-1 text-sm font-extrabold" style={{ background: C.brand, color: C.bg }}>
           FLASH
         </span>
-        <span className="text-lg font-bold">ของค้างส่งออก · 21BPL</span>
+        <span className="text-lg font-bold">
+            ของค้างส่งออก <Cn>发车监控</Cn> · 21BPL
+          </span>
         <span className="flex-1" />
         <span className="text-sm" style={{ color: C.mute }}>
           {DAY_TH[clock.getDay()]} {clock.getDate()} {TH_MON[clock.getMonth()]} {String((clock.getFullYear() + 543) % 100)}
@@ -366,7 +392,7 @@ export default function OutBox() {
             disabled={busy}
             onClick={() => fileRef.current?.click()}
           >
-            {busy ? <Spinner /> : null} อัปไฟล์รอบใหม่
+            {busy ? <Spinner /> : null} อัปไฟล์รอบใหม่ <Cn>上传新一轮</Cn>
           </button>
           <span className="text-sm" style={{ color: C.mute }}>
             {snap ? `${snap.row_count} สาขา · ${snap.truck_count} คัน` : 'ยังไม่มีข้อมูล'}
@@ -375,7 +401,7 @@ export default function OutBox() {
 
           <label className="flex items-center gap-2 text-sm" style={{ color: C.mute }}>
             <input type="checkbox" className="h-[18px] w-[18px]" checked={swap} onChange={(e) => setSwap(e.target.checked)} />
-            สลับหน้าเอง
+            สลับหน้าเอง <Cn>自动切换</Cn>
           </label>
           <select
             className="h-tap rounded-btn px-2 text-sm"
@@ -393,13 +419,13 @@ export default function OutBox() {
 
           <div className="flex flex-wrap gap-2">
             {([
-              ['main', 'หน้าหลัก'],
-              ['tv', 'จอทีวี'],
-              ['zone', 'จอโซน D0'],
-              ['table', 'ตาราง'],
-            ] as const).map(([k, label]) => (
+              ['main', 'หน้าหลัก', '主页'],
+              ['tv', 'จอทีวี', '电视屏'],
+              ['zone', 'จอโซน D0', 'D0 分区屏'],
+              ['table', 'ตาราง', '表格'],
+            ] as const).map(([k, label, cn]) => (
               <button key={k} type="button" className="h-tap rounded-btn px-4 text-sm" style={page === k ? tabOn : tabOff} onClick={() => setPage(k)}>
-                {label}
+                {label} <Cn>{cn}</Cn>
               </button>
             ))}
             {lastId !== null && (
@@ -440,11 +466,25 @@ export default function OutBox() {
         {snap && page === 'main' && (
           <>
             <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <BigTile label="เข้าคลังแต่ไม่สแกนออก" n={t.inWh} prev={t.pIn} color={C.lhHi} edge={C.lh} vs={vs} />
-              <BigTile label="สแกนออกแต่รถไม่ออก" n={t.onTruck} prev={t.pOn} color={C.fdHi} edge={C.fd} vs={vs} />
+              <BigTile
+                label={<>เข้าคลังแต่ไม่สแกนออก <Cn>{CN.inWh}</Cn></>}
+                n={t.inWh}
+                prev={t.pIn}
+                color={C.lhHi}
+                edge={C.lh}
+                vs={vs}
+              />
+              <BigTile
+                label={<>สแกนออกแต่รถไม่ออก <Cn>{CN.onTruck}</Cn></>}
+                n={t.onTruck}
+                prev={t.pOn}
+                color={C.fdHi}
+                edge={C.fd}
+                vs={vs}
+              />
               <div className="p-3" style={CARD}>
                 <span className="block text-sm" style={{ color: C.mute }}>
-                  รถยังไม่ปล่อยตามแผน
+                  รถยังไม่ปล่อยตามแผน <Cn>未发车</Cn>
                 </span>
                 <span className="mt-1 block text-4xl font-extrabold leading-none">{nf(t.trucks)}</span>
                 <span className="text-xs" style={{ color: C.faint }}>
@@ -459,9 +499,9 @@ export default function OutBox() {
               <ZoneTop rows={rows} />
             </div>
 
-            <TwoSide rows={rows} metric="in_wh" title="เข้าคลังแต่ไม่สแกนออก" vs={vs} />
+            <TwoSide rows={rows} metric="in_wh" title={<>เข้าคลังแต่ไม่สแกนออก <Cn>{CN.inWh}</Cn></>} vs={vs} />
             <div className="h-3" />
-            <TwoSide rows={rows} metric="on_truck" title="สแกนออกแต่รถไม่ออก" vs={vs} />
+            <TwoSide rows={rows} metric="on_truck" title={<>สแกนออกแต่รถไม่ออก <Cn>{CN.onTruck}</Cn></>} vs={vs} />
           </>
         )}
 
@@ -470,8 +510,8 @@ export default function OutBox() {
           <>
             <div className="mb-3 grid gap-3 lg:grid-cols-3">
               <UpdateCard snapAt={snap.snap_at} uploadedAt={snap.uploaded_at} ageTxt={ageTxt} warn={ageMin > 45} big />
-              <TopOne label="เข้าคลังแต่ไม่สแกนออก เยอะสุด" r={topIn} value={(x) => x.in_wh} prev={(x) => x.prev_in} color={C.lhHi} edge={C.lh} />
-              <TopOne label="สแกนออกแต่รถไม่ออก เยอะสุด" r={topOut} value={(x) => x.on_truck} prev={(x) => x.prev_on} color={C.fdHi} edge={C.fd} />
+              <TopOne label={<>เข้าคลังแต่ไม่สแกนออก เยอะสุด <Cn>{CN.inWh}最多</Cn></>} r={topIn} value={(x) => x.in_wh} prev={(x) => x.prev_in} color={C.lhHi} edge={C.lh} />
+              <TopOne label={<>สแกนออกแต่รถไม่ออก เยอะสุด <Cn>{CN.onTruck}最多</Cn></>} r={topOut} value={(x) => x.on_truck} prev={(x) => x.prev_on} color={C.fdHi} edge={C.fd} />
             </div>
             <Ladders rows={rows} />
           </>
@@ -494,8 +534,8 @@ export default function OutBox() {
               />
               <select className="h-tap rounded-btn px-3 text-sm" style={field} value={dir} aria-label="สาย" onChange={(e) => setDir(e.target.value)}>
                 <option value="">ทุกสาย</option>
-                <option value="LH">สายหลัก LH</option>
-                <option value="FD">สายรอง FD</option>
+                <option value="LH">สายหลัก LH 干线</option>
+                <option value="FD">สายรอง FD 支线</option>
               </select>
               <select className="h-tap rounded-btn px-3 text-sm" style={field} value={sort} aria-label="เรียงตาม" onChange={(e) => setSort(e.target.value)}>
                 <option value="work">ค้างรวมมากสุด</option>
@@ -517,16 +557,24 @@ export default function OutBox() {
               <table className="w-full min-w-[860px] text-left text-sm">
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${C.line}`, color: C.faint }}>
-                    <th className="px-3 py-2 text-xs font-medium">สาขาปลายทาง</th>
-                    <th className="w-[150px] px-3 py-2 text-xs font-medium">สถานะ</th>
+                    <th className="px-3 py-2 text-xs font-medium">
+                      สาขาปลายทาง <Cn>{CN.station}</Cn>
+                    </th>
+                    <th className="w-[150px] px-3 py-2 text-xs font-medium">
+                      สถานะ <Cn>状态</Cn>
+                    </th>
                     <th className="w-[200px] px-3 py-2 text-xs font-medium" style={{ color: C.lhHi }}>
-                      เข้าคลัง ไม่สแกนออก
+                      เข้าคลัง ไม่สแกนออก <Cn>{CN.inWh}</Cn>
                     </th>
                     <th className="w-[200px] px-3 py-2 text-xs font-medium" style={{ color: C.fdHi }}>
-                      สแกนออก รถไม่ออก
+                      สแกนออก รถไม่ออก <Cn>{CN.onTruck}</Cn>
                     </th>
-                    <th className="w-[110px] px-3 py-2 text-right text-xs font-medium">เทียบรอบก่อน</th>
-                    <th className="w-[70px] px-3 py-2 text-right text-xs font-medium">รถยังไม่ปล่อย</th>
+                    <th className="w-[110px] px-3 py-2 text-right text-xs font-medium">
+                      เทียบรอบก่อน <Cn>对比上轮</Cn>
+                    </th>
+                    <th className="w-[70px] px-3 py-2 text-right text-xs font-medium">
+                      รถยังไม่ปล่อย <Cn>未发车</Cn>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -558,7 +606,7 @@ export default function OutBox() {
 
 /* ------------------------------------------------------------- การ์ด */
 
-function BigTile({ label, n, prev, color, edge, vs }: { label: string; n: number; prev: number; color: string; edge: string; vs: string }) {
+function BigTile({ label, n, prev, color, edge, vs }: { label: React.ReactNode; n: number; prev: number; color: string; edge: string; vs: string }) {
   const d = n - prev
   return (
     <div className="p-3" style={{ ...CARD, border: `2px solid ${edge}` }}>
@@ -594,7 +642,7 @@ function UpdateCard({
   return (
     <div className="p-3" style={{ ...CARD, border: `2px solid ${warn ? C.amber : C.line2}` }}>
       <span className="block text-sm" style={{ color: C.mute }}>
-        อัปเดตล่าสุด
+        อัปเดตล่าสุด <Cn>{CN.update}</Cn>
       </span>
       <span className={`mt-1 block font-mono font-extrabold leading-tight ${big ? 'text-3xl' : 'text-2xl'}`}>
         {thFull(snapAt)}
@@ -618,7 +666,7 @@ function TopOne({
   color,
   edge,
 }: {
-  label: string
+  label: React.ReactNode
   r: OutCalc | null
   value: (x: OutCalc) => number
   prev: (x: OutCalc) => number | null
@@ -635,7 +683,7 @@ function TopOne({
           <>
             <span className="mt-1 block break-words text-xl font-extrabold leading-tight">{r.station}</span>
             <span className="block font-mono text-xs" style={{ color: C.faint }}>
-              {LANE[r.dir]}
+              {LANE[r.dir]} {CN.lane[r.dir]}
             </span>
             <div className="mt-1 flex items-baseline gap-3">
               <span className="text-5xl font-extrabold leading-none" style={{ color, textShadow: `0 0 22px ${edge}44` }}>
@@ -682,7 +730,9 @@ function ZoneRank({ rows, vs }: { rows: OutCalc[]; vs: string }) {
   const max = Math.max(1, ...g.map((x) => Math.max(x.inWh, x.onTruck)))
   return (
     <section className="p-4" style={CARD}>
-      <h2 className="mb-1 text-lg font-extrabold">อันดับโซน D0</h2>
+      <h2 className="mb-1 text-lg font-extrabold">
+        อันดับโซน D0 <Cn>D0 分区排名</Cn>
+      </h2>
       <p className="mb-3 text-[11px]" style={{ color: C.faint }}>
         รวมยอดของทุกสาขาในโซนนั้น · สายหลักไม่มีโซนจึงรวมเป็น LH · เรียงจากค้างรวมมากสุด · {vs}
       </p>
@@ -732,7 +782,9 @@ function ZoneTop({ rows }: { rows: OutCalc[] }) {
   const g = useMemo(() => byZone(rows), [rows])
   return (
     <section className="p-4" style={CARD}>
-      <h2 className="mb-1 text-lg font-extrabold">สาขาสูงสุดของแต่ละโซน</h2>
+      <h2 className="mb-1 text-lg font-extrabold">
+        สาขาสูงสุดของแต่ละโซน <Cn>各分区最高网点</Cn>
+      </h2>
       <p className="mb-3 text-[11px]" style={{ color: C.faint }}>
         ในโซนนั้นต้องไปที่สาขาไหนก่อน
       </p>
@@ -789,6 +841,27 @@ function ZoneTop({ rows }: { rows: OutCalc[] }) {
  * ถ้าซ่อน ของค้างก้อนนั้นจะหายไปจากจอโดยไม่มีใครรู้ว่าหายไปไหน
  */
 function ZoneTv({ rows, vs }: { rows: OutCalc[]; vs: string }) {
+  /**
+   * ความสูงของกริดคิดจากที่ว่างจริงที่เหลือ ไม่ใช่ตัวเลขที่เดาเอาไว้
+   *
+   * เคยใส่เป็นเลขตายตัวแล้วพลาด เพราะแถบหัวจอกับแถบบอกสีสูงไม่เท่ากัน
+   * ในแต่ละความกว้างจอ พอเดาผิดไปไม่กี่สิบพิกเซล จอทีวีก็มีแถบเลื่อนโผล่
+   * วัดเอาจากตำแหน่งจริงของกริดจบเรื่อง และปรับตามเองเวลาเปลี่ยนขนาดจอ
+   */
+  const boxRef = useRef<HTMLDivElement>(null)
+  const [room, setRoom] = useState(0)
+  useLayoutEffect(() => {
+    const el = boxRef.current
+    if (!el) return
+    const measure = () => {
+      const top = el.getBoundingClientRect().top + window.scrollY
+      setRoom(Math.max(360, Math.round(window.innerHeight - top - 16)))
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [])
+
   const zones = useMemo(() => {
     const m = new Map<string, { zone: string | null; list: OutCalc[]; si: number; so: number; pi: number; po: number }>()
     for (const r of rows) {
@@ -815,9 +888,10 @@ function ZoneTv({ rows, vs }: { rows: OutCalc[]; vs: string }) {
           แถวเป็น minmax(min-content, 1fr) ไม่ใช่ 1fr เฉย ๆ เพราะถ้าเปิดบนจอเตี้ยกว่าทีวี
           ช่องจะบีบจนรายชื่อสาขาหาย · ยอมให้หน้าเลื่อนดีกว่าตัดของที่ค้างทิ้งเงียบ ๆ */}
       <div
+        ref={boxRef}
         className="grid gap-3 md:grid-cols-2 xl:grid-cols-3"
         style={{
-          minHeight: 'calc(100vh - 212px)',
+          minHeight: room || undefined,
           gridTemplateRows: 'repeat(2, minmax(min-content, 1fr))',
           gridAutoRows: 'minmax(min-content, 1fr)',
         }}
@@ -862,21 +936,21 @@ function ZoneKey({ vs }: { vs: string }) {
       className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-[5px]"
       style={{ borderRadius: 10, background: C.panel2, border: `1px solid ${C.line2}` }}
     >
-      {item(num(C.lhHi, '1,190'), 'เข้าคลังแต่ไม่สแกนออก')}
-      {item(num(C.fdHi, '174'), 'สแกนออกแต่รถไม่ออก')}
-      {item(num(C.faint, '0'), 'ไม่มีของค้าง')}
+      {item(num(C.lhHi, '1,190'), `เข้าคลังแต่ไม่สแกนออก ${CN.inWh}`)}
+      {item(num(C.fdHi, '174'), `สแกนออกแต่รถไม่ออก ${CN.onTruck}`)}
+      {item(num(C.faint, '0'), 'ไม่มีของค้าง 无积压')}
       <span className="h-[14px] w-px" style={{ background: C.line }} />
       {item(
         <span className="font-mono text-[13px] font-bold" style={{ color: C.green }}>
           ▼
         </span>,
-        'น้อยลงกว่ารอบก่อน',
+        'น้อยลงกว่ารอบก่อน 比上轮减少',
       )}
       {item(
         <span className="font-mono text-[13px] font-bold" style={{ color: C.red }}>
           ▲
         </span>,
-        'มากขึ้นกว่ารอบก่อน',
+        'มากขึ้นกว่ารอบก่อน 比上轮增加',
       )}
       <span className="flex-1" />
       <span className="text-[11px]" style={{ color: C.faint }}>
@@ -977,7 +1051,7 @@ function TwoSide({
 }: {
   rows: OutCalc[]
   metric: 'in_wh' | 'on_truck'
-  title: string
+  title: React.ReactNode
   vs: string
   n?: number
 }) {
@@ -996,11 +1070,11 @@ function TwoSide({
       </h2>
       <div className="grid items-center gap-x-2" style={{ gridTemplateColumns: '1fr 32px 1fr' }}>
         <div className="pb-2 text-right font-mono text-[10px] uppercase tracking-wider" style={{ color: C.faint }}>
-          {LANE.LH}
+          {LANE.LH} {CN.lane.LH}
         </div>
         <div />
         <div className="pb-2 font-mono text-[10px] uppercase tracking-wider" style={{ color: C.faint }}>
-          {LANE.FD}
+          {LANE.FD} {CN.lane.FD}
         </div>
 
         {Array.from({ length: n }, (_, i) => {
@@ -1117,7 +1191,9 @@ function Ladders({ rows }: { rows: OutCalc[] }) {
           return (
             <div key={d} className="p-3" style={{ ...CARD, border: `2px solid ${edge}55` }}>
               <div className="mb-2 flex flex-wrap items-baseline gap-2">
-                <h3 className="text-xl font-extrabold">{LANE[d]}</h3>
+                <h3 className="text-xl font-extrabold">
+                  {LANE[d]} <Cn>{CN.lane[d]}</Cn>
+                </h3>
                 <span className="text-sm font-normal" style={{ color: C.mute }}>
                   {g.length} สาขา
                 </span>
@@ -1144,7 +1220,7 @@ function Ladders({ rows }: { rows: OutCalc[] }) {
               <div className="mb-3 grid grid-cols-2 gap-2">
                 <div className="p-2" style={{ borderRadius: 12, background: C.groove, border: `1px solid ${C.line2}` }}>
                   <span className="block text-sm" style={{ color: C.mute }}>
-                    เข้าคลัง ไม่สแกนออก
+                    เข้าคลัง ไม่สแกนออก <Cn>{CN.inWh}</Cn>
                   </span>
                   <span className="block text-4xl font-extrabold leading-none" style={{ color: C.lhHi }}>
                     {nf(gi)}
@@ -1152,7 +1228,7 @@ function Ladders({ rows }: { rows: OutCalc[] }) {
                 </div>
                 <div className="p-2" style={{ borderRadius: 12, background: C.groove, border: `1px solid ${C.line2}` }}>
                   <span className="block text-sm" style={{ color: C.mute }}>
-                    สแกนออก รถไม่ออก
+                    สแกนออก รถไม่ออก <Cn>{CN.onTruck}</Cn>
                   </span>
                   <span className="block text-4xl font-extrabold leading-none" style={{ color: C.fdHi }}>
                     {nf(go)}
