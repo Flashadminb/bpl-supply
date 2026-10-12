@@ -34,13 +34,26 @@ function leftText(m: number): string {
 
 /* ------------------------------------------------------------ นาฬิกา */
 
-function Clock({ next }: { next: { code: string; who: string; at: string } | null }) {
+interface DueItem {
+  code: string
+  who: string
+  at: string
+}
+
+/** hh:mm:ss จากจำนวนวินาที · เกินหนึ่งวันตัดเป็นวันกับชั่วโมง ไม่งั้นเลขจะยาวจนอ่านไม่ทัน */
+function hms(sec: number): string {
+  if (sec >= 86400) return `${Math.floor(sec / 86400)} วัน ${Math.floor((sec % 86400) / 3600)} ชม`
+  return `${p2(Math.floor(sec / 3600))}:${p2(Math.floor(sec / 60) % 60)}:${p2(sec % 60)}`
+}
+
+function Clock({ due }: { due: DueItem[] }) {
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(t)
   }, [])
 
+  const next = due[0] ?? null
   const sec = next ? Math.max(0, Math.round((Date.parse(next.at) - now.getTime()) / 1000)) : 0
 
   return (
@@ -54,14 +67,38 @@ function Clock({ next }: { next: { code: string; who: string; at: string } | nul
         {now.getFullYear() + 543}
       </p>
       {next && (
-        <div className="mt-2 border-t border-dark-3 pt-2">
-          <p className="text-[10px] text-dark-muted">ใกล้ครบกำหนดสุด</p>
+        /* ชี้แล้วกางทั้งหมด · ตัวเลขในกล่องเดินจริงทุกวินาทีเหมือนตัวใหญ่ด้านบน
+           เพราะถ้ากางมาแล้วเลขนิ่ง คนจะไม่รู้ว่ามันคือเวลาจริงหรือภาพนิ่งเมื่อกี้ */
+        <div className="group relative mt-2 border-t border-dark-3 pt-2">
+          <p className="text-[10px] text-dark-muted">
+            ใกล้ครบกำหนดสุด {due.length > 1 && <span>· อีก {due.length - 1} เครื่อง ชี้เพื่อดู</span>}
+          </p>
           <p className="truncate text-xs">
             {next.code} · {next.who}
           </p>
-          <p className="font-mono text-xl font-bold leading-tight text-brand-500">
-            {p2(Math.floor(sec / 3600))}:{p2(Math.floor(sec / 60) % 60)}:{p2(sec % 60)}
-          </p>
+          <p className="font-mono text-xl font-bold leading-tight text-brand-500">{hms(sec)}</p>
+
+          <span className="pointer-events-none absolute left-0 top-[calc(100%+6px)] z-30 hidden w-[272px] overflow-hidden rounded-card border border-line bg-surface text-ink shadow-lg group-hover:block group-focus-within:block">
+            <span className="block border-b border-line-2 px-3 py-2 text-xs font-bold">
+              ใกล้ครบกำหนด · {due.length} เครื่อง
+            </span>
+            <span className="block max-h-[220px] overflow-auto">
+              {due.map((d) => {
+                const left = Math.max(0, Math.round((Date.parse(d.at) - now.getTime()) / 1000))
+                const soon = left <= 3600
+                return (
+                  <span
+                    key={d.code}
+                    className="flex items-center gap-2 border-b border-line-2 px-3 py-[4px] text-[11.5px] last:border-0"
+                  >
+                    <b className="font-mono">{d.code}</b>
+                    <span className="min-w-0 flex-1 truncate text-ink-500">{d.who}</span>
+                    <b className={`font-mono ${soon ? 'text-warn-txt' : 'text-ink'}`}>{hms(left)}</b>
+                  </span>
+                )
+              })}
+            </span>
+          </span>
         </div>
       )}
     </div>
@@ -211,7 +248,6 @@ export function HomeBoard({
         .sort((a, b) => Date.parse(a.due_at as string) - Date.parse(b.due_at as string)),
     [holdings],
   )
-  const next = soon.find((h) => Date.parse(h.due_at as string) > Date.now())
 
   const out = items.filter((i) => i.is_active && i.qty_on_hand === 0)
   const low = items.filter((i) => i.is_active && i.qty_on_hand > 0 && i.qty_on_hand <= i.min_qty)
@@ -426,11 +462,13 @@ export function HomeBoard({
 
       <div className="mb-3 grid gap-2 lg:grid-cols-[196px_minmax(0,1fr)]">
         <Clock
-          next={
-            next
-              ? { code: next.asset_code, who: next.holder_name ?? '—', at: next.due_at as string }
-              : null
-          }
+          due={soon
+            .filter((h) => Date.parse(h.due_at as string) > Date.now())
+            .map((h) => ({
+              code: h.asset_code,
+              who: h.holder_name ?? '—',
+              at: h.due_at as string,
+            }))}
         />
         <div>
           <p className="label mb-1">
@@ -474,8 +512,13 @@ export function HomeBoard({
           <span className="flex-1" />
           <span className="text-[10.5px] text-ink-400">เขียว ยังเหลือเวลา · เหลือง ใกล้ครบ · แดง เลยแล้ว</span>
         </div>
-        <ul className="space-y-1">
-          {soon.slice(0, 8).map((h) => {
+        {/*
+          สามช่องต่อแถวบนจอกว้าง · ของเดิมเป็นแถวเต็มความกว้างแถวละเครื่อง
+          ซึ่งเหลือที่ว่างกลางแถวเป็นครึ่งจอโดยไม่ได้ใช้ทำอะไร
+          สามช่องทำให้เห็นสิบสองเครื่องในที่เท่าเดิมที่เคยเห็นสี่
+        */}
+        <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {soon.slice(0, 12).map((h) => {
             const m = minsLeft(h.due_at as string)
             const over = m < 0
             const warn = !over && m <= 60
@@ -484,26 +527,30 @@ export function HomeBoard({
             /* แถบยาวตามเวลาที่ใช้ไป · ไม่รู้เวลาเริ่มก็ประมาณจากกำหนดแปดชั่วโมง */
             const pct = over ? 100 : Math.max(4, Math.min(100, 100 - (m / 480) * 100))
             return (
-              <li key={h.out_item_id} className="grid grid-cols-[78px_minmax(0,1fr)_96px] items-center gap-2 rounded-card bg-surface px-2 py-[6px]">
-                <span className="font-mono text-xs font-bold">{h.asset_code}</span>
-                <span className="min-w-0">
-                  <span className="block truncate text-[12.5px]">{h.holder_name ?? '—'}</span>
-                  <span className="block text-[10px] text-ink-400">{h.type_name}</span>
-                  <span className="mt-1 block h-[7px] overflow-hidden rounded-pill bg-ink/10">
-                    <i className="block h-full rounded-pill" style={{ width: `${pct}%`, background: col }} />
+              <li key={h.out_item_id} className="rounded-card bg-surface px-2 py-[6px]">
+                <span className="flex items-center gap-2">
+                  <b className="shrink-0 font-mono text-xs">{h.asset_code}</b>
+                  <span className="min-w-0 flex-1 truncate text-[12.5px]">{h.holder_name ?? '—'}</span>
+                  <span className={`shrink-0 whitespace-nowrap rounded-pill px-2 py-[2px] font-mono text-[11.5px] font-bold ${bg}`}>
+                    {leftText(m)}
                   </span>
                 </span>
-                <span className={`rounded-pill px-2 py-[3px] text-center font-mono text-[12px] font-bold ${bg}`}>
-                  {leftText(m)}
+                <span className="mt-[1px] block truncate text-[10px] text-ink-400">{h.type_name}</span>
+                <span className="mt-1 block h-[6px] overflow-hidden rounded-pill bg-ink/10">
+                  <i className="block h-full rounded-pill" style={{ width: `${pct}%`, background: col }} />
                 </span>
               </li>
             )
           })}
-          {soon.length === 0 && <li className="py-3 text-center text-sm text-ink-400">ไม่มีเครื่องที่ออกไป</li>}
+          {soon.length === 0 && (
+            <li className="py-3 text-center text-sm text-ink-400 sm:col-span-2 xl:col-span-3">
+              ไม่มีเครื่องที่ออกไป
+            </li>
+          )}
         </ul>
-        {soon.length > 8 && (
+        {soon.length > 12 && (
           <Link to="/admin/assets-out" className="mt-2 block text-center text-xs text-ink-500 underline">
-            ดูทั้งหมดอีก {soon.length - 8} เครื่อง
+            ดูทั้งหมดอีก {soon.length - 12} เครื่อง
           </Link>
         )}
       </div>
