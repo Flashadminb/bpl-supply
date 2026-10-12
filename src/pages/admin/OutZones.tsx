@@ -14,6 +14,12 @@ import { outZoneRows, seedOutZones, setOutZone, setOutZoneMany, type OutZoneRow 
  * หน้านี้อยู่หลังบ้าน ไม่ใช่บนจอของค้างส่งออก เพราะเป็นงานตั้งค่า
  * ที่ทำครั้งเดียวแล้วนาน ๆ แก้ที — ของแบบนั้นไม่ควรอยู่บนจอที่เปิดค้างทั้งกะ
  */
+/**
+ * สายหลักไม่ต้องมีโซน เพราะเป็นรถหลัก ไม่ได้ขึ้นสายพานคัดแยก
+ * จึงไม่นับเป็นงานค้าง และไม่ขึ้นกรอบเตือนให้ไปตั้ง
+ */
+const needsZone = (r: OutZoneRow) => r.dir !== 'LH' && !r.zone?.trim()
+
 export default function OutZones() {
   const feed = useAsync(() => outZoneRows(), [])
   const [q, setQ] = useState('')
@@ -35,7 +41,7 @@ export default function OutZones() {
   const counts = useMemo(() => {
     const m = new Map<string, number>()
     for (const r of all) {
-      const k = r.zone?.trim() || '(ยังไม่ตั้ง)'
+      const k = r.zone?.trim() || (r.dir === 'LH' ? 'LH · รถหลัก' : '(ยังไม่ตั้ง)')
       m.set(k, (m.get(k) ?? 0) + 1)
     }
     return [...m.entries()].sort((a, b) => (a[0] === '(ยังไม่ตั้ง)' ? 1 : b[0] === '(ยังไม่ตั้ง)' ? -1 : a[0].localeCompare(b[0])))
@@ -45,12 +51,12 @@ export default function OutZones() {
     const s = q.trim().toLowerCase()
     return all.filter(
       (r) =>
-        (!onlyBlank || !r.zone?.trim()) &&
+        (!onlyBlank || needsZone(r)) &&
         (!s || r.station.toLowerCase().includes(s) || (r.zone ?? '').toLowerCase().includes(s)),
     )
   }, [all, q, onlyBlank])
 
-  const blanks = all.filter((r) => !r.zone?.trim()).length
+  const blanks = all.filter(needsZone).length
 
   function run(job: () => Promise<unknown>, ok: string) {
     setBusy(true)
@@ -75,6 +81,8 @@ export default function OutZones() {
           <br />
           ตารางนี้แยกจากรายชื่อสาขาของงานปล่อยรถ · ดึงมาครั้งแรกครั้งเดียว แล้วแก้ที่นี่ได้เลย
           แก้ฝั่งโน้นไม่กระทบฝั่งนี้ และกลับกันด้วย
+          <br />
+          สายหลัก LH ไม่ต้องตั้งโซน เพราะเป็นรถหลักที่ไม่ได้ขึ้นสายพาน · บนกระดานจะขึ้นว่า LH
         </p>
       </div>
 
@@ -107,7 +115,7 @@ export default function OutZones() {
                   className={`chip ${q === z ? 'chip-on' : ''}`}
                   onClick={() => {
                     setOnlyBlank(z === '(ยังไม่ตั้ง)')
-                    setQ(z === '(ยังไม่ตั้ง)' ? '' : z)
+                    setQ(z === '(ยังไม่ตั้ง)' || z === 'LH · รถหลัก' ? '' : z)
                   }}
                 >
                   {z} · {n}
@@ -254,6 +262,7 @@ function ZoneRow({
       </td>
       <td className="px-3 py-2">
         <span className="block">{r.station}</span>
+        {r.dir === 'LH' && <span className="block text-xs text-ink-400">รถหลัก ไม่ต้องมีโซน · บนกระดานขึ้นว่า LH</span>}
         {r.from_seed && <span className="block text-xs text-ink-400">ดึงมาจากงานปล่อยรถ ยังไม่เคยแก้เอง</span>}
       </td>
       <td className="px-3 py-2 font-mono text-xs text-ink-500">{r.dir}</td>
@@ -262,7 +271,7 @@ function ZoneRow({
       </td>
       <td className="px-3 py-2">
         <input
-          className={`input h-tap w-[120px] ${r.zone ? '' : 'border-warn'}`}
+          className={`input h-tap w-[120px] ${needsZone(r) ? 'border-warn' : ''}`}
           list="zone-list"
           placeholder="เช่น D05"
           value={zone}
