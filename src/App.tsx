@@ -2,7 +2,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Suspense, lazy, useEffect, type ReactNode } from 'react'
 import { useAuth } from './lib/auth'
 import type { UserRole } from './lib/types'
-import { MANAGER_ROLES, canSeeSacks, canBreakIssue, canBreakGuard, isOwner } from './lib/roles'
+import { MANAGER_ROLES, canSeeSacks, canBreakIssue, canBreakGuard } from './lib/roles'
 import { useDeptNames } from './lib/deptNames'
 import { PushNag } from './components/PushNag'
 import { Loading } from './components/ui'
@@ -86,7 +86,6 @@ function Guard({
   allowDispatch,
   allowGuard,
   needsSack,
-  needsOwner,
   needsBreak,
 }: {
   children: ReactNode
@@ -97,8 +96,6 @@ function Guard({
   allowGuard?: boolean
   /** ต้องมีสิทธิ์เห็นงานกระสอบ — ซ่อนไทล์อย่างเดียวไม่พอ คนรู้ URL ยังเข้าได้ */
   needsSack?: boolean
-  /** เจ้าของระบบคนเดียว · ผู้ดูแลระบบก็เข้าไม่ได้ เพราะใช้ธง is_owner ไม่ใช่ role */
-  needsOwner?: boolean
   /**
    * ต้องมีสิทธิ์เรื่องบัตรเบรค
    *   issue  ปล่อยบัตรได้ · guard สแกนได้ · any อย่างใดอย่างหนึ่งก็เข้าได้
@@ -142,7 +139,6 @@ function Guard({
     (allowGuard && profile.can_guard)
   if (!roleOk) return <Navigate to="/" replace />
   if (needsSack && !canSeeSacks(profile)) return <Navigate to="/" replace />
-  if (needsOwner && !isOwner(profile)) return <Navigate to="/" replace />
   if (needsBreak) {
     const ok =
       needsBreak === 'issue'
@@ -282,9 +278,10 @@ export default function App() {
       */}
       {/* ของค้างส่งออก · หน้าเต็มจอของตัวเอง ไม่ใช้กรอบหลังบ้าน
           แบบเดียวกับกระดานปล่อยรถและรถรอลงงาน เพราะเป็นจอที่เปิดค้างไว้ดู
-          ไม่ใช่หน้าตั้งค่าที่เข้าไปทำแล้วออก · เจ้าของระบบคนเดียว
-          ด่านจริงอยู่ที่ RLS ของ hub_out_* ซึ่งตรวจ my_is_owner() ทุกตารางและทุก RPC */}
-      <Route path="/outbox" element={<Guard needsOwner><OutBox /></Guard>} />
+          ไม่ใช่หน้าตั้งค่าที่เข้าไปทำแล้วออก
+          เจ้าของระบบกับผู้ดูแลระบบ ซึ่งใช้ role = admin ร่วมกัน
+          ด่านจริงอยู่ที่ RLS ของ hub_out_* ซึ่งตรวจ my_can_outbox() ทุกตารางและทุก RPC */}
+      <Route path="/outbox" element={<Guard roles={['admin']}><OutBox /></Guard>} />
       <Route path="/wait" element={<Guard><WaitBoard /></Guard>} />
       {/* เส้นทางเดิมของหน้าอัปไฟล์ · ตอนนี้เป็นป็อปอัพบนกระดานแล้ว พาไปที่กระดานพร้อมเปิดช่องเลือกไฟล์ */}
       <Route path="/wait/upload" element={<Navigate to="/wait?upload=1" replace />} />

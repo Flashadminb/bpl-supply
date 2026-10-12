@@ -20,7 +20,6 @@ import {
   canSeeSacks,
   roleLabel,
   showsOsScanTile,
-  isOwner,
 } from '../../lib/roles'
 import { usePendingApprovals } from '../../lib/usePendingApprovals'
 import { NotifyBell } from '../../components/NotifyBell'
@@ -174,11 +173,11 @@ export default function Home() {
             </Link>
 
             {/*
-              ของค้างส่งออก · เจ้าของระบบคนเดียว ตามที่สั่งไว้รอบแรก
+              ของค้างส่งออก · เจ้าของระบบกับผู้ดูแลระบบ ซึ่งใช้ role เดียวกัน
               ไอคอนเป็นกล่องซ้อนกันมีลูกศรชี้ออก สื่อว่าของกองรอออก ไม่ใช่รถ
               ต้องไม่ซ้ำกับสองอันซ้ายมือ ซึ่งเป็นรูปตู้รถทั้งคู่
             */}
-            {isOwner(profile) && (
+            {can('admin') && (
               <Link
                 to="/outbox"
                 aria-label="ของค้างส่งออก"
@@ -348,11 +347,11 @@ export default function Home() {
             </Link>
 
             {/*
-              ของค้างส่งออก · เจ้าของระบบคนเดียว ตามที่สั่งไว้รอบแรก
+              ของค้างส่งออก · เจ้าของระบบกับผู้ดูแลระบบ ซึ่งใช้ role เดียวกัน
               ไอคอนเป็นกล่องซ้อนกันมีลูกศรชี้ออก สื่อว่าของกองรอออก ไม่ใช่รถ
               ต้องไม่ซ้ำกับสองอันซ้ายมือ ซึ่งเป็นรูปตู้รถทั้งคู่
             */}
-            {isOwner(profile) && (
+            {can('admin') && (
               <Link
                 to="/outbox"
                 aria-label="ของค้างส่งออก"
