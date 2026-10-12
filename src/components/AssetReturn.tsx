@@ -184,6 +184,12 @@ export function AssetReturn({ onCount }: { onCount?: (n: number) => void }) {
           refNo: res.ref_no,
           codes: picked,
           typeName: chosenTypes.map(nameOf).join(' · '),
+          groups: chosenTypes.map((c) => ({
+            name: nameOf(c),
+            codes: (groups.find((g) => g.code === c)?.list ?? [])
+              .map((h) => h.asset_code)
+              .filter((x) => picked.includes(x)),
+          })),
           photoCount: chosenTypes.reduce(
             (n, c) => n + shotsToPhotos(shotsBy[c] ?? []).length,
             0,

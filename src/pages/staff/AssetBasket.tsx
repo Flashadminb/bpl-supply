@@ -199,6 +199,10 @@ export default function AssetBasket() {
           typeName: chosenTypes
             .map((c) => (types.data ?? []).find((t) => t.code === c)?.name ?? c)
             .join(' · '),
+          groups: chosenTypes.map((c) => ({
+            name: (types.data ?? []).find((t) => t.code === c)?.name ?? c,
+            codes: picked[c],
+          })),
           photoCount: photoGroups.reduce(
             (n, g) => n + shotsToPhotos(shotsBy[g.code] ?? []).length,
             0,
