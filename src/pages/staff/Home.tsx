@@ -25,6 +25,7 @@ import {
 } from '../../lib/roles'
 import { usePendingApprovals } from '../../lib/usePendingApprovals'
 import { NotifyBell } from '../../components/NotifyBell'
+import { NewNotices } from '../../components/NewNotices'
 import { WorkLinks } from '../../components/WorkLinks'
 import { NoticeBoard } from '../../components/NoticeBoard'
 import { MeetingCheckIn } from '../../components/MeetingCheckIn'
@@ -99,9 +100,10 @@ export default function Home() {
    *
    * ใช้ตัวเลขที่หน้านี้ขอมาอยู่แล้วทั้งหมด ไม่ได้ยิงถามเพิ่มแม้แต่ครั้งเดียว
    */
-  const lateAssets = (heldAssets.data ?? []).filter(
-    (h) => h.due_at && Date.now() > Date.parse(h.due_at),
-  ).length
+  const lateList = (heldAssets.data ?? [])
+    .filter((h) => h.due_at && Date.now() > Date.parse(h.due_at))
+    .map((h) => ({ code: h.asset_code, typeName: h.type_name, dueAt: h.due_at as string }))
+  const lateAssets = lateList.length
   const notices: NoticeItem[] = []
   if (lateAssets > 0)
     notices.push({
@@ -585,6 +587,13 @@ export default function Home() {
       </header>
 
       <StaffPage className="-mt-3">
+        {/*
+          ป็อปอัพเรื่องใหม่ · อยู่บนหน้าแรกเท่านั้นโดยตั้งใจ
+          หน้าสแกน กล้อง และฟอร์มที่ยังไม่เซฟจึงไม่มีทางโดนบัง
+          ซึ่งเป็นความเสี่ยงที่แพงที่สุดของฟีเจอร์นี้
+        */}
+        <NewNotices late={lateList} />
+
         {/* ป้ายประกาศ — ต้องอยู่บนสุด ถ้าอยู่ล่างจะไม่มีใครเลื่อนลงไปอ่าน */}
         <NoticeBoard />
 
