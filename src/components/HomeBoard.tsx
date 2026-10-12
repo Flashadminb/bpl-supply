@@ -378,7 +378,7 @@ export function HomeBoard({
       label: 'เบรคเกินเวลา',
       tone: brOver.length > 0 ? 'bad' : undefined,
       blink: brOver.length > 0,
-      to: '/admin/break/history',
+      to: '/admin/break/history?tab=stuck',
       head: 'ใบที่เลยเวลาและยังไม่ได้รับกลับ',
       rows: brOver
         .slice(0, 20)
@@ -394,7 +394,7 @@ export function HomeBoard({
       n: brGroups.reduce((n, g) => n + g.open_people, 0),
       label: 'กำลังเบรคอยู่',
       tone: brGroups.length > 0 ? 'warn' : undefined,
-      to: '/admin/break/history',
+      to: '/admin/break/history?tab=stuck',
       head: 'แผนกที่กำลังเบรคอยู่',
       rows: brGroups.map(
         (g) =>
@@ -489,6 +489,7 @@ export function HomeBoard({
       <style>{`
         @keyframes hbTick { from { transform: translateX(0) } to { transform: translateX(-50%) } }
         @keyframes hbBlink { 0%,100% { border-color: transparent } 50% { border-color: #E24B4A } }
+        @keyframes hbFlash { 0%,100% { background: #FCEBEB } 50% { background: #F7C1C1 } }
       `}</style>
 
       {/*
@@ -598,8 +599,10 @@ export function HomeBoard({
 
       {/*
         สถานะเบรค · ขึ้นเฉพาะตอนมีคนเบรคอยู่จริง
-        แผนกที่มีใบเกินเวลาขึ้นกรอบแดง เพราะเป็นคนที่ต้องไปตามเดี๋ยวนี้
-        กดที่ป้ายไหนก็เด้งไปหน้าประวัติเบรคทันที
+        ทุกช่องกดแล้วเด้งไปที่แท็บใบที่ค้างอยู่ พร้อมใส่คำค้นให้เลย
+        ไม่ใช่พาไปหน้าประวัติเฉย ๆ แล้วให้ไปไล่หาเองว่าใบไหน
+        จัดเป็นตารางช่องเล็กทั้งแถบ ของเดิมกล่องแดงกินเต็มความกว้าง
+        ทั้งที่ข้างในมีป้ายเดียว
       */}
       {(brGroups.length > 0 || brOver.length > 0) && (
         <div className="mb-3 rounded-card bg-surface-2 p-3">
@@ -608,57 +611,59 @@ export function HomeBoard({
             <span className="text-xs text-ink-500">
               {brGroups.reduce((n, g) => n + g.open_cards, 0)} ใบ ·{' '}
               {brGroups.reduce((n, g) => n + g.open_people, 0)} คน
+              {brOver.length > 0 && ` · เกินเวลา ${brOver.length} ใบ`}
             </span>
             <span className="flex-1" />
-            <Link to="/admin/break/history" className="text-xs text-ink-500 underline">
-              ไปหน้าประวัติเบรค
+            <Link to="/admin/break/history?tab=stuck" className="text-xs text-ink-500 underline">
+              ไปหน้าใบที่ค้างอยู่
             </Link>
           </div>
 
-          {brOver.length > 0 && (
-            <div className="mb-2 rounded-card border-2 border-danger bg-danger-bg p-2">
-              <p className="mb-1 font-display text-danger-txt">เกินเวลาแล้ว {brOver.length} ใบ</p>
-              <div className="flex flex-wrap gap-1">
-                {brOver.slice(0, 10).map((o) => (
-                  <Link
-                    key={o.card + o.due_at}
-                    to="/admin/break/history"
-                    className="rounded-pill bg-surface px-2 py-[3px] text-xs text-danger-txt"
-                  >
-                    <b className="font-mono">{o.card}</b> · {o.grp} · {o.people} คน · เกิน{' '}
-                    {o.over_min} นาที
-                  </Link>
-                ))}
-                {brOver.length > 10 && (
-                  <span className="self-center text-xs text-danger-txt">
-                    และอีก {brOver.length - 10} ใบ
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
+          <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-5">
+            {brOver.map((o) => (
+              <Link
+                key={o.card + o.due_at}
+                to={`/admin/break/history?tab=stuck&q=${encodeURIComponent(o.card)}`}
+                /* กระพริบเตือนเฉพาะใบที่เกินเวลา · ช้า 1.1 วินาทีต่อรอบ
+                   หน้านี้เปิดค้างทั้งกะ ของที่กะพริบถี่จะกวนจนคนเลิกมอง */
+                className="animate-[hbFlash_1.1s_ease-in-out_infinite] rounded-card border-2 border-danger px-2 py-[6px]"
+              >
+                <p className="truncate font-mono text-xs font-bold text-danger-txt">{o.card}</p>
+                <p className="truncate text-[11px] text-danger-txt">
+                  {o.grp} · {o.people} คน
+                </p>
+                <p className="font-mono text-[11px] font-bold text-danger-txt">
+                  เกิน {o.over_min} นาที
+                </p>
+              </Link>
+            ))}
 
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             {brGroups.map((g) => {
               const leftCards = Math.max(0, g.max_open - g.open_cards)
               const leftPeople = Math.max(0, g.max_people - g.open_people)
+              /* ตั้งเพดานไว้ 0 แปลว่าไม่จำกัด ไม่ใช่เต็มสิทธิ
+                 เขียนว่าเต็มทั้งที่ไม่ได้จำกัดคือบอกผิด แล้วคนจะไม่กล้าปล่อยเพิ่ม */
+              const capCards = g.max_open > 0
+              const capPeople = g.max_people > 0
+              const full = (capCards && leftCards === 0) || (capPeople && leftPeople === 0)
               return (
                 <Link
                   key={g.code}
-                  to="/admin/break/history"
-                  className={`rounded-card border-2 px-3 py-2 ${
-                    g.over_cards > 0 ? 'border-danger bg-danger-bg' : 'border-transparent bg-surface'
-                  }`}
+                  to={`/admin/break/history?tab=stuck&q=${encodeURIComponent(g.code)}`}
+                  className="rounded-card border border-line bg-surface px-2 py-[6px]"
                 >
-                  <p className="truncate font-display text-base">{g.name}</p>
-                  <p className="font-mono text-sm">
-                    ใบ {g.open_cards}/{g.max_open} · {g.open_people}/{g.max_people} คน
+                  <p className="truncate font-display text-[13px]">{g.name}</p>
+                  <p className="font-mono text-[11px]">
+                    ใบ {g.open_cards}
+                    {capCards ? `/${g.max_open}` : ''} · {g.open_people}
+                    {capPeople ? `/${g.max_people}` : ''} คน
                   </p>
-                  <p className="text-xs text-ink-500">
-                    {leftCards === 0 || leftPeople === 0
-                      ? 'เต็มสิทธิแล้ว'
-                      : `เหลือสิทธิอีก ${leftCards} ใบ · ${leftPeople} คน`}
-                    {g.over_cards > 0 && ` · เกินเวลา ${g.over_cards} ใบ`}
+                  <p className="truncate text-[10.5px] text-ink-500">
+                    {!capCards && !capPeople
+                      ? 'ไม่ได้จำกัดสิทธิ'
+                      : full
+                        ? 'เต็มสิทธิแล้ว'
+                        : `เหลือ ${capCards ? leftCards + ' ใบ' : ''}${capCards && capPeople ? ' · ' : ''}${capPeople ? leftPeople + ' คน' : ''}`}
                   </p>
                 </Link>
               )

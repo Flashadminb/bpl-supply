@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
 import { DateRangePicker } from '../../components/DateRangePicker'
 import { BulkDeleteBar, PickBox } from '../../components/BulkDeleteBar'
@@ -131,7 +132,18 @@ function Photos({ passId }: { passId: number }) {
 }
 
 export default function BreakHistory() {
-  const [tab, setTab] = useState<Tab>('history')
+  /**
+   * เปิดแท็บและคำค้นตามลิงก์ที่พามา
+   *
+   * หน้าแรกส่งมาที่ ?tab=stuck&q=OUT6-05 เพื่อให้กดจากการ์ดแล้วเจอใบนั้นเลย
+   * ของเดิมพามาที่แท็บประวัติเสมอ ซึ่งเป็นคนละแท็บกับที่ใบค้างอยู่
+   * คนกดจากหน้าแรกจึงต้องมาไล่หาเองอีกรอบ ทั้งที่เพิ่งชี้ไปแล้วว่าใบไหน
+   */
+  const q0 = new URLSearchParams(useLocation().search)
+  const tab0 = q0.get('tab')
+  const [tab, setTab] = useState<Tab>(
+    tab0 === 'stuck' || tab0 === 'stats' || tab0 === 'trash' ? tab0 : 'history',
+  )
   // ย้อนหลัง 7 วันพอ เบรคเกิดวันละหลายร้อยใบ ตั้ง 30 วันแล้วตารางจะชนเพดาน 1000 แถว
   const [from, setFrom] = useState(dayKey(-7))
   const [to, setTo] = useState(dayKey())
@@ -140,7 +152,7 @@ export default function BreakHistory() {
   const [onlyProblem, setOnlyProblem] = useState(false)
   const [open, setOpen] = useState<number | null>(null)
   // ค้นหาด้วยรหัสบัตรหรือชื่อคนปล่อย · สองอย่างนี้คือสิ่งที่คนจำได้ตอนตามเรื่องย้อนหลัง
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(q0.get('q') ?? '')
   const [picked, setPicked] = useState<Set<number>>(new Set())
   const [group, setGroup] = useState('')
   const [card, setCard] = useState('')
