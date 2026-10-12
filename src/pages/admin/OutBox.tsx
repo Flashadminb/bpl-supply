@@ -386,7 +386,6 @@ export default function OutBox() {
                 </span>
                 <span className="text-xs" style={{ color: ageMin > 45 ? C.amberInk : C.faint }}>
                   {ageTxt}
-                  {ageMin > 45 ? ' · เลยรอบ 30 นาทีไปแล้ว' : ''}
                 </span>
                 <span className="block font-mono text-[11px]" style={{ color: C.faint }}>
                   อัปเข้าระบบ {thFull(snap.uploaded_at)}
