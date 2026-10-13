@@ -118,6 +118,19 @@ export default function BreakIssue() {
   const chosen = list.find((c) => c.code === card) ?? null
 
   /**
+   * เข้าโหมดใบละคนตั้งแต่เปิดหน้า ไม่ต้องรอให้กดบัตรก่อน
+   *
+   * ของเดิมดูที่บัตรที่กดไว้ ซึ่งตอนเพิ่งเปิดหน้ายังไม่มี จึงตกไปที่ฟอร์มเก่า
+   * หัวหน้าเลยเห็นช่อง "ใบนี้กี่คน" ของเก่าโผล่มาคู่กับของใหม่
+   *
+   * คนส่วนใหญ่ดูแลแผนกเดียว · ทุกใบเปิดกฎเหมือนกันก็เข้าโหมดใหม่ได้เลย
+   * ใครดูแลหลายแผนกและเปิดไม่เท่ากัน ค่อยตัดสินจากใบที่กด
+   */
+  const oneMode = chosen
+    ? chosen.one_per_card
+    : list.length > 0 && list.every((c) => c.one_per_card)
+
+  /**
    * เพดานของแผนก · 0 แปลว่าไม่จำกัด
    *
    * ตัวที่กั้นจริงคือหัวคน ไม่ใช่จำนวนใบ ของเดิมนับใบ แปลว่าใบละคนเดียวสามใบ
@@ -313,8 +326,10 @@ export default function BreakIssue() {
             </div>
           )}
 
-          {/* ───────── เลือกบัตร ───────── */}
-          {[...byGroup.entries()].map(([g, arr]) => (
+          {/* ───────── เลือกบัตร ─────────
+              โหมดใบละคนมีกระดานบัตรของตัวเองที่กดแล้วเพิ่มคนได้เลย
+              ถ้าโชว์อันนี้ด้วยจะมีที่เลือกบัตรสองชุดซ้อนกัน */}
+          {!oneMode && [...byGroup.entries()].map(([g, arr]) => (
             <section key={g} className="mb-4">
               <p className="mb-1.5 text-xs font-semibold text-ink-500">
                 {arr[0].group_name ? `${g} · ${arr[0].group_name}` : g}
@@ -358,7 +373,7 @@ export default function BreakIssue() {
             </section>
           ))}
 
-          {capped && (
+          {!oneMode && capped && (
             <p className="mb-4 rounded-btn bg-warn-bg px-3 py-2 text-sm text-warn-txt">
               {cardsFull ? (
                 <>
@@ -388,9 +403,9 @@ export default function BreakIssue() {
             ย้ายไปเป็นค่ารวมอยู่ในตัวมันเองแล้ว
             แผนกที่ยังไม่เปิดไม่เห็นอะไรต่างจากเดิมเลยแม้แต่นิดเดียว
           */}
-          {chosen?.one_per_card ? (
+          {oneMode ? (
             <BreakIssueMany
-              cards={list.filter((c) => c.group_code === chosen.group_code)}
+              cards={chosen ? list.filter((c) => c.group_code === chosen.group_code) : list}
               reasons={rs}
               suppliers={sups.data ?? []}
               stampBase={stamp}
