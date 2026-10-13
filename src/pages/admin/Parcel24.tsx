@@ -95,7 +95,9 @@ export default function Parcel24() {
         const res = await importP24(p, f.name)
         setLastId(res.id)
         setMsg(
-          `อัปทับรอบ ${thFull(p.dataAt)} แล้ว · ${nf(res.rows)} ชิ้น · ยกเลิกการส่งต่อ ${nf(res.cancel)} · เก่าสุดค้างมา ${p.oldestHours} ชม · ของที่ไม่มีในไฟล์ใหม่หายจากจอแล้ว`,
+          `อัปทับรอบ ${thFull(p.dataAt)} แล้ว · ${nf(res.rows)} ชิ้น · ยกเลิกการส่งต่อ ${nf(res.cancel)} · เก่าสุดค้างมา ${p.oldestHours} ชม` +
+            (p.other > 0 ? ` · ตัดของฮับอื่นออก ${nf(p.other)} ชิ้น` : '') +
+            ' · ของที่ไม่มีในไฟล์ใหม่หายจากจอแล้ว',
         )
         board.reload()
       })

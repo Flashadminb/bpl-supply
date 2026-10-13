@@ -18,6 +18,18 @@ import { maybeDate, readXlsx } from './xlsx'
 export const CANCEL = 'ยกเลิกการส่งต่อพัสดุ'
 
 /**
+ * เอาเฉพาะของที่สถานีก่อนหน้าเป็นฮับเรา
+ *
+ * ไฟล์ต้นทางส่งมาทั้งประเทศ · ของจริงวันที่ 13 ต.ค. มี 6,460 แถว
+ * เป็นของที่ออกจาก 21 BPL แค่ 248 แถว ที่เหลือเป็นของฮับอื่นล้วน ๆ
+ * เก็บทั้งหมดคือเปลืองทั้งฐานข้อมูล ทั้งเน็ตตอนเปิดจอ และทำให้หาของตัวเองไม่เจอ
+ *
+ * เทียบแบบตัดช่องว่างทิ้งก่อน เพราะชื่อในไฟล์มีเว้นวรรคกลาง "21 BPL_BHUB-บางพลี"
+ * ซึ่งเป็นจุดที่ไฟล์รุ่นหน้าชอบเปลี่ยนโดยไม่บอก
+ */
+export const MY_HUB = '21BPL'
+
+/**
  * รหัสอังกฤษของระบบต้นทาง เป็นคำไทยที่หน้างานอ่านอยู่แล้ว
  *
  * ไฟล์ที่โหลดมาจากระบบมีสองแบบ แล้วแต่ภาษาที่เลือกตอนกดออกรายงาน
@@ -153,6 +165,8 @@ export interface ParsedP24 {
   cancel: number
   /** ชิ้นที่เก่าสุดค้างมากี่ชั่วโมง · ไว้โชว์ตอนยืนยันก่อนบันทึก */
   oldestHours: number
+  /** แถวของฮับอื่นที่ตัดทิ้งไป · ไว้บอกให้เห็นว่าไฟล์ใหญ่แค่ไหนก่อนกรอง */
+  other: number
 }
 
 export async function parseP24(file: File): Promise<ParsedP24> {
@@ -194,6 +208,8 @@ export async function parseP24(file: File): Promise<ParsedP24> {
   /* ไม่บังคับ · ไฟล์ที่ไม่มีคอลัมน์นี้ก็ยังอัปได้ตามปกติ ช่องนี้จะว่างเฉย ๆ */
   const cCust = findCol(head, 'ประเภทลูกค้า')
   const cBag = findCol(head, 'เลขถุงแบ๊กกิ้ง', 'เลขถุง')
+  /* สถานีก่อนหน้า · ไฟล์เก่าไม่มีคอลัมน์นี้ ก็ไม่กรอง เอาทั้งหมดเหมือนเดิม */
+  const cFrom = findCol(head, 'สถานีก่อน', '上一站')
 
   /*
     บอกให้ชัดว่าขาดคอลัมน์ไหน พร้อมแปะหัวตารางที่เจอจริงมาด้วย
@@ -215,6 +231,8 @@ export async function parseP24(file: File): Promise<ParsedP24> {
   const seen = new Set<string>()
   let maxAt = ''
   let oldest = Infinity
+  /** แถวที่ตัดทิ้งเพราะเป็นของฮับอื่น · เอาไปบอกตอนอัปเสร็จ */
+  let other = 0
 
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i] ?? []
@@ -222,6 +240,15 @@ export async function parseP24(file: File): Promise<ParsedP24> {
     if (!tracking || tracking === '--') continue
     if (seen.has(tracking)) continue
     seen.add(tracking)
+
+    /* ของฮับอื่นตัดทิ้งตั้งแต่ตรงนี้ ไม่ได้ส่งขึ้นฐานข้อมูลเลย */
+    if (cFrom >= 0) {
+      const from = String(r[cFrom] ?? '').replace(/\s+/g, '')
+      if (!from.includes(MY_HUB)) {
+        other++
+        continue
+      }
+    }
 
     const lastAt = cLastAt >= 0 ? thToIso(String(r[cLastAt] ?? '')) : null
     const inAt = cInWh >= 0 ? thToIso(String(r[cInWh] ?? '')) : null
@@ -249,13 +276,24 @@ export async function parseP24(file: File): Promise<ParsedP24> {
     })
   }
 
+  /*
+   * กรองแล้วไม่เหลือเลยสักแถว แปลว่าชื่อฮับในไฟล์เปลี่ยนไป ไม่ใช่ว่าไม่มีของค้าง
+   * ถ้าปล่อยผ่าน จอจะว่างเปล่าโดยที่ไม่มีใครรู้ว่าเพราะอะไร
+   * จึงหยุดไว้แล้วบอกตรง ๆ ว่าต้องไปดูชื่อฮับในไฟล์
+   */
+  if (!out.length && other > 0) {
+    throw new Error(
+      `ไฟล์นี้มี ${other} แถว แต่ไม่มีแถวไหนที่สถานีก่อนหน้าเป็นฮับเราเลย · ` +
+        'ชื่อฮับในไฟล์อาจเปลี่ยนไป ให้แจ้งคนดูแลระบบตรวจก่อน',
+    )
+  }
   if (!out.length) throw new Error('ไฟล์นี้ไม่มีแถวที่มีเลขพัสดุ')
   if (!maxAt) throw new Error('ไฟล์นี้ไม่มีเวลาดำเนินการล่าสุด จึงบอกไม่ได้ว่าเป็นข้อมูลรอบไหน')
 
   const cancel = out.filter((x) => x.action === CANCEL).length
   const oldestHours = oldest === Infinity ? 0 : Math.round((new Date(maxAt).getTime() - oldest) / 36e5)
 
-  return { dataAt: maxAt, rows: out, cancel, oldestHours }
+  return { dataAt: maxAt, rows: out, cancel, oldestHours, other }
 }
 
 /* ---------------------------------------------------------------- เรียก */
