@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAsync } from '../../lib/useAsync'
+import { useAuth } from '../../lib/auth'
 import { Spinner } from '../../components/ui'
 import { readableError } from '../../lib/supabase'
 import { heat } from '../../lib/boardTheme'
@@ -250,6 +251,14 @@ export default function OutBox() {
   const [lastId, setLastId] = useState<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  /*
+    อัปไฟล์ได้เฉพาะผู้ดูแลระบบ · ตรงกับ my_can_outbox() ฝั่งฐานข้อมูลตัวต่อตัว
+    ฐานข้อมูลเป็นด่านจริง ตรงนี้แค่ไม่เอาปุ่มที่กดไม่ได้ไปวางให้คนกด
+    หน้างานเปิดหน้านี้ได้แล้วตั้งแต่ไฟล์ 167 แต่ดูได้อย่างเดียว
+  */
+  const { can } = useAuth()
+  const mayUpload = can('admin')
+
   useEffect(() => {
     const t = setInterval(() => setClock(new Date()), 1000)
     return () => clearInterval(t)
@@ -387,16 +396,20 @@ export default function OutBox() {
       <div className="px-4 py-4">
         {/* ───────── อัปไฟล์ · สลับหน้า ───────── */}
         <section className="mb-3 flex flex-wrap items-center gap-3 px-3 py-3" style={{ ...CARD, borderLeft: `4px solid ${C.brand}` }}>
-          <input ref={fileRef} type="file" accept=".xlsx" className="hidden" onChange={(e) => void pickFile(e.target.files?.[0] ?? null)} />
-          <button
-            type="button"
-            className="h-tap rounded-btn px-5 font-bold"
-            style={{ background: C.brand, color: C.bg, opacity: busy ? 0.6 : 1 }}
-            disabled={busy}
-            onClick={() => fileRef.current?.click()}
-          >
-            {busy ? <Spinner /> : null} อัปไฟล์รอบใหม่ <Cn>上传新一轮</Cn>
-          </button>
+          {mayUpload && (
+            <>
+              <input ref={fileRef} type="file" accept=".xlsx" className="hidden" onChange={(e) => void pickFile(e.target.files?.[0] ?? null)} />
+              <button
+                type="button"
+                className="h-tap rounded-btn px-5 font-bold"
+                style={{ background: C.brand, color: C.bg, opacity: busy ? 0.6 : 1 }}
+                disabled={busy}
+                onClick={() => fileRef.current?.click()}
+              >
+                {busy ? <Spinner /> : null} อัปไฟล์รอบใหม่ <Cn>上传新一轮</Cn>
+              </button>
+            </>
+          )}
           <span className="text-sm" style={{ color: C.mute }}>
             {snap ? `${snap.row_count} สาขา · ${snap.truck_count} คัน` : 'ยังไม่มีข้อมูล'}
             {snap?.hidden_count ? ` · ปิดโชว์ไว้ ${snap.hidden_count} สาขา ไม่ได้นับในยอด` : ''}
@@ -432,7 +445,7 @@ export default function OutBox() {
                 {label} <Cn>{cn}</Cn>
               </button>
             ))}
-            {lastId !== null && (
+            {mayUpload && lastId !== null && (
               <button
                 type="button"
                 className="h-tap rounded-btn px-3 text-sm"
@@ -462,7 +475,7 @@ export default function OutBox() {
         {board.error && <p className="rounded-lg px-3 py-2" style={{ background: 'rgba(255,92,92,.12)', color: C.redInk }}>{board.error}</p>}
         {!board.loading && !snap && (
           <p className="py-16 text-center text-lg" style={{ ...CARD, color: C.mute }}>
-            ยังไม่เคยอัปไฟล์ · กดปุ่มด้านบนเพื่อเริ่ม
+            {mayUpload ? 'ยังไม่เคยอัปไฟล์ · กดปุ่มด้านบนเพื่อเริ่ม' : 'ยังไม่มีข้อมูล · รอผู้ดูแลระบบอัปไฟล์รอบแรก'}
           </p>
         )}
 
