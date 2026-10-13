@@ -362,14 +362,14 @@ export default function Home() {
             </Link>
 
             {/*
-              งาน 48 ชั่วโมง · เจ้าของระบบกับผู้ดูแลระบบเท่านั้น หน้างานยังไม่เปิด
+              จับคู่ · เจ้าของระบบกับผู้ดูแลระบบเท่านั้น หน้างานยังไม่เปิด
               ไอคอนเป็นเลข 48 ในกรอบ ชุดเดียวกับเลข 24 ที่อยู่ข้าง ๆ
               เจ้าของระบบเรียกสองหน้านี้ว่า "ไอคอน 24" กับ "ไอคอน 48" จึงต้องเป็นเลข
             */}
             {can('admin') && (
               <Link
                 to="/parcel48"
-                aria-label="งาน 48 ชั่วโมง"
+                aria-label="จับคู่"
                 className="flex h-tap w-tap items-center justify-center rounded-btn border border-ink/15 bg-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,.7)]"
               >
                 <svg viewBox="0 0 24 24" width="26" height="26" fill="none" aria-hidden>
@@ -632,14 +632,14 @@ export default function Home() {
             </Link>
 
             {/*
-              งาน 48 ชั่วโมง · เจ้าของระบบกับผู้ดูแลระบบเท่านั้น หน้างานยังไม่เปิด
+              จับคู่ · เจ้าของระบบกับผู้ดูแลระบบเท่านั้น หน้างานยังไม่เปิด
               ไอคอนเป็นเลข 48 ในกรอบ ชุดเดียวกับเลข 24 ที่อยู่ข้าง ๆ
               เจ้าของระบบเรียกสองหน้านี้ว่า "ไอคอน 24" กับ "ไอคอน 48" จึงต้องเป็นเลข
             */}
             {can('admin') && (
               <Link
                 to="/parcel48"
-                aria-label="งาน 48 ชั่วโมง"
+                aria-label="จับคู่"
                 className="flex h-tap w-tap items-center justify-center rounded-btn border border-ink/15 bg-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,.7)]"
               >
                 <svg viewBox="0 0 24 24" width="26" height="26" fill="none" aria-hidden>

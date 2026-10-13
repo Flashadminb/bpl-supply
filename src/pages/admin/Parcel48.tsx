@@ -28,7 +28,7 @@ import {
 } from '../../lib/parcel48'
 
 /**
- * งาน 48 ชั่วโมง
+ * จับคู่
  *
  * จอเต็มของตัวเอง ฟิลเดียวกับพัสดุค้างเกิน 24 ชม เพราะแขวนอยู่ข้างกันในคลัง
  * เปิดให้เจ้าของระบบกับผู้ดูแลระบบ · ด่านจริงอยู่ที่ RLS ของ p48_* ที่ตรวจ my_can_outbox()
@@ -243,9 +243,9 @@ export default function Parcel48() {
           >
             48
           </span>
-          <span className="text-lg font-bold">งาน 48 ชั่วโมง</span>
+          <span className="text-lg font-bold">จับคู่</span>
           <span className="text-xs" style={{ color: C.faint }}>
-            จับคู่เลขพัสดุกับรายละเอียดสินค้า
+            เลขพัสดุ + รายละเอียดสินค้า จากสองไฟล์
           </span>
           <span className="flex-1" />
           <Cards stats={stats.data} loading={stats.loading} />
