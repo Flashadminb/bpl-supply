@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../../lib/auth'
 import { useAsync } from '../../lib/useAsync'
 import { Spinner } from '../../components/ui'
 import { readableError } from '../../lib/supabase'
@@ -40,6 +41,10 @@ export default function Parcel24() {
   const [clock, setClock] = useState(() => new Date())
   const [copied, setCopied] = useState<string | null>(null)
 
+  /* อัปไฟล์ได้เฉพาะผู้ดูแลระบบ · ตรงกับ my_can_outbox() ฝั่งฐานข้อมูลตัวต่อตัว
+     ฐานข้อมูลเป็นด่านจริง ตรงนี้แค่ไม่เอาปุ่มที่กดไม่ได้ไปวางให้คนกด */
+  const { can } = useAuth()
+  const mayUpload = can('admin')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -167,7 +172,11 @@ export default function Parcel24() {
           </span>
         </div>
 
-        {/* ───────── แถบอัปไฟล์ ───────── */}
+        {/* ───────── แถบอัปไฟล์ ─────────
+            ขึ้นเฉพาะคนที่อัปได้ · หน้างานเห็นกระดานอย่างเดียว
+            ของที่กดไม่ได้ไม่ควรอยู่บนจอ เพราะทำให้ของที่ต้องใช้หาเจอช้าลง
+            ฐานข้อมูลกันอีกชั้นอยู่แล้ว ตรงนี้แค่ไม่เอาปุ่มไปวางให้คนกด */}
+        {mayUpload && (
         <div
           className="mb-2 flex flex-wrap items-center gap-2 px-3 py-2"
           style={{ borderRadius: 14, background: C.panel, border: `1px solid ${C.line2}` }}
@@ -204,6 +213,14 @@ export default function Parcel24() {
               ถอนรอบที่เพิ่งอัป
             </button>
           )}
+        </div>
+        )}
+
+        {/* ปุ่มสลับหน้าเป็นของทุกคน ไม่ได้อยู่ในแถบอัปไฟล์แล้ว */}
+        <div
+          className="mb-2 flex flex-wrap items-center gap-2 px-3 py-2"
+          style={{ borderRadius: 14, background: C.panel, border: `1px solid ${C.line2}` }}
+        >
           <div className="flex flex-wrap gap-2">
             {([
               ['tv', 'จอทีวี', '电视屏'],
@@ -215,6 +232,12 @@ export default function Parcel24() {
               </button>
             ))}
           </div>
+          <span className="flex-1" />
+          {!mayUpload && (
+            <span className="text-xs" style={{ color: C.faint }}>
+              {snap ? `${nf(snap.row_count)} ชิ้น · ${groups.length} สาขา` : 'ยังไม่มีข้อมูล'}
+            </span>
+          )}
         </div>
 
         {msg && (

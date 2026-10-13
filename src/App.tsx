@@ -299,7 +299,8 @@ export default function App() {
 
       {/* พัสดุค้างเกิน 24 ชม · จอเต็มของตัวเองเหมือนของค้างส่งออก
           เจ้าของระบบกับผู้ดูแลระบบ ด่านจริงอยู่ที่ RLS ของ parcel24_* ที่ตรวจ my_can_outbox() */}
-      <Route path="/parcel24" element={<Guard roles={['admin']}><Parcel24 /></Guard>} />
+      {/* หน้างานดูได้ · อัปไฟล์ยังเป็นของผู้ดูแลระบบ กันที่ปุ่มและที่ฐานข้อมูลอีกชั้น */}
+      <Route path="/parcel24" element={<Guard><Parcel24 /></Guard>} />
       <Route path="/wait" element={<Guard><WaitBoard /></Guard>} />
       {/* เส้นทางเดิมของหน้าอัปไฟล์ · ตอนนี้เป็นป็อปอัพบนกระดานแล้ว พาไปที่กระดานพร้อมเปิดช่องเลือกไฟล์ */}
       <Route path="/wait/upload" element={<Navigate to="/wait?upload=1" replace />} />
