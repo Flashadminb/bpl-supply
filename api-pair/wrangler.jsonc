@@ -1,0 +1,28 @@
+/**
+ * ตัวกลางของหน้าจับคู่ · Worker คนละตัวกับที่เสิร์ฟเว็บ
+ *
+ * แยกตัวโดยตั้งใจ · เจ้าของระบบสั่งว่าห้ามกระทบหน้างาน
+ * ถ้าเอาไปรวมกับ Worker ที่เสิร์ฟเว็บ deploy พลาดครั้งเดียวคือทั้งแอพล่ม
+ * แยกแล้ว deploy ตัวนี้กี่รอบก็ได้ เว็บที่หน้างานใช้อยู่ไม่ขยับเลยสักนิด
+ *
+ * ยังไม่มี route ผูกกับโดเมนจริง · อยู่ที่ URL ของ workers.dev ของตัวเอง
+ * วันที่พร้อมค่อยผูกเข้าโดเมนเดียวกับเว็บเพื่อตัด CORS ทิ้ง
+ *
+ * ไม่มี assets เพราะตัวนี้ไม่ได้เสิร์ฟไฟล์ มีแต่ API
+ */
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "bpl-pair-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-23",
+  "observability": { "enabled": true },
+  "vars": {
+    /**
+     * ที่อยู่ของ Supabase ที่ออก token · ใช้ตรวจว่า token มาจากที่นี่จริง
+     * ไม่ใช่ความลับ · คือ URL เดียวกับที่หน้าเว็บเรียกอยู่ทุกวัน
+     */
+    "SUPABASE_URL": "https://ajcdzmfefoyyisgwnpky.supabase.co",
+    /** เว็บที่เรียก API นี้ได้ · ที่อื่นโดนปฏิเสธตั้งแต่ชั้น CORS */
+    "ALLOW_ORIGIN": "https://bpl-supply.elevenezbest.workers.dev"
+  }
+}
