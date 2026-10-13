@@ -52,6 +52,10 @@ export interface P48Row {
   picked_at: string | null
   last_action: string | null
   bag_no: string | null
+  /** SLA ของประเภทลูกค้านี้ · ว่างแปลว่ายังไม่ได้ตั้ง */
+  sla_days: number | null
+  /** เหลืออีกกี่วัน · บวกคือยังมีเวลา ศูนย์คือครบวันนี้ ลบคือเลยมาแล้ว · ว่างคือยังไม่รู้ */
+  sla_left: number | null
 }
 
 export interface P48Found {
@@ -97,8 +101,14 @@ export interface P48Filter {
   dest?: string
   action?: string
   prov?: string
-  /** ค้างกี่ชั่วโมงขึ้นไป · 0 คือไม่กรอง */
-  age?: number
+  /**
+   * กรองตาม SLA · ว่างคือไม่กรอง
+   *   over   เลยกำหนดแล้ว
+   *   today  ครบกำหนดวันนี้พอดี
+   *   none   ยังไม่ได้ตั้ง SLA ให้ลูกค้าเจ้านั้น
+   *   ตัวเลข เหลือไม่เกินกี่วัน
+   */
+  sla?: string
   bag?: boolean
   nop?: boolean
   cn?: boolean
@@ -502,12 +512,45 @@ export async function p48Undo(kind: P48Kind) {
 
 /* ------------------------------------------------------------- ตัวช่วยหน้าจอ */
 
-/** ค้างมากี่ชั่วโมง นับจากเวลาเข้ารับสินค้า */
-export function heldHours(pickedAt: string | null | undefined, now = Date.now()): number | null {
-  if (!pickedAt) return null
-  const t = new Date(pickedAt).getTime()
-  if (Number.isNaN(t)) return null
-  return Math.floor((now - t) / 36e5)
+/**
+ * คำที่เขียนบนจอแทนตัวเลข SLA คงเหลือ
+ *
+ * ไม่ได้คิดเลขเอง · ตัวเลขมาจากฐานข้อมูลที่เดียว ทั้งตารางและแผงขวา
+ * ถ้าให้หน้าจอคิดเองวันหนึ่งสองที่จะไม่ตรงกัน แล้วไม่มีใครรู้ว่าอันไหนถูก
+ */
+export function slaText(left: number | null | undefined): string {
+  if (left === null || left === undefined) return '—'
+  if (left > 0) return `เหลือ ${left} ว`
+  if (left === 0) return 'วันนี้'
+  return `เกิน ${-left} ว`
+}
+
+/** SLA ต่อประเภทลูกค้า · ตั้งได้จากหลังบ้าน */
+export interface P48Sla {
+  cust_type: string
+  days: number
+  sort_no: number
+  is_active: boolean
+  updated_at: string
+  by_name: string
+  /** พัสดุของเจ้านี้ในรอบปัจจุบันมีกี่ชิ้น · ไว้เตือนก่อนลบ */
+  used: number
+}
+
+export async function p48SlaList(): Promise<P48Sla[]> {
+  const { data, error } = await supabase.rpc('p48_sla_list')
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as P48Sla[]
+}
+
+export async function p48SlaSet(custType: string, days: number) {
+  const { error } = await supabase.rpc('p48_sla_set', { p_type: custType, p_days: days })
+  if (error) throw new Error(readableError(error))
+}
+
+export async function p48SlaDelete(custType: string) {
+  const { error } = await supabase.rpc('p48_sla_delete', { p_type: custType })
+  if (error) throw new Error(readableError(error))
 }
 
 /** ตัดรหัสในวงเล็บหน้าชื่อสาขาออก · "(TH01120274)2PCU_BDC-ประชาอุทิศ" อ่านยาก */
