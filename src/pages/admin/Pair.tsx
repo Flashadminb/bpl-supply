@@ -17,6 +17,7 @@ import {
   p48One,
   p48Search,
   p48Prune,
+  p48Runs,
   p48Stats,
   p48Undo,
   parseP48,
@@ -25,6 +26,7 @@ import {
   type P48Found,
   type P48Kind,
   type P48Row,
+  type P48RunRow,
   type P48Stats,
 } from '../../lib/pair'
 
@@ -66,7 +68,12 @@ const CUST_FALLBACK = { bg: '#1F2730', fg: '#9FB0C2' }
 export default function Pair() {
   const nav = useNavigate()
   const { can } = useAuth()
-  const mayUpload = can('admin')
+  /* เจ้าของระบบสั่งเปิดให้หน้างานอัปได้ตั้งแต่ไฟล์ 169
+     ฐานข้อมูลเป็นด่านจริง ตรงนี้แค่เรื่องว่าจะวางปุ่มให้ใครเห็น */
+  const mayUpload = true
+  /** ประวัติว่าใครอัปรอบไหน · เครื่องมือตรวจสอบ ไม่ใช่ข้อมูลหน้างาน */
+  const maySeeLog = can('admin')
+  const [showLog, setShowLog] = useState(false)
 
   const stats = useAsync(() => p48Stats(), [])
   const facets = useAsync(() => p48Facets(), [])
@@ -352,6 +359,11 @@ export default function Pair() {
               {busy ? 'กำลังอัป…' : 'เลือกไฟล์'}
             </button>
             <span className="flex-1" />
+            {maySeeLog && (
+              <button type="button" className="h-tap rounded-btn px-3 text-xs" style={showLog ? tabOn : tabOff} onClick={() => setShowLog((v) => !v)}>
+                ประวัติอัป
+              </button>
+            )}
             {stats.data?.can_undo_parcel && (
               <button type="button" disabled={busy} className="h-tap rounded-btn px-3 text-xs" style={tabOff} onClick={() => void undo('parcel')}>
                 ↶ ย้อนไฟล์รายละเอียด
@@ -364,6 +376,8 @@ export default function Pair() {
             )}
           </div>
         )}
+
+        {maySeeLog && showLog && <UploadLog />}
 
         {prog && (
           <p
@@ -981,6 +995,76 @@ function Side({
           <b style={{ color: C.brand }}>ทุกค่าในแผงนี้กดคัดลอกได้</b> ชี้แล้วพื้นจะสว่างขึ้นพร้อมไอคอน ⎘
         </p>
       </div>
+    </div>
+  )
+}
+
+/**
+ * ประวัติการอัปไฟล์ · ของผู้ดูแลระบบ
+ *
+ * เปิดให้หน้างานอัปได้แล้ว แปลว่าใครก็ทับของเดิมได้
+ * ถ้าวันหนึ่งข้อมูลบนจอไม่ตรงกับที่คาด ต้องตอบได้ทันทีว่าใครอัปรอบล่าสุด
+ * การ์ดด้านบนบอกได้แค่รอบปัจจุบัน ตรงนี้ย้อนดูได้ทั้งหมดที่ยังเก็บอยู่
+ *
+ * รอบที่อัปไม่จบก็โชว์ด้วย เพราะนั่นคือร่องรอยของการอัปที่ถูกตัดกลางทาง
+ * ซึ่งเป็นเบาะแสว่าเน็ตมีปัญหา ไม่ใช่ของที่ควรซ่อน
+ */
+function UploadLog() {
+  const runs = useAsync(() => p48Runs(), [])
+  const list = runs.data ?? []
+
+  return (
+    <div className="px-3 py-2" style={CARD}>
+      <p className="mb-2 text-[13px] font-bold">ประวัติการอัปไฟล์</p>
+      {runs.loading && <Spinner className="h-4 w-4" />}
+      {runs.error && (
+        <p className="text-[12px]" style={{ color: C.redInk }}>
+          {runs.error}
+        </p>
+      )}
+      {!runs.loading && !list.length && (
+        <p className="text-[12px]" style={{ color: C.faint }}>
+          ยังไม่เคยมีใครอัปไฟล์
+        </p>
+      )}
+      {list.length > 0 && (
+        <div className="max-h-56 overflow-auto">
+          <table className="w-full border-collapse text-[12px]">
+            <thead>
+              <tr style={{ color: C.faint }}>
+                <th className="px-2 py-1 text-left font-medium">เวลา</th>
+                <th className="px-2 py-1 text-left font-medium">ไฟล์</th>
+                <th className="px-2 py-1 text-left font-medium">ใครอัป</th>
+                <th className="px-2 py-1 text-right font-medium">เข้าไป</th>
+                <th className="px-2 py-1 text-left font-medium">สถานะ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((r: P48RunRow) => (
+                <tr key={r.id} style={{ borderTop: '1px solid ' + C.line2 }}>
+                  <td className="whitespace-nowrap px-2 py-[5px] font-mono">{thFull(r.uploaded_at)}</td>
+                  <td className="px-2 py-[5px]">
+                    {r.kind === 'parcel' ? 'รายละเอียด' : 'สินค้า'}
+                    <span className="ml-1 text-[10.5px]" style={{ color: C.faint }}>
+                      {r.file_name ?? ''}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-[5px]">
+                    {r.by_name || <span style={{ color: C.faint }}>ไม่ทราบชื่อ</span>}
+                  </td>
+                  <td className="px-2 py-[5px] text-right font-mono">
+                    {nf(r.row_count)}
+                    <span style={{ color: C.faint }}> / {nf(r.file_rows)}</span>
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-[5px]" style={{ color: r.done ? C.greenInk : C.amberInk }}>
+                    {r.done ? 'สำเร็จ' : 'อัปไม่จบ'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

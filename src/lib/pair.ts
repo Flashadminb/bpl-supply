@@ -472,6 +472,29 @@ export async function p48One(tracking: string): Promise<Record<string, unknown> 
   return (data ?? null) as Record<string, unknown> | null
 }
 
+/**
+ * ประวัติว่าใครอัปรอบไหน · ของผู้ดูแลระบบ
+ *
+ * มีขึ้นเพราะเปิดให้หน้างานอัปได้แล้ว · ของที่ใครก็อัปทับได้
+ * ต้องตอบให้ได้เสมอว่ารอบไหนใครเป็นคนอัปและไฟล์ชื่ออะไร
+ */
+export interface P48RunRow {
+  id: number
+  kind: P48Kind
+  uploaded_at: string
+  file_name: string | null
+  row_count: number
+  file_rows: number
+  done: boolean
+  by_name: string
+}
+
+export async function p48Runs(): Promise<P48RunRow[]> {
+  const { data, error } = await supabase.rpc('p48_run_list')
+  if (error) throw new Error(readableError(error))
+  return (data ?? []) as P48RunRow[]
+}
+
 export async function p48Undo(kind: P48Kind) {
   const { error } = await supabase.rpc('p48_undo', { p_kind: kind })
   if (error) throw new Error(readableError(error))
