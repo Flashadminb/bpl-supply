@@ -58,6 +58,24 @@ const PAGES = ['กระดาน', 'สถิติ'] as const
 /** จำไว้ว่าจอนี้ให้สลับเองหรือเปล่า · จอทีวีไม่มีใครมาตั้งใหม่ทุกเช้า */
 const AUTO_PREF = 'wait.tv.auto'
 
+/**
+ * แถวล่างให้เลื่อนเองหรือหยุดไว้ · จำแยกจากการสลับหน้า
+ *
+ * เป็นคนละเรื่องกัน · สลับหน้าคือกระดานกับสถิติ ส่วนอันนี้คือแถวรถด้านล่าง
+ * ที่ผ่านมาหยุดไม่ได้เลย พอมีรถเกินเก้าคันแถวล่างจะวิ่งหนีทุกสิบวินาที
+ * คนที่กำลังจดทะเบียนรถอยู่ครึ่งคันจึงต้องยืนรอให้มันวนกลับมาอีกรอบ
+ */
+const SCROLL_PREF = 'wait.tv.scroll'
+
+/** แถวล่างเปลี่ยนหน้าทุกกี่มิลลิวินาที */
+const STRIP_MS = 10_000
+
+/** แถวล่างแสดงได้กี่บรรทัดต่อหนึ่งหน้า · เกินกว่านี้หมุนเวียน */
+const STRIP_PER_PAGE = 6
+
+/** การ์ดใบใหญ่กับสองใบรองที่ไม่ได้อยู่ในแถวล่าง */
+const STRIP_SKIP = 3
+
 const DO_COLOR = '#2BA7D8'
 const NONDO_COLOR = '#8B5CF6'
 
@@ -71,6 +89,8 @@ export default function WaitTv() {
   const [now, setNow] = useState(() => Date.now())
   const [page, setPage] = useState(0)
   const [auto, setAuto] = useState(() => localStorage.getItem(AUTO_PREF) !== 'off')
+  /** แถวล่างเลื่อนเองอยู่หรือเปล่า · ค่าตั้งต้นคือเลื่อน เหมือนที่เป็นมาตลอด */
+  const [scroll, setScroll] = useState(() => localStorage.getItem(SCROLL_PREF) !== 'off')
   /**
    * หน้าของแถวล่างที่กำลังแสดงอยู่
    *
@@ -116,10 +136,13 @@ export default function WaitTv() {
    *
    * เดินตลอดเวลาแม้ตอนอยู่หน้าสถิติ จะได้ไม่ค้างอยู่หน้าเดิมทุกครั้งที่วนกลับมา
    */
+  /* ตั้งเวลาใหม่ทุกครั้งที่หน้าแถวล่างเปลี่ยน เหตุผลเดียวกับการสลับหน้าด้านบน
+     คนที่กดเลื่อนเองตอนวินาทีที่ 9 ต้องได้เวลาอ่านเต็มสิบวินาที ไม่ใช่โดนเด้งทันที */
   useEffect(() => {
-    const t = setInterval(() => setStripPage((n) => n + 1), 10_000)
-    return () => clearInterval(t)
-  }, [])
+    if (!scroll) return
+    const t = setTimeout(() => setStripPage((n) => n + 1), STRIP_MS)
+    return () => clearTimeout(t)
+  }, [scroll, stripPage])
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -156,6 +179,13 @@ export default function WaitTv() {
 
   const askRow = ask == null ? null : live.find((x) => x.r.id === ask) ?? null
 
+  /**
+   * แถวล่างมีกี่หน้า · คิดที่นี่ไม่ได้คิดใน BoardPage เพราะปุ่มอยู่บนแถบหัว
+   * ซึ่งยังอยู่บนจอตอนสลับไปหน้าสถิติ แต่ BoardPage ถูกถอดออกไปแล้ว
+   */
+  const stripPages = Math.max(1, Math.ceil(Math.max(0, live.length - STRIP_SKIP) / STRIP_PER_PAGE))
+  const stripNo = ((stripPage % stripPages) + stripPages) % stripPages
+
   return (
     <div className="min-h-dvh px-5 py-4 text-white" style={{ background: BG }}>
       <EdgeGlow stage={worstStage(live.map(({ sec }) => ({ sec })))} />
@@ -171,6 +201,23 @@ export default function WaitTv() {
         onAuto={(v) => {
           setAuto(v)
           localStorage.setItem(AUTO_PREF, v ? 'on' : 'off')
+        }}
+        scroll={scroll}
+        stripNo={stripNo}
+        stripPages={stripPages}
+        onScroll={(v) => {
+          setScroll(v)
+          localStorage.setItem(SCROLL_PREF, v ? 'on' : 'off')
+        }}
+        onStrip={(d) => {
+          /* กดเลื่อนเองแล้วหยุดอัตโนมัติให้เลย
+             ไม่งั้นกดไปดูหน้าที่ต้องการแล้วอีกไม่กี่วินาทีมันก็วิ่งหนีอยู่ดี
+             ซึ่งเท่ากับปุ่มไม่ทำงานในสายตาคนกด */
+          if (scroll) {
+            setScroll(false)
+            localStorage.setItem(SCROLL_PREF, 'off')
+          }
+          setStripPage((n) => n + d)
         }}
         alarmOn={alarm.on}
         onAlarmOn={() => void alarm.turnOn()}
@@ -233,6 +280,11 @@ function TvHead({
   auto,
   onPage,
   onAuto,
+  scroll,
+  stripNo,
+  stripPages,
+  onScroll,
+  onStrip,
   alarmOn,
   onAlarmOn,
   onPickSound,
@@ -245,6 +297,11 @@ function TvHead({
   auto: boolean
   onPage: (p: number) => void
   onAuto: (v: boolean) => void
+  scroll: boolean
+  stripNo: number
+  stripPages: number
+  onScroll: (v: boolean) => void
+  onStrip: (delta: number) => void
   alarmOn: boolean
   onAlarmOn: () => void
   onPickSound: () => void
@@ -327,6 +384,42 @@ function TvHead({
           สลับหน้าเองทุก 20 วิ
         </button>
 
+        {/*
+          คุมแถวรถด้านล่าง · โผล่เฉพาะตอนมีเกินหนึ่งหน้าจริง ๆ
+          จอที่มีรถห้าคันไม่มีอะไรให้เลื่อน ปุ่มที่กดแล้วไม่เกิดอะไรคือปุ่มที่สอนคนผิด
+
+          วางไว้บนแถบหัวซึ่งอยู่ทั้งสองหน้า จะได้กดหยุดค้างไว้ก่อน
+          แล้วสลับไปดูสถิติแล้วกลับมา แถวล่างยังอยู่หน้าเดิมที่ค้างไว้
+        */}
+        {stripPages > 1 && (
+          <>
+            <span className="mx-1 h-6 w-px" style={{ background: LINE }} />
+
+            <button
+              type="button"
+              onClick={() => onScroll(!scroll)}
+              className="flex h-11 items-center gap-2 rounded-xl px-3 text-[13px] font-bold"
+              style={{
+                background: scroll ? '#15301F' : '#3A2416',
+                color: scroll ? '#8FE3B4' : '#FFC08A',
+                border: `1px solid ${scroll ? '#25A35A' : '#A65D23'}`,
+              }}
+            >
+              <span className="text-[15px] leading-none">{scroll ? '❚❚' : '▶'}</span>
+              {scroll ? 'หยุดเลื่อนแถวล่าง' : 'แถวล่างหยุดอยู่'}
+            </button>
+
+            <TvBtn onClick={() => onStrip(-1)}>‹</TvBtn>
+            <span
+              className="flex h-11 items-center rounded-xl px-3 font-mono text-[14px] font-extrabold"
+              style={{ background: '#1B2430', color: '#C7D2DE', border: `1px solid ${LINE}` }}
+            >
+              {stripNo + 1}/{stripPages}
+            </span>
+            <TvBtn onClick={() => onStrip(1)}>›</TvBtn>
+          </>
+        )}
+
         <span className="ml-auto flex items-center gap-3">
           <span className="flex gap-1">
             {PAGES.map((_, i) => (
@@ -384,9 +477,6 @@ function TvBtn({
 
 /* ------------------------------------------------------------- หน้าที่หนึ่ง */
 
-/** แถวล่างแสดงได้กี่บรรทัดต่อหนึ่งหน้า · เกินกว่านี้หมุนเวียน */
-const STRIP_PER_PAGE = 6
-
 function BoardPage({
   live,
   loading,
@@ -424,12 +514,13 @@ function BoardPage({
    * แถวยาวกินที่น้อยกว่าการ์ดสามเท่า แต่ยังอ่านออกจากกลางคลัง
    */
   const hero = live[0]
-  const second = live.slice(1, 3)
-  const rest = live.slice(3)
+  const second = live.slice(1, STRIP_SKIP)
+  const rest = live.slice(STRIP_SKIP)
 
   // เกินหนึ่งหน้าแล้วหมุนเวียน · ไม่ตัดคันไหนทิ้ง ทุกคันได้ขึ้นจอครบ
+  // หารเอาเศษสองชั้น เพราะปุ่มถอยหลังทำให้ stripPage ติดลบได้
   const pages = Math.max(1, Math.ceil(rest.length / STRIP_PER_PAGE))
-  const pageNo = stripPage % pages
+  const pageNo = ((stripPage % pages) + pages) % pages
   const shownRest = rest.slice(pageNo * STRIP_PER_PAGE, (pageNo + 1) * STRIP_PER_PAGE)
 
   return (
