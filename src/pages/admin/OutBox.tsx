@@ -1140,6 +1140,30 @@ function ZoneKey({ vs }: { vs: string }) {
 /** กี่สาขาที่ยอมให้ขึ้นในช่องเดียว · เกินกว่านี้ยุบเป็นบรรทัดสรุป ไม่ปล่อยให้ล้นออกนอกจอ */
 const ZONE_MAX = 24
 
+/**
+ * ไล่สีพื้นแถวตามค่าจริง ไม่ใช่ตามอันดับ
+ *
+ * heat() ที่ใช้อยู่เดิมไล่ตามลำดับที่ แปลว่าอันดับหนึ่งเข้มสุดเสมอ
+ * ไม่ว่าจะทิ้งห่างอันดับสองแค่ไหน · วันที่ทุกสาขาค้างพอ ๆ กัน จอจะดูเหมือน
+ * มีสาขาเดียวที่หนัก ทั้งที่ความจริงคือหนักเท่ากันหมด และกลับกัน
+ * วันที่สาขาเดียวค้าง 500 ที่เหลือค้าง 20 อันดับสองจะยังดูเข้มเกือบเท่าอันดับหนึ่ง
+ *
+ * เทียบกับตัวที่มากสุดของการ์ดตัวเอง ไม่ใช่มากสุดทั้งจอ
+ * เพราะเจ้าของระบบสั่งว่าให้เห็นชัดในแต่ละโซน · โซนที่ยอดน้อยทั้งโซน
+ * ถ้าเทียบกับทั้งจอจะจางหมดทั้งการ์ดจนอ่านลำดับในโซนตัวเองไม่ออก
+ *
+ * ยกกำลัง 0.75 ไม่ใช่เส้นตรง · ตาคนไม่ได้อ่านความเข้มแบบเชิงเส้น
+ * ครึ่งหนึ่งของค่ามากสุดต้องดูเหมือนครึ่งหนึ่งจริง ๆ ไม่ใช่จางกว่านั้นมาก
+ */
+function heatVal(v: number, max: number): { bg: string; bar: string } {
+  const t = max > 0 ? Math.min(1, Math.max(0, v / max)) : 0
+  const k = Math.pow(t, 0.75)
+  return {
+    bg: `rgba(79,163,227,${(0.03 + k * 0.3).toFixed(3)})`,
+    bar: `rgba(155,212,255,${(0.12 + k * 0.88).toFixed(3)})`,
+  }
+}
+
 function ZonePanel({
   z,
 }: {
@@ -1147,6 +1171,8 @@ function ZonePanel({
 }) {
   const shown = z.list.slice(0, ZONE_MAX)
   const rest = z.list.slice(ZONE_MAX)
+  /* ตัวตั้งของสเกลสี · มากสุดในการ์ดนี้ ไม่ใช่มากสุดทั้งจอ */
+  const topVal = Math.max(1, ...z.list.map((r) => r.in_wh + r.on_truck))
   const restIn = rest.reduce((a, b) => a + b.in_wh, 0)
   const restOn = rest.reduce((a, b) => a + b.on_truck, 0)
 
@@ -1186,13 +1212,15 @@ function ZonePanel({
           alignContent: 'center',
         }}
       >
-        {shown.map((r, i) => (
+        {shown.map((r, i) => {
+          const h = heatVal(r.in_wh + r.on_truck, topVal)
+          return (
           <span
             key={r.dir + r.station}
             className="flex items-center gap-2 overflow-hidden px-1"
-            style={{ background: heat(i, shown.length), borderRadius: 5 }}
+            style={{ background: h.bg, borderRadius: 5, boxShadow: `inset 3px 0 0 ${h.bar}` }}
           >
-            <span className="w-[14px] shrink-0 text-right font-mono text-[10px]" style={{ color: C.faint }}>
+            <span className="w-[14px] shrink-0 pl-[3px] text-right font-mono text-[10px]" style={{ color: C.faint }}>
               {i + 1}
             </span>
             <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{r.station}</span>
@@ -1209,7 +1237,8 @@ function ZonePanel({
               {nf(r.on_truck)}
             </span>
           </span>
-        ))}
+          )
+        })}
       </div>
 
       {rest.length > 0 && (
