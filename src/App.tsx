@@ -26,6 +26,7 @@ const OutBox = lazy(() => import('./pages/admin/OutBox'))
 const Parcel24 = lazy(() => import('./pages/admin/Parcel24'))
 const Pair = lazy(() => import('./pages/admin/Pair'))
 const OutZones = lazy(() => import('./pages/admin/OutZones'))
+const PairSla = lazy(() => import('./pages/admin/PairSla'))
 const Scan = lazy(() => import('./pages/staff/Scan'))
 const Returns = lazy(() => import('./pages/staff/Returns'))
 const AssetPick = lazy(() => import('./pages/staff/AssetPick'))
@@ -453,6 +454,10 @@ export default function App() {
             อยู่หลังบ้านเพราะทำครั้งเดียวแล้วนาน ๆ แก้ที ไม่ควรอยู่บนจอที่เปิดค้างทั้งกะ
             ตารางแยกจากรายชื่อสาขาของงานปล่อยรถ แก้ฝั่งโน้นไม่กระทบฝั่งนี้ */}
         <Route path="outbox-zones" element={<Guard roles={['admin']}><OutZones /></Guard>} />
+        {/* เกณฑ์ SLA ของหน้าจับคู่ · อยู่หลังบ้านอย่างเดียว ไม่มีทางลัดบนหน้าจับคู่เลย
+            เจ้าของระบบสั่งว่าไม่ให้มีบนหน้าทำงาน · เกณฑ์ที่กดแก้ได้จากจอที่เปิดค้างทั้งกะ
+            คือเกณฑ์ที่พอใครสอบตกก็แก้เกณฑ์ · ด่านจริงอยู่ที่ p48_sla_set ในฐานข้อมูล */}
+        <Route path="pair-sla" element={<Guard roles={['admin']}><PairSla /></Guard>} />
         {/* ตั้งเกณฑ์เวลารถรอลงงาน · ของผู้ดูแลระบบคนเดียว
             ผู้ตรวจสอบดูกระดาน แดชบอร์ด และประวัติได้ แต่ไม่ตั้งเกณฑ์
             ด่านจริงอยู่ที่ policy ของ wait_truck_kpi เส้นทางนี้แค่ไม่ให้กดเข้ามาเจอ error */}

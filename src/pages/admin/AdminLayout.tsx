@@ -168,6 +168,8 @@ const GROUPS: Group[] = [
       { to: '/outbox', label: 'ของค้างส่งออก', icon: 'box', adminOnly: true },
       { to: '/parcel24', label: 'พัสดุค้างเกิน 24 ชม', icon: 'n24', adminOnly: true },
       { to: '/admin/outbox-zones', label: 'โซน D0x ของสาขา', icon: 'lock', adminOnly: true },
+      { to: '/pair', label: 'จับคู่', icon: 'box', adminOnly: true },
+      { to: '/admin/pair-sla', label: 'เกณฑ์ SLA ของจับคู่', icon: 'lock', adminOnly: true },
     ],
     subs: [
       {

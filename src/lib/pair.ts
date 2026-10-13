@@ -520,9 +520,10 @@ export async function p48Undo(kind: P48Kind) {
  */
 export function slaText(left: number | null | undefined): string {
   if (left === null || left === undefined) return '—'
-  if (left > 0) return `เหลือ ${left} ว`
-  if (left === 0) return 'วันนี้'
-  return `เกิน ${-left} ว`
+  /* เลขล้วน ติดลบเมื่อเกินกำหนด ตามที่เจ้าของระบบสั่ง
+     ไม่แปลงเป็นคำว่า เกิน หรือ วันนี้ เพราะเลขติดลบอ่านเร็วกว่าและเรียงในหัวได้เลย
+     ส่วนบวกหน้าเลขไม่ใส่ เพราะ -2 กับ 2 ต่างกันชัดอยู่แล้ว และ +2 กินที่เปล่า ๆ */
+  return `${left} ว`
 }
 
 /** SLA ต่อประเภทลูกค้า · ตั้งได้จากหลังบ้าน */

@@ -18,9 +18,6 @@ import {
   p48Search,
   p48Prune,
   p48Runs,
-  p48SlaDelete,
-  p48SlaList,
-  p48SlaSet,
   p48Stats,
   p48Undo,
   parseP48,
@@ -30,7 +27,6 @@ import {
   type P48Kind,
   type P48Row,
   type P48RunRow,
-  type P48Sla,
   type P48Stats,
 } from '../../lib/pair'
 
@@ -94,7 +90,6 @@ export default function Pair() {
   /** ประวัติว่าใครอัปรอบไหน · เครื่องมือตรวจสอบ ไม่ใช่ข้อมูลหน้างาน */
   const maySeeLog = can('admin')
   const [showLog, setShowLog] = useState(false)
-  const [showSla, setShowSla] = useState(false)
 
   const stats = useAsync(() => p48Stats(), [])
   const facets = useAsync(() => p48Facets(), [])
@@ -364,10 +359,9 @@ export default function Pair() {
               }}
             />
             <span style={{ color: C.mute, fontSize: 13 }}>
-              ลากไฟล์มาวางได้เลย ทีละใบหรือสองใบพร้อมกัน
+              ลากไฟล์มาวางได้ ทีละใบหรือสองใบ
               <span className="ml-2 text-[11.5px]" style={{ color: C.faint }}>
-                ระบบแยกเองจากเนื้อในไฟล์ ไม่สนชื่อไฟล์ · ใบที่ VLOOKUP ชื่อสินค้ามาแล้วใช้ใบเดียวจบ
-                · ไฟล์ซ้ำชนิดเดียวกันจะถูกข้าม
+                ระบบแยกเองจากเนื้อในไฟล์ ไม่สนชื่อไฟล์
               </span>
             </span>
             <button
@@ -380,11 +374,6 @@ export default function Pair() {
               {busy ? 'กำลังอัป…' : 'เลือกไฟล์'}
             </button>
             <span className="flex-1" />
-            {maySeeLog && (
-              <button type="button" className="h-tap rounded-btn px-3 text-xs" style={showSla ? tabOn : tabOff} onClick={() => setShowSla((v) => !v)}>
-                ตั้ง SLA
-              </button>
-            )}
             {maySeeLog && (
               <button type="button" className="h-tap rounded-btn px-3 text-xs" style={showLog ? tabOn : tabOff} onClick={() => setShowLog((v) => !v)}>
                 ประวัติอัป
@@ -403,7 +392,6 @@ export default function Pair() {
           </div>
         )}
 
-        {maySeeLog && showSla && <SlaEditor onSaved={() => found.reload()} />}
         {maySeeLog && showLog && <UploadLog />}
 
         {prog && (
@@ -1060,193 +1048,9 @@ function SlaBar({ left, days, due }: { left: number | null; days: number | null;
         {slaText(left)}
       </b>
       <span className="text-[11.5px]" style={{ color: C.mute }}>
-        ครบกำหนด {due ?? '—'} · เกณฑ์ {days} วันนับจากวันเข้ารับสินค้า
+        {left < 0 ? 'เลยกำหนดมาแล้ว' : left === 0 ? 'ครบกำหนดวันนี้' : 'ยังเหลือเวลา'} · ครบกำหนด {due ?? '—'} · เกณฑ์ {days} วันนับจากวันเข้ารับสินค้า
       </span>
     </div>
-  )
-}
-
-/**
- * ตั้ง SLA ต่อประเภทลูกค้า · ของผู้ดูแลระบบ
- *
- * SLA คือเกณฑ์ตัดสินว่าของชิ้นไหนช้า · เกณฑ์ที่ใครก็แก้ได้
- * คือเกณฑ์ที่พอใครสอบตกก็แก้เกณฑ์ · กติกาเดียวกับเกณฑ์เวลาของรถรอลงงาน
- *
- * โชว์จำนวนพัสดุของแต่ละเจ้าไว้ด้วย จะได้รู้ว่าแก้ตัวเลขนี้แล้วกระทบของกี่ชิ้น
- * และเพิ่มประเภทใหม่เองได้ เผื่อวันหนึ่งไฟล์มีลูกค้าเจ้าใหม่ที่ยังไม่มีในตาราง
- */
-function SlaEditor({ onSaved }: { onSaved: () => void }) {
-  const list = useAsync(() => p48SlaList(), [])
-  const [busy, setBusy] = useState<string | null>(null)
-  const [err, setErr] = useState<string | null>(null)
-  const [newType, setNewType] = useState('')
-  const [newDays, setNewDays] = useState('3')
-
-  async function save(type: string, days: number) {
-    setBusy(type)
-    setErr(null)
-    try {
-      await p48SlaSet(type, days)
-      list.reload()
-      onSaved()
-    } catch (e) {
-      setErr(readableError(e))
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  async function drop(s: P48Sla) {
-    const warn =
-      s.used > 0
-        ? `ลบ SLA ของ ${s.cust_type}\nพัสดุ ${nf(s.used)} ชิ้นของเจ้านี้จะกลายเป็น "ยังไม่ตั้ง SLA" และตัดสินไม่ได้ว่าช้าหรือยัง`
-        : `ลบ SLA ของ ${s.cust_type}`
-    if (!window.confirm(warn)) return
-    setBusy(s.cust_type)
-    setErr(null)
-    try {
-      await p48SlaDelete(s.cust_type)
-      list.reload()
-      onSaved()
-    } catch (e) {
-      setErr(readableError(e))
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  const rows = list.data ?? []
-  const placeholder = rows.length > 0 && rows.every((r) => r.days === 3)
-
-  return (
-    <div className="px-3 py-2" style={CARD}>
-      <p className="mb-1 text-[13px] font-bold">ตั้ง SLA ต่อประเภทลูกค้า</p>
-      <p className="mb-2 text-[11.5px]" style={{ color: C.faint }}>
-        ครบกำหนด = วันที่เข้ารับสินค้า + SLA · เหลือ = ครบกำหนด − วันนี้ · นับเป็นวันตามปฏิทิน
-      </p>
-      {placeholder && (
-        <p className="mb-2 rounded-lg px-2 py-1 text-[11.5px]" style={{ background: C.amberBg, color: C.amberInk }}>
-          ตอนนี้ตั้งไว้ 3 วันเท่ากันหมด ซึ่งเป็นค่าที่ใส่ไว้ให้แก้ ไม่ใช่ค่าที่ถูกต้อง · ตั้งของจริงก่อนเอาไปใช้ตัดสินงาน
-        </p>
-      )}
-      {list.loading && <Spinner className="h-4 w-4" />}
-      {err && (
-        <p className="mb-2 text-[12px]" style={{ color: C.redInk }}>
-          {err}
-        </p>
-      )}
-
-      <table className="w-full border-collapse text-[12.5px]">
-        <thead>
-          <tr style={{ color: C.faint }}>
-            <th className="px-2 py-1 text-left font-medium">ประเภทลูกค้า</th>
-            <th className="px-2 py-1 text-left font-medium">SLA (วัน)</th>
-            <th className="px-2 py-1 text-right font-medium">พัสดุรอบนี้</th>
-            <th className="px-2 py-1 text-left font-medium">แก้ล่าสุด</th>
-            <th className="px-2 py-1" />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <SlaRow key={r.cust_type} r={r} busy={busy === r.cust_type} onSave={save} onDrop={drop} />
-          ))}
-          <tr style={{ borderTop: '1px solid ' + C.line }}>
-            <td className="px-2 py-[6px]">
-              <input
-                value={newType}
-                onChange={(e) => setNewType(e.target.value)}
-                placeholder="เพิ่มประเภทใหม่"
-                className="h-8 w-full rounded-lg px-2 text-[12.5px] outline-none"
-                style={field}
-              />
-            </td>
-            <td className="px-2 py-[6px]">
-              <input
-                value={newDays}
-                onChange={(e) => setNewDays(e.target.value.replace(/[^0-9]/g, ''))}
-                className="h-8 w-[70px] rounded-lg px-2 text-center font-mono text-[13px] outline-none"
-                style={field}
-              />
-            </td>
-            <td />
-            <td />
-            <td className="px-2 py-[6px] text-right">
-              <button
-                type="button"
-                className="rounded-btn px-3 py-1 text-xs font-bold"
-                style={{ background: C.brand, color: '#111', opacity: newType.trim() && newDays ? 1 : 0.4 }}
-                disabled={!newType.trim() || !newDays}
-                onClick={() => void save(newType.trim(), Number(newDays)).then(() => setNewType(''))}
-              >
-                เพิ่ม
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-/** หนึ่งแถวของตาราง SLA · แก้ตัวเลขแล้วกดบันทึกทีละแถว */
-function SlaRow({
-  r,
-  busy,
-  onSave,
-  onDrop,
-}: {
-  r: P48Sla
-  busy: boolean
-  onSave: (t: string, d: number) => void
-  onDrop: (r: P48Sla) => void
-}) {
-  const [v, setV] = useState(String(r.days))
-  const dirty = v !== String(r.days) && v !== ''
-
-  return (
-    <tr style={{ borderTop: '1px solid ' + C.line2 }}>
-      <td className="px-2 py-[5px]">
-        <CustChip v={r.cust_type} />
-      </td>
-      <td className="px-2 py-[5px]">
-        <input
-          value={v}
-          onChange={(e) => setV(e.target.value.replace(/[^0-9]/g, ''))}
-          className="h-8 w-[70px] rounded-lg px-2 text-center font-mono text-[13px] outline-none"
-          style={{ ...field, borderColor: dirty ? C.brand : undefined }}
-        />
-      </td>
-      <td className="px-2 py-[5px] text-right font-mono" style={{ color: C.mute }}>
-        {nf(r.used)}
-      </td>
-      <td className="px-2 py-[5px] text-[11.5px]" style={{ color: C.faint }}>
-        {r.by_name ? `${thFull(r.updated_at)} · ${r.by_name}` : '—'}
-      </td>
-      <td className="px-2 py-[5px] text-right">
-        <span className="flex justify-end gap-1">
-          {dirty && (
-            <button
-              type="button"
-              disabled={busy}
-              className="rounded-btn px-3 py-1 text-xs font-bold"
-              style={{ background: C.brand, color: '#111' }}
-              onClick={() => onSave(r.cust_type, Number(v))}
-            >
-              บันทึก
-            </button>
-          )}
-          <button
-            type="button"
-            disabled={busy}
-            className="rounded-btn px-2 py-1 text-xs"
-            style={{ background: C.chip, color: C.redInk }}
-            onClick={() => onDrop(r)}
-          >
-            ลบ
-          </button>
-        </span>
-      </td>
-    </tr>
   )
 }
 
