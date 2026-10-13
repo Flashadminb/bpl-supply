@@ -979,9 +979,13 @@ function ZoneTop({ rows }: { rows: OutCalc[] }) {
  * ซึ่งเป็นคำถามเปรียบเทียบ · ถ้าโชว์ทีละโซนสลับไปมา คนดูต้องจำตัวเลขโซนก่อนหน้า
  * ไว้ในหัวเองถึงจะตอบได้ ซึ่งไม่มีใครทำ
  *
- * สายหลักไม่ขึ้นจอนี้ เพราะเป็นรถหลักที่ไม่ได้ขึ้นสายพานคัดแยก ไม่มีโซนให้แยก
- * ส่วนสายรองที่ยังไม่ได้ตั้งโซนยังขึ้นเป็นช่องของตัวเอง ไม่ได้ถูกซ่อน
- * ถ้าซ่อน ของค้างก้อนนั้นจะหายไปจากจอโดยไม่มีใครรู้ว่าหายไปไหน
+ * สายหลักขึ้นจอนี้ด้วยแล้ว เป็นช่องสุดท้ายต่อจากโซนสายพาน · เจ้าของระบบสั่ง
+ * ไม่ได้เรียงปนไปตามขนาด เพราะ D0x คือสายพานคัดแยก ส่วน LH คือรถสายหลัก
+ * คนละชนิดงานกัน และคนที่ชินกับตำแหน่งเดิมต้องไม่ต้องมาหาใหม่ทุกวัน
+ *
+ * สาขาที่ยังไม่ได้ตั้งโซนถูกดันลงไปใต้ขอบจอ ต้องเลื่อนลงถึงจะเห็น
+ * ไม่ได้ลบทิ้ง เพราะเป็นงานค้างจริงที่ต้องไปตั้งที่หลังบ้าน
+ * แค่ไม่ใช่งานของคนที่ยืนดูจอในคลัง จึงไม่ควรกินช่องบนจอ
  */
 function ZoneTv({ rows, vs }: { rows: OutCalc[]; vs: string }) {
   /**
@@ -1009,7 +1013,6 @@ function ZoneTv({ rows, vs }: { rows: OutCalc[]; vs: string }) {
     const m = new Map<string, { zone: string | null; list: OutCalc[]; si: number; so: number; pi: number; po: number }>()
     for (const r of rows) {
       const z = zoneOf(r)
-      if (z === 'LH') continue
       const k = z ?? ''
       const cur = m.get(k) ?? { zone: z, list: [], si: 0, so: 0, pi: 0, po: 0 }
       cur.list.push(r)
@@ -1021,7 +1024,22 @@ function ZoneTv({ rows, vs }: { rows: OutCalc[]; vs: string }) {
     }
     const out = [...m.values()]
     for (const z of out) z.list.sort((a, b) => b.in_wh + b.on_truck - (a.in_wh + a.on_truck))
-    return out.sort((a, b) => b.si + b.so - (a.si + a.so))
+    out.sort((a, b) => b.si + b.so - (a.si + a.so))
+
+    /*
+      โซนสายพานเรียงตามปริมาณเหมือนเดิม หนักสุดอยู่ช่องแรก
+      แล้วต่อท้ายด้วย LH ซึ่งไม่ได้เรียงปนไปกับเขา เพราะเป็นคนละชนิดงาน
+      D0x คือสายพานคัดแยก ส่วน LH คือรถสายหลัก · ถ้าเรียงปนกันตามขนาด
+      วันที่สายหลักค้างเยอะมันจะไปนั่งช่องแรกแทนสายพานที่หนักสุด
+      แล้วคนที่ชินกับตำแหน่งเดิมจะอ่านผิดช่องทั้งกะ
+
+      สาขาที่ยังไม่ได้ตั้งโซนไม่อยู่ในกริดนี้ ไปอยู่ใต้จอ · เจ้าของระบบสั่งไว้
+      มันเป็นงานค้างของหลังบ้าน ไม่ใช่งานของคนที่ยืนดูจอในคลัง
+    */
+    const lh = out.filter((z) => z.zone === 'LH')
+    const belts = out.filter((z) => z.zone !== 'LH' && z.zone !== null)
+    const none = out.filter((z) => z.zone === null)
+    return { grid: [...belts, ...lh], none }
   }, [rows])
 
   return (
@@ -1039,15 +1057,31 @@ function ZoneTv({ rows, vs }: { rows: OutCalc[]; vs: string }) {
           gridAutoRows: 'minmax(min-content, 1fr)',
         }}
       >
-        {zones.map((z) => (
+        {zones.grid.map((z) => (
           <ZonePanel key={z.zone ?? 'none'} z={z} />
         ))}
-        {zones.length === 0 && (
+        {zones.grid.length === 0 && (
           <p className="text-sm" style={{ color: C.faint }}>
             ยังไม่มีข้อมูล
           </p>
         )}
       </div>
+
+      {/*
+        สาขาที่ยังไม่ได้ตั้งโซน · อยู่ใต้ขอบจอ ต้องเลื่อนลงถึงจะเห็น
+        กริดด้านบนสูงเท่าที่ว่างทั้งหมดอยู่แล้ว อะไรที่วางต่อจากนี้จึงหลุดจอเอง
+        ไม่ได้ซ่อนทิ้ง เพราะเป็นงานค้างจริงที่ต้องไปตั้งที่หลังบ้าน
+      */}
+      {zones.none.map((z) => (
+        <div key="none" className="mt-3">
+          <p className="mb-2 text-[12px]" style={{ color: C.faint }}>
+            ยังไม่ได้ตั้งโซน D0 · ไม่ได้อยู่บนจอด้านบน · ไปตั้งได้ที่หลังบ้าน
+          </p>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <ZonePanel z={z} />
+          </div>
+        </div>
+      ))}
     </>
   )
 }
@@ -1097,7 +1131,7 @@ function ZoneKey({ vs }: { vs: string }) {
       )}
       <span className="flex-1" />
       <span className="text-[11px]" style={{ color: C.faint }}>
-        {vs} · ไม่รวมสายหลัก
+        {vs} · รวมสายหลักแล้ว
       </span>
     </div>
   )
