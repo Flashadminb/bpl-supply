@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   breakIssueMany,
   type BreakCardOption,
@@ -114,6 +114,28 @@ export function BreakIssueMany({
     ])
   }
 
+  /**
+   * แถวว่างรออยู่เสมอหนึ่งแถว
+   *
+   * เปิดมาเจอหน้าเปล่าแล้วต้องกด "เพิ่มคน" ก่อนถึงจะเริ่มได้ คือการกดฟรีหนึ่งครั้ง
+   * ทุกครั้งที่ปล่อย และแถวแรกมีแน่นอนอยู่แล้วเพราะไม่มีใครเปิดหน้านี้มาเฉย ๆ
+   *
+   * แถวล่าสุดครบแล้วก็เติมแถวถัดไปให้เลย หัวหน้าจะได้ถ่ายรัวได้โดยไม่ต้องกดคั่น
+   * เติมเฉพาะตอนแถวล่าสุดครบ ไม่ใช่ตอนไหนก็ได้ ไม่งั้นจะมีแถวเปล่าค้างเต็มจอ
+   */
+  const guard = useRef(0)
+  useEffect(() => {
+    const last = rows[rows.length - 1]
+    const needFirst = rows.length === 0
+    const needNext = Boolean(last) && rowReady(last) && rows.length < roomLeft
+    if (!needFirst && !needNext) return
+    if (freeCards.length === 0) return
+    /* กันลูป · เติมได้ไม่เกินจำนวนบัตรว่างทั้งหมดต่อการเปิดหน้าหนึ่งครั้ง */
+    if (guard.current++ > 60) return
+    addRow()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, freeCards.length, roomLeft])
+
   const set = (key: string, patch: Partial<Row>) =>
     setRows((p) => p.map((r) => (r.key === key ? { ...r, ...patch } : r)))
 
@@ -139,8 +161,11 @@ export function BreakIssueMany({
       const bad = notReady.shots.some((s) => s.state === 'failed')
       if (bad) return `แถว ${i} · รูปส่งไม่สำเร็จ แตะที่รูปแล้วลองใหม่`
       if (up) return `แถว ${i} · กำลังส่งรูป ถ่ายคนต่อไปได้เลย ไม่ต้องรอ`
-      if (shotsToPhotos(notReady.shots).length === 0) return `แถว ${i} · ยังไม่มีรูป`
-      return `แถว ${i} · ยังไม่ได้เลือกซัพ`
+      /* บอกให้ครบทีเดียวว่าขาดอะไรบ้าง ไม่ใช่แก้อันหนึ่งแล้วค่อยรู้ว่ายังขาดอีกอัน */
+      const miss: string[] = []
+      if (supOn && !notReady.supplier) miss.push('ยังไม่ได้เลือกซัพ')
+      if (shotsToPhotos(notReady.shots).length === 0) miss.push('ยังไม่มีรูป')
+      return `แถว ${i} · ${miss.join(' และ ')}`
     }
     return ''
   }
@@ -185,6 +210,27 @@ export function BreakIssueMany({
 
   return (
     <section className="mb-4">
+      {/* ───────── เหลือสิทธิ์เท่าไหร่ ─────────
+          ต้องเห็นก่อนเริ่มถ่าย ไม่ใช่รู้ตอนกดส่งแล้วเกิน
+          บัตรว่างก็ต้องบอก เพราะใบละคนแปลว่าบัตรคือเพดานจริงอีกตัว */}
+      <div className="mb-2 flex items-center gap-2 rounded-card border border-line bg-surface px-3 py-2">
+        <span className="font-display text-xl font-bold leading-none">
+          {roomLeft === Infinity ? '—' : roomLeft}
+        </span>
+        <span className="text-[10px] leading-tight text-ink-500">
+          เหลือ
+          <br />
+          สิทธิ์
+        </span>
+        <span className="flex-1 text-[11px] leading-tight text-ink-500">
+          <b className="font-display">{grp?.group_name || grp?.group_code}</b>
+          {rows.length > 0 && ` · กำลังจะปล่อย ${rows.length} คน`}
+          <br />
+          บัตรว่าง {freeCards.length} ใบ
+          {rows.length > 0 && roomLeft !== Infinity && ` · เหลือหลังปล่อย ${Math.max(0, roomLeft - rows.length)} คน`}
+        </span>
+      </div>
+
       {/* ───────── ค่ารวมของรอบ ───────── */}
       <div className="mb-1 flex gap-2">
         <button
