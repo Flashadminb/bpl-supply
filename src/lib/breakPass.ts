@@ -54,6 +54,8 @@ export interface BreakBoardRow {
   issued_by_name: string
   issued_by_code: string
   waiting_gate: boolean
+  /** ชื่อซัพ · ใบเก่าก่อนมีช่องนี้เป็น null */
+  supplier: string | null
 }
 
 /** ประวัติ · ผู้ตรวจสอบเท่านั้น (RLS ของ break_passes คุมอยู่) */
@@ -398,8 +400,11 @@ export async function breakProblem(args: {
 
 /** ใบที่ยังเปิดอยู่ · เห็นได้แค่ไหนขึ้นกับว่าใครถาม RLS จัดการให้ */
 /** คอลัมน์ที่กระดาน รปภ วาดจริง · ที่เหลือไม่ต้องลากข้ามเน็ตมาทุกนาที */
+/* ขอเท่าที่หน้าจอใช้จริง · กระดาน รปภ ถามซ้ำทุกนาทีทั้งกะ
+   ขอครบทุกคอลัมน์คือลากของที่ไม่ได้ใช้ข้ามเน็ตวันละหลายร้อยรอบ
+   nickname กับ supplier เพิ่มเข้ามาเพราะหน้าใบค้างต้องใช้ตอนกางดู */
 const BOARD_COLS =
-  'id,card_code,reason_label,people,gate_out_people,gate_out_by,issued_by_code,issued_at,gate_out_at,due_at,waiting_gate'
+  'id,ref_no,card_code,reason_label,people,minutes,gate_out_people,gate_out_by,issued_by_name,issued_by_code,issued_at,gate_out_at,due_at,waiting_gate,nickname,supplier'
 
 /**
  * บัตรที่ยังไม่กลับ

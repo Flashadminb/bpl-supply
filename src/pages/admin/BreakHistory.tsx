@@ -150,6 +150,8 @@ export default function BreakHistory() {
   /* ลิงก์จากป้ายเบรคเกินเวลาบนหน้าแรกพามาที่ ?over=1
        เพื่อให้เปิดมาแล้วเห็นเฉพาะใบที่เกิน ไม่ใช่เห็นทั้งเจ็ดวันแล้วไล่หาเอง */
   const [onlyOver, setOnlyOver] = useState(q0.get('over') === '1')
+  /** ใบค้างที่กางดูรูปอยู่ · ทีละใบพอ กางหมดคือโหลดรูปทุกใบพร้อมกัน */
+  const [openStuck, setOpenStuck] = useState<number | null>(null)
   const [onlyBan, setOnlyBan] = useState(false)
   const [onlyProblem, setOnlyProblem] = useState(false)
   const [open, setOpen] = useState<number | null>(null)
@@ -446,31 +448,56 @@ export default function BreakHistory() {
               <ul className="space-y-2">
                 {stuckList.map((r) => {
                   const cd = countdown(r.due_at, now)
+                  const on = openStuck === r.id
                   return (
-                    <li
-                      key={r.id}
-                      className="flex flex-wrap items-center gap-3 rounded-card border border-line p-3"
-                    >
-                      <span className="font-mono text-sm font-bold">{r.card_code}</span>
-                      <span className="min-w-0 flex-1 text-sm text-ink-500">
-                        {r.reason_label} · {r.people} คน · {r.issued_by_name}
-                        <br />
-                        ยื่น {hhmm(r.issued_at)}
-                        {r.gate_out_at ? ` · ผ่านประตู ${hhmm(r.gate_out_at)}` : ' · ไม่ได้สแกนขาออก'}
-                      </span>
-                      <span className="font-mono text-sm font-bold text-danger-txt">{cd.text}</span>
-                      <button
-                        type="button"
-                        className="btn-ghost px-3 py-1.5 text-xs"
-                        disabled={busy}
-                        onClick={() => {
-                          setClosing([r.id])
-                          setReason(null)
-                          setCloseNote('')
+                    <li key={r.id} className="rounded-card border border-line">
+                      {/* ทั้งแถวกดได้ · กางแล้วเห็นรูปตอนปล่อย ซัพ และชื่อเล่น
+                          รูปโหลดตอนกางเท่านั้น ไม่ได้ลากมาพร้อมรายการ
+                          หน้านี้เปิดค้างทั้งกะ ถ้าลากรูปมาทุกใบคือหลายสิบเมกะต่อการเปิดหนึ่งครั้ง */}
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        className="flex flex-wrap items-center gap-3 p-3"
+                        onClick={() => setOpenStuck(on ? null : r.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') setOpenStuck(on ? null : r.id)
                         }}
                       >
-                        ปิดใบนี้
-                      </button>
+                        <span className="font-mono text-sm font-bold">{r.card_code}</span>
+                        {r.supplier && <span className="badge-mute font-mono">{r.supplier}</span>}
+                        {r.nickname && <span className="text-sm">{r.nickname}</span>}
+                        <span className="min-w-0 flex-1 text-sm text-ink-500">
+                          {r.reason_label} · {r.people} คน · {r.issued_by_name}
+                          <br />
+                          ยื่น {hhmm(r.issued_at)}
+                          {r.gate_out_at ? ` · ผ่านประตู ${hhmm(r.gate_out_at)}` : ' · ไม่ได้สแกนขาออก'}
+                        </span>
+                        <span className="text-xs text-ink-400">{on ? '▲ ปิด' : '▼ ดูรูป'}</span>
+                        <span className="font-mono text-sm font-bold text-danger-txt">{cd.text}</span>
+                        <button
+                          type="button"
+                          className="btn-ghost px-3 py-1.5 text-xs"
+                          disabled={busy}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setClosing([r.id])
+                            setReason(null)
+                            setCloseNote('')
+                          }}
+                        >
+                          ปิดใบนี้
+                        </button>
+                      </div>
+                      {on && (
+                        <div className="border-t border-line-2 bg-ink/5 p-3">
+                          <p className="mb-2 text-xs text-ink-500">
+                            {r.ref_no} · ขอ {r.minutes} นาที
+                            {r.supplier ? ` · ซัพ ${r.supplier}` : ' · ไม่ได้ระบุซัพ'}
+                            {r.nickname ? ` · ${r.nickname}` : ''}
+                          </p>
+                          <Photos passId={r.id} />
+                        </div>
+                      )}
                     </li>
                   )
                 })}
