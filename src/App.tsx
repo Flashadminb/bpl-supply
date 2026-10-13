@@ -24,7 +24,7 @@ import { Privacy, Terms } from './pages/Legal'
 // เน็ตในฮับไม่นิ่ง หน้าแรกต้องเบาที่สุด
 const OutBox = lazy(() => import('./pages/admin/OutBox'))
 const Parcel24 = lazy(() => import('./pages/admin/Parcel24'))
-const Parcel48 = lazy(() => import('./pages/admin/Parcel48'))
+const Pair = lazy(() => import('./pages/admin/Pair'))
 const OutZones = lazy(() => import('./pages/admin/OutZones'))
 const Scan = lazy(() => import('./pages/staff/Scan'))
 const Returns = lazy(() => import('./pages/staff/Returns'))
@@ -305,8 +305,13 @@ export default function App() {
 
       {/* จับคู่ · จอเต็มของตัวเอง ฟิลเดียวกับพัสดุค้างเกิน 24 ชม
           เจ้าของระบบกับผู้ดูแลระบบเท่านั้น หน้างานยังไม่เปิด ต่างจากงาน 24
-          ด่านจริงอยู่ที่ RLS ของ p48_* ซึ่งตรวจ my_can_outbox() ทุกตารางและทุก RPC */}
-      <Route path="/parcel48" element={<Guard roles={['admin']}><Parcel48 /></Guard>} />
+          ด่านจริงอยู่ที่ RLS ของ p48_* ซึ่งตรวจ my_can_outbox() ทุกตารางและทุก RPC
+          ชื่อตารางฝั่งฐานข้อมูลยังเป็น p48_ เพราะเป็นชื่อที่ไม่มีใครเห็น
+          เปลี่ยนแปลว่าต้องเขียน 12 ฟังก์ชันใหม่ทั้งชุด โดยไม่ได้อะไรกลับมา */}
+      <Route path="/pair" element={<Guard roles={['admin']}><Pair /></Guard>} />
+      {/* เส้นทางเดิมสมัยที่ยังเข้าใจผิดว่าหน้านี้เกี่ยวกับกรอบ 48 ชั่วโมง
+          เก็บไว้ให้ลิงก์ที่ใครเผลอบันทึกไว้ยังเข้าได้ ไม่ตายเงียบ */}
+      <Route path="/parcel48" element={<Navigate to="/pair" replace />} />
       <Route path="/wait" element={<Guard><WaitBoard /></Guard>} />
       {/* เส้นทางเดิมของหน้าอัปไฟล์ · ตอนนี้เป็นป็อปอัพบนกระดานแล้ว พาไปที่กระดานพร้อมเปิดช่องเลือกไฟล์ */}
       <Route path="/wait/upload" element={<Navigate to="/wait?upload=1" replace />} />

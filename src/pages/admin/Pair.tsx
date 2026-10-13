@@ -25,7 +25,7 @@ import {
   type P48Parsed,
   type P48Row,
   type P48Stats,
-} from '../../lib/parcel48'
+} from '../../lib/pair'
 
 /**
  * จับคู่
@@ -36,8 +36,12 @@ import {
  * ต่างจากงาน 24 ตรงที่ไม่โหลดทั้งกระดานมาไว้ในเครื่อง
  * รอบหนึ่งมี 54,834 ชิ้น จึงกรองที่ฐานข้อมูลแล้วหยิบมาทีละหน้า
  *
- * ค่าเริ่มต้นคือกรอง 48 ชั่วโมงขึ้นไป เพราะนั่นคือชื่อและเนื้องานของหน้านี้
- * ไฟล์ต้นทางไม่ได้กรองมาให้เหมือนงาน 24 · กดปุ่ม "ทั้งหมด" ถึงจะเห็นทั้งคลัง
+ * เปิดมาเห็นทั้งคลัง ไม่ได้กรองอะไรไว้ล่วงหน้า
+ *
+ * ตอนแรกตั้งค่าเริ่มต้นไว้ที่ค้างเกิน 48 ชั่วโมง เพราะเข้าใจกันว่าหน้านี้
+ * คืองานตามกรอบ 48 ชั่วโมง · เจ้าของระบบยืนยันแล้วว่าไม่ใช่ หน้านี้คือหาของให้เจอ
+ * ตัวกรองที่ตั้งค้างไว้เองโดยที่คนเปิดไม่ได้สั่ง คือตัวกรองที่ซ่อนของไปห้าหมื่นชิ้น
+ * แล้วคนจะคิดว่าไฟล์อัปไม่เข้า · แถบชั่วโมงยังอยู่ ใครอยากกรองก็กดเอง
  */
 
 /** เกินกี่แถวแล้วต้องถามก่อนคัดลอกยกชุด · เกินนี้ไปคือเบราว์เซอร์เริ่มอืด */
@@ -58,7 +62,7 @@ const CUST_COLOR: Record<string, { bg: string; fg: string }> = {
 }
 const CUST_FALLBACK = { bg: '#1F2730', fg: '#9FB0C2' }
 
-export default function Parcel48() {
+export default function Pair() {
   const nav = useNavigate()
   const { can } = useAuth()
   const mayUpload = can('admin')
@@ -69,7 +73,7 @@ export default function Parcel48() {
   /* ---- ตัวกรอง ---- */
   const [qRaw, setQRaw] = useState('')
   const [q, setQ] = useState('')
-  const [age, setAge] = useState(48)
+  const [age, setAge] = useState(0)
   const [cust, setCust] = useState('')
   const [dest, setDest] = useState('')
   const [action, setAction] = useState('')
@@ -238,10 +242,23 @@ export default function Parcel48() {
             BPL
           </span>
           <span
-            className="rounded-lg px-[9px] py-[2px] font-mono text-[15px] font-extrabold"
+            className="flex items-center rounded-lg px-[7px] py-[3px]"
             style={{ background: '#1E3246', color: '#8FD0FF' }}
           >
-            48
+            <svg
+              viewBox="0 0 24 24"
+              width="19"
+              height="19"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.1"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M10.1 13.9a4.2 4.2 0 0 0 5.94 0l2.52-2.52a4.2 4.2 0 1 0-5.94-5.94l-1.3 1.3" />
+              <path d="M13.9 10.1a4.2 4.2 0 0 0-5.94 0l-2.52 2.52a4.2 4.2 0 1 0 5.94 5.94l1.3-1.3" />
+            </svg>
           </span>
           <span className="text-lg font-bold">จับคู่</span>
           <span className="text-xs" style={{ color: C.faint }}>

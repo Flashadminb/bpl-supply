@@ -363,36 +363,30 @@ export default function Home() {
 
             {/*
               จับคู่ · เจ้าของระบบกับผู้ดูแลระบบเท่านั้น หน้างานยังไม่เปิด
-              ไอคอนเป็นเลข 48 ในกรอบ ชุดเดียวกับเลข 24 ที่อยู่ข้าง ๆ
-              เจ้าของระบบเรียกสองหน้านี้ว่า "ไอคอน 24" กับ "ไอคอน 48" จึงต้องเป็นเลข
+
+              ไอคอนเป็นห่วงโซ่สองห่วงคล้องกัน ไม่ใช่ตัวเลขแบบไอคอน 24 ข้าง ๆ
+              เพราะหน้านี้ไม่ได้เกี่ยวกับกรอบเวลาเหมือนหน้า 24 ตอนแรกเข้าใจผิดกันว่าใช่
+              งานของหน้านี้คือเอาของสองอย่างมาต่อกัน ซึ่งโซ่คล้องคือรูปที่บอกแบบนั้น
             */}
             {can('admin') && (
               <Link
-                to="/parcel48"
+                to="/pair"
                 aria-label="จับคู่"
                 className="flex h-tap w-tap items-center justify-center rounded-btn border border-ink/15 bg-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,.7)]"
               >
-                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" aria-hidden>
-                  <rect
-                    x="2.6"
-                    y="4.4"
-                    width="18.8"
-                    height="15.2"
-                    rx="3.4"
-                    stroke="currentColor"
-                    strokeWidth="1.9"
-                  />
-                  <text
-                    x="12"
-                    y="16.3"
-                    textAnchor="middle"
-                    fontSize="10"
-                    fontWeight="800"
-                    fill="currentColor"
-                    fontFamily="ui-monospace, monospace"
-                  >
-                    48
-                  </text>
+                <svg
+                  viewBox="0 0 24 24"
+                  width="26"
+                  height="26"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M10.1 13.9a4.2 4.2 0 0 0 5.94 0l2.52-2.52a4.2 4.2 0 1 0-5.94-5.94l-1.3 1.3" />
+                  <path d="M13.9 10.1a4.2 4.2 0 0 0-5.94 0l-2.52 2.52a4.2 4.2 0 1 0 5.94 5.94l1.3-1.3" />
                 </svg>
               </Link>
             )}
@@ -633,36 +627,30 @@ export default function Home() {
 
             {/*
               จับคู่ · เจ้าของระบบกับผู้ดูแลระบบเท่านั้น หน้างานยังไม่เปิด
-              ไอคอนเป็นเลข 48 ในกรอบ ชุดเดียวกับเลข 24 ที่อยู่ข้าง ๆ
-              เจ้าของระบบเรียกสองหน้านี้ว่า "ไอคอน 24" กับ "ไอคอน 48" จึงต้องเป็นเลข
+
+              ไอคอนเป็นห่วงโซ่สองห่วงคล้องกัน ไม่ใช่ตัวเลขแบบไอคอน 24 ข้าง ๆ
+              เพราะหน้านี้ไม่ได้เกี่ยวกับกรอบเวลาเหมือนหน้า 24 ตอนแรกเข้าใจผิดกันว่าใช่
+              งานของหน้านี้คือเอาของสองอย่างมาต่อกัน ซึ่งโซ่คล้องคือรูปที่บอกแบบนั้น
             */}
             {can('admin') && (
               <Link
-                to="/parcel48"
+                to="/pair"
                 aria-label="จับคู่"
                 className="flex h-tap w-tap items-center justify-center rounded-btn border border-ink/15 bg-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,.7)]"
               >
-                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" aria-hidden>
-                  <rect
-                    x="2.6"
-                    y="4.4"
-                    width="18.8"
-                    height="15.2"
-                    rx="3.4"
-                    stroke="currentColor"
-                    strokeWidth="1.9"
-                  />
-                  <text
-                    x="12"
-                    y="16.3"
-                    textAnchor="middle"
-                    fontSize="10"
-                    fontWeight="800"
-                    fill="currentColor"
-                    fontFamily="ui-monospace, monospace"
-                  >
-                    48
-                  </text>
+                <svg
+                  viewBox="0 0 24 24"
+                  width="26"
+                  height="26"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M10.1 13.9a4.2 4.2 0 0 0 5.94 0l2.52-2.52a4.2 4.2 0 1 0-5.94-5.94l-1.3 1.3" />
+                  <path d="M13.9 10.1a4.2 4.2 0 0 0-5.94 0l-2.52 2.52a4.2 4.2 0 1 0 5.94 5.94l1.3-1.3" />
                 </svg>
               </Link>
             )}
