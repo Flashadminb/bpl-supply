@@ -371,7 +371,9 @@ export default function OutBox() {
           FLASH
         </span>
         <span className="text-lg font-bold">
-            ของค้างส่งออก <Cn>发车监控</Cn> · 21BPL
+            {/* ชื่อจีนตามที่เจ้าของระบบแก้ · 到件未发出 แปลว่าของมาถึงแล้วแต่ยังไม่ได้ส่งออก
+                ซึ่งตรงกับของบนจอ ส่วน 发车监控 ของเดิมแปลว่าเฝ้าดูการปล่อยรถ คนละเรื่องกัน */}
+            ของค้างส่งออก <Cn>到件未发出</Cn> · 21BPL
           </span>
         <span className="flex-1" />
         <span className="text-sm" style={{ color: C.mute }}>
