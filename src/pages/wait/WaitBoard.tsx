@@ -743,12 +743,28 @@ function DoneList({ onClose, onChanged }: { onClose: () => void; onChanged: () =
               <p className="truncate text-[12px] text-ink-500">
                 {r.vehicle_type} · ถึง {clock(r.arrived_at)} · เสร็จ{' '}
                 {r.done_at ? clock(r.done_at) : '—'} ·{' '}
+                {/* สามทาง ไม่ใช่สองทาง · คันที่ปิดจากไฟล์แล้วช่วงเวลาคร่อมเส้นครบกำหนด
+                    ยังบอกไม่ได้ว่าทันหรือไม่ ถ้าเขียนว่าไม่ทันคือกล่าวหาโดยไม่มีหลักฐาน */}
                 <span
                   className="font-bold"
-                  style={{ color: r.state === 'done_ontime' ? '#167C45' : '#C32F34' }}
+                  style={{
+                    color:
+                      r.state === 'done_ontime'
+                        ? '#167C45'
+                        : r.state === 'done_unsure'
+                          ? '#6B4FA8'
+                          : '#C32F34',
+                  }}
                 >
-                  {r.state === 'done_ontime' ? 'ทันเวลา' : 'ไม่ทัน'}
+                  {r.state === 'done_ontime'
+                    ? 'ทันเวลา'
+                    : r.state === 'done_unsure'
+                      ? 'ปิดจากไฟล์'
+                      : 'ไม่ทัน'}
                 </span>
+                {r.done_src === 'file' && r.state !== 'done_unsure' && (
+                  <span className="ml-1 text-[11px] text-ink-400">· จากไฟล์</span>
+                )}
               </p>
             </div>
             <button

@@ -1138,6 +1138,7 @@ function DoneTable({ rows }: { rows: WaitTruckRow[] }) {
                 )
               : 0
             const ok = r.state === 'done_ontime'
+            const unsure = r.state === 'done_unsure'
             return (
               <tr key={r.id} className="border-t" style={{ borderColor: LINE }}>
                 <td className="whitespace-nowrap px-2 py-[6px] font-extrabold">{r.vehicle_type ?? '—'}</td>
@@ -1152,9 +1153,9 @@ function DoneTable({ rows }: { rows: WaitTruckRow[] }) {
                 </td>
                 <td
                   className="whitespace-nowrap px-2 py-[6px] font-extrabold"
-                  style={{ color: ok ? '#35D98A' : '#FF8A8A' }}
+                  style={{ color: ok ? '#35D98A' : unsure ? '#C4A2FF' : '#FF8A8A' }}
                 >
-                  {ok ? 'ทันเวลา' : `เกิน ${lateMin} นาที`}
+                  {ok ? 'ทันเวลา' : unsure ? 'ปิดจากไฟล์' : `เกิน ${lateMin} นาที`}
                 </td>
                 <td className="whitespace-nowrap px-2 py-[6px] font-bold" style={{ color: '#FFD479' }}>
                   {nf(r.parcels_all)}

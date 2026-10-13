@@ -10,7 +10,20 @@ import {
   type WaitTruckKpi,
 } from '../../lib/waitTrucks'
 import { Modal, Spinner } from '../../components/ui'
-import { nf } from './parts'
+import { clock, nf } from './parts'
+
+/**
+ * คำตัดสินของคันที่ปิดเพราะหายจากไฟล์
+ *
+ * ไฟล์บอกได้แค่ว่าตอนอัปรอบนี้มันไม่อยู่แล้ว ความจริงอยู่ระหว่างสองรอบอัป
+ * ครบกำหนดหลังรอบนี้ = ทันแน่ · ครบกำหนดก่อนรอบก่อน = ไม่ทันแน่
+ * คร่อมอยู่ตรงกลาง = ยังบอกไม่ได้ และจะไม่เดาให้
+ */
+const VERDICT: Record<'ontime' | 'late' | 'unsure', { t: string; c: string }> = {
+  ontime: { t: 'ทันแน่นอน', c: '#167C45' },
+  late: { t: 'ไม่ทันแน่นอน', c: '#C32F34' },
+  unsure: { t: 'ยังบอกไม่ได้', c: '#6B4FA8' },
+}
 
 /**
  * กล่องอัปไฟล์ · เป็นป็อปอัพบนกระดาน ไม่ใช่หน้าแยก
@@ -260,9 +273,41 @@ export function UploadBox({
             ขึ้นกระดานแล้ว {nf(stage.res.added)} คัน
           </p>
           <p className="mt-1 text-sm text-ink-500">
-            ข้ามคันที่รออยู่แล้ว {nf(stage.res.skipped)} คัน
+            อัปเดตคันที่รออยู่แล้ว {nf(stage.res.updated ?? stage.res.skipped)} คัน
+            {(stage.res.reopened ?? 0) > 0 &&
+              ` · คืนขึ้นกระดาน ${nf(stage.res.reopened)} คัน (ปิดไปก่อนหน้าทั้งที่ยังจอดอยู่)`}
             {stage.res.rejected_n > 0 && ` · ฐานข้อมูลตีกลับ ${nf(stage.res.rejected_n)} คัน`}
           </p>
+
+          {/*
+            คันที่ปิดให้เพราะหายจากไฟล์ · ต้องขึ้นให้เห็นทุกครั้ง ไม่ใช่เงียบ ๆ
+            นี่คือสิ่งเดียวในระบบที่ปิดงานโดยไม่มีคนกด ถ้าไม่โชว์ว่าปิดคันไหนไปบ้าง
+            วันที่ไฟล์ผิดแล้วกระดานโล่งไปทั้งแผง จะไม่มีใครรู้ว่าเกิดอะไรขึ้น
+          */}
+          {(stage.res.closed_n ?? 0) > 0 && (
+            <div className="mt-3 rounded-xl border border-ink/15 bg-surface-2 p-3">
+              <p className="text-sm font-extrabold">
+                ปิดให้ {nf(stage.res.closed_n)} คัน เพราะไม่มีในไฟล์รอบนี้แล้ว
+              </p>
+              <p className="mt-[2px] text-[11.5px] text-ink-400">
+                ไฟล์ต้นทางคือรายการรถที่ยังไม่ได้ลงงาน · หายจากไฟล์แปลว่าลงเสร็จแล้ว
+                {stage.res.prev_import
+                  ? ` · เทียบกับไฟล์รอบก่อนเมื่อ ${clock(stage.res.prev_import)}`
+                  : ' · ยังไม่มีไฟล์รอบก่อนให้เทียบ จึงบอกไม่ได้ว่าเสร็จตอนไหน'}
+              </p>
+              <ul className="mt-2 max-h-48 space-y-[3px] overflow-auto">
+                {stage.res.closed.map((c) => (
+                  <li key={c.id} className="flex items-baseline gap-2 text-xs">
+                    <span className="font-bold">{c.plate ?? c.barcode}</span>
+                    <span className="text-ink-400">{c.vehicle_type ?? '—'}</span>
+                    <span className="ml-auto font-bold" style={{ color: VERDICT[c.sure].c }}>
+                      {VERDICT[c.sure].t}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {stage.res.rejected_n > 0 && (
             <ul className="mt-2 space-y-1">
@@ -278,9 +323,10 @@ export function UploadBox({
             <p className="mt-4 text-sm font-bold text-warn-txt">
               ถอนออกแล้ว {nf(undone)} คัน
               {undone < stage.res.added && ' · ที่เหลือมีคนกดลงงานหรือยกเลิกไปแล้ว จึงไม่ถอน'}
+              {(stage.res.closed_n ?? 0) > 0 && ' · คันที่ปิดไปจากไฟล์รอบนี้ถูกคืนขึ้นกระดานแล้วด้วย'}
             </p>
           ) : (
-            stage.res.added > 0 && (
+            (stage.res.added > 0 || (stage.res.closed_n ?? 0) > 0) && (
               <button
                 disabled={undoing}
                 onClick={() => void undo(stage.res.batch)}

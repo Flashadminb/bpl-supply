@@ -29,6 +29,7 @@ export const STATE_COLOR: Record<WaitState, string> = {
   waiting: '#2F7FE0',
   done_ontime: '#25A35A',
   done_late: '#E5484D',
+  done_unsure: '#8A6FC9',
   cancelled: '#55616F',
 }
 
@@ -38,6 +39,7 @@ export const STATE_CHIP: Record<WaitState, string> = {
   waiting: 'ยังมีเวลา',
   done_ontime: 'ทันเวลา',
   done_late: 'ไม่ทัน',
+  done_unsure: 'ปิดจากไฟล์',
   cancelled: 'ยกเลิก',
 }
 
@@ -49,7 +51,13 @@ export const STATE_CHIP: Record<WaitState, string> = {
  */
 export function liveState(r: WaitTruckRow, sec: number): WaitState {
   if (r.cancelled_at) return 'cancelled'
-  if (r.done_at) return r.state === 'done_late' ? 'done_late' : 'done_ontime'
+  /* ของที่จบแล้วเชื่อค่าจากฐานข้อมูลตรง ๆ ได้ เพราะนาฬิกาหยุดไปแล้ว
+     ต้องส่งต่อ done_unsure ด้วย ไม่งั้นมันจะถูกนับเป็นทันเวลาโดยไม่มีหลักฐาน */
+  if (r.done_at) {
+    if (r.state === 'done_late') return 'done_late'
+    if (r.state === 'done_unsure') return 'done_unsure'
+    return 'done_ontime'
+  }
   if (sec < 0) return 'overdue'
   if (sec <= WARN_SEC) return 'warn'
   return 'waiting'

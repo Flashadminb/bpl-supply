@@ -19,6 +19,11 @@ export type WaitState =
   | 'overdue'
   | 'done_ontime'
   | 'done_late'
+  /**
+   * ปิดจากไฟล์ แต่ช่วงเวลาที่รู้คร่อมเส้นครบกำหนดพอดี จึงบอกไม่ได้ว่าทันหรือไม่
+   * ไม่ยัดไปรวมกับทันหรือไม่ทัน เพราะทั้งกระดานนี้มีอยู่เพื่อตัวเลขที่เชื่อได้
+   */
+  | 'done_unsure'
   | 'cancelled'
 
 export interface WaitTruckRow {
@@ -43,6 +48,10 @@ export interface WaitTruckRow {
   due_at: string
   done_at: string | null
   done_by_name: string | null
+  /** ว่าง = คนกดเอง · 'file' = ปิดให้เพราะหายจากไฟล์ */
+  done_src: 'file' | null
+  /** ขอบล่างของช่วงที่ลงเสร็จ · มีค่าเฉพาะตอนปิดจากไฟล์ */
+  done_from: string | null
   cancelled_at: string | null
   cancelled_by_name: string | null
   cancel_reason: string | null
@@ -68,6 +77,7 @@ export const STATE_TH: Record<WaitState, string> = {
   overdue: 'ถึงเวลาต้องลงงาน',
   done_ontime: 'ลงงานเสร็จ ทันเวลา',
   done_late: 'ลงงานเสร็จ ไม่ทัน',
+  done_unsure: 'ลงงานเสร็จ บอกไม่ได้ว่าทันไหม',
   cancelled: 'ยกเลิก',
 }
 
@@ -330,11 +340,30 @@ export async function listWaitDone(sinceIso: string): Promise<WaitTruckRow[]> {
   return (data ?? []) as WaitTruckRow[]
 }
 
+/** คันที่ถูกปิดเพราะหายจากไฟล์ · sure บอกว่าตัดสินทัน-ไม่ทันได้แน่แค่ไหน */
+export interface ClosedByFile {
+  id: number
+  barcode: string
+  plate: string | null
+  vehicle_type: string | null
+  arrived_at: string
+  late_min: number
+  sure: 'ontime' | 'late' | 'unsure'
+}
+
 export interface ImportResult {
   ok: boolean
   batch: string
   added: number
+  /** คันเดิมที่อยู่บนกระดานแล้วและถูกอัปเดตข้อมูลจากไฟล์รอบนี้ */
+  updated: number
+  /** คันที่เคยถูกปิดจากไฟล์ผิด แล้วยังโผล่ในไฟล์รอบนี้ จึงคืนขึ้นกระดาน */
+  reopened: number
   skipped: number
+  closed: ClosedByFile[]
+  closed_n: number
+  /** เวลาอัปรอบก่อนหน้า · ขอบล่างของช่วงที่คันที่หายไปลงเสร็จ */
+  prev_import: string | null
   rejected_n: number
   rejected: { barcode: string; why: string }[]
 }
@@ -342,11 +371,18 @@ export interface ImportResult {
 /**
  * ส่งแถวที่อ่านได้เข้าฐานข้อมูล
  *
- * คันที่ยังรออยู่บนกระดานจะถูกข้าม ไม่ใช่เขียนทับ
- * เพราะหน้างานอัปไฟล์เดิมซ้ำทุกชั่วโมง ถ้าเขียนทับคือรีเซ็ตนาฬิกาทุกชั่วโมง
- * แล้วจะไม่มีคันไหนเกินเวลาเลยสักคันตลอดกาล
+ * คันที่ยังรออยู่บนกระดานจะไม่ถูกรีเซ็ตนาฬิกา · อัปไฟล์เดิมซ้ำกี่รอบก็ได้
+ * เวลารถถึงกับเวลาครบกำหนดไม่เคยขยับ ที่อัปเดตคือข้อมูลบรรยายอย่างทะเบียน
+ * ชื่อคนขับ และจำนวนพัสดุ ซึ่งไฟล์รอบใหม่แก้ให้ถูกได้
+ *
+ * closeMissing · คันที่อยู่บนกระดานแต่ไม่มีในไฟล์รอบนี้จะถูกปิดให้
+ * เพราะไฟล์ต้นทางคือ "รายการรถที่ยังไม่ได้ลงงาน" หายจากไฟล์แปลว่าลงเสร็จแล้ว
+ * ปิดผิดก็ไม่เป็นไร ไฟล์รอบหน้าจะคืนคันนั้นขึ้นกระดานให้เอง
  */
-export async function importWaitTrucks(rows: ParsedTruck[]): Promise<ImportResult> {
+export async function importWaitTrucks(
+  rows: ParsedTruck[],
+  closeMissing = true,
+): Promise<ImportResult> {
   const payload = rows.map((r) => ({
     barcode: r.barcode,
     arrived_at: r.arrived_at,
@@ -362,7 +398,10 @@ export async function importWaitTrucks(rows: ParsedTruck[]): Promise<ImportResul
     parcels_do: r.parcels_do,
   }))
 
-  const { data, error } = await supabase.rpc('wait_truck_import', { p_rows: payload })
+  const { data, error } = await supabase.rpc('wait_truck_import', {
+    p_rows: payload,
+    p_close_missing: closeMissing,
+  })
   if (error) throw new Error(readableError(error))
   return data as ImportResult
 }
@@ -401,6 +440,10 @@ export interface WaitCounts {
   done: number
   done_late: number
   on_time: number
+  /** ปิดจากไฟล์แล้วช่วงเวลาคร่อมเส้นครบกำหนด จึงยังตัดสินไม่ได้ */
+  unsure: number
+  /** ในรอบนี้ ปิดโดยไฟล์ไปกี่คัน · ที่เหลือคือคนกดเอง */
+  by_file: number
   done_parcels: number
   done_do: number
   done_nondo: number
