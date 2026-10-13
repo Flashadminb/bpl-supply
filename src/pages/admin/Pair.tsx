@@ -15,6 +15,7 @@ import {
   p48Facets,
   p48One,
   p48Search,
+  p48Prune,
   p48Stats,
   p48Undo,
   parseP48,
@@ -22,7 +23,6 @@ import {
   type P48Filter,
   type P48Found,
   type P48Kind,
-  type P48Parsed,
   type P48Row,
   type P48Stats,
 } from '../../lib/pair'
@@ -131,6 +131,8 @@ export default function Pair() {
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [drag, setDrag] = useState(false)
+  /** ตัวกดหยุดการอัปที่กำลังเดินอยู่ · ของที่ส่งไปแล้วกลายเป็นรอบค้างที่ไม่มีใครเห็น */
+  const abort = useRef<AbortController | null>(null)
 
   const take = useCallback(
     async (files: File[]) => {
@@ -139,40 +141,60 @@ export default function Pair() {
         setErr('รับได้ครั้งละไม่เกินสองไฟล์ · ไฟล์รายละเอียดหนึ่งใบ ไฟล์สินค้าหนึ่งใบ')
         return
       }
+      const ac = new AbortController()
+      abort.current = ac
       setBusy(true)
       setErr(null)
       setMsg(null)
       try {
-        /* แกะให้ครบทุกใบก่อน แล้วค่อยส่งขึ้น
-           ถ้าใบที่สองพัง จะได้ไม่ทับของเดิมไปแล้วครึ่งทาง */
-        setProg('กำลังอ่านไฟล์…')
-        const parsed: P48Parsed[] = []
-        for (const f of files) parsed.push(await parseP48(f))
+        /*
+          แกะทีละใบแล้วส่งขึ้นเลย ไม่ได้แกะทั้งสองใบรอไว้ก่อน
+          ไฟล์จริงคือ 78,476 กับ 60,146 แถว · แกะพร้อมกันคือกินหน่วยความจำเบราว์เซอร์
+          เป็นร้อยเมกะและคนเปิดต้องนั่งมองคำว่ากำลังอ่านไฟล์เป็นนาทีโดยไม่มีอะไรขยับ
 
-        const kinds = new Set(parsed.map((p) => p.kind))
-        if (kinds.size !== parsed.length) {
-          throw new Error('สองไฟล์นี้เป็นชนิดเดียวกัน · ต้องเป็นไฟล์รายละเอียดหนึ่งใบกับไฟล์สินค้าหนึ่งใบ')
-        }
-
+          ใบแรกพังก็ยังไม่ได้แตะของเดิม ใบที่สองพังก็เสียแค่ใบที่สอง
+          เพราะรอบใหม่จะไม่ถูกเห็นจนกว่าจะปิดรอบสำเร็จ ของเดิมอยู่ครบตลอด
+        */
         const said: string[] = []
-        for (const p of parsed) {
-          const name = p.kind === 'parcel' ? 'ไฟล์รายละเอียด' : 'ไฟล์สินค้า'
-          const res = await importP48(p, (d, t) =>
-            setProg(`${name} · ส่งขึ้นแล้ว ${nf(d)} จาก ${nf(t)} แถว`),
-          )
-          said.push(
-            `${name} ${nf(res.rows)} ชิ้น` +
-              (p.other > 0 ? ` (ตัดของฮับอื่นออก ${nf(p.other)})` : ''),
-          )
+        const seen = new Set<string>()
+
+        for (const f of files) {
+          setProg(`กำลังอ่าน ${f.name}…`)
+          const parts = await parseP48(f)
+
+          for (const one of parts) {
+            if (ac.signal.aborted) throw new Error('ยกเลิกการอัปแล้ว · ของเดิมยังอยู่ครบ')
+            const name = one.kind === 'parcel' ? 'ไฟล์รายละเอียด' : 'ไฟล์สินค้า'
+            if (seen.has(one.kind)) {
+              said.push(`ข้าม${name}ซ้ำจาก ${one.fileName}`)
+              continue
+            }
+            seen.add(one.kind)
+
+            const res = await importP48(one, {
+              signal: ac.signal,
+              onProgress: (d, t) =>
+                setProg(`${name} · ส่งขึ้นแล้ว ${nf(d)} จาก ${nf(t)} แถว (${Math.round((d / t) * 100)}%)`),
+            })
+            said.push(
+              `${name} ${nf(res.rows)} ชิ้น` +
+                (one.other > 0 ? ` (ตัดของฮับอื่นออก ${nf(one.other)})` : ''),
+            )
+          }
         }
 
         setMsg('อัปทับเรียบร้อย · ' + said.join(' · ') + ' · กดย้อนกลับได้ถ้าอัปผิดไฟล์')
         stats.reload()
         facets.reload()
         found.reload()
+
+        /* เก็บกวาดรอบเก่าหลังรายงานผลไปแล้ว · ล้มตรงนี้ไม่กระทบไฟล์ที่เพิ่งอัปสำเร็จ */
+        setProg('กำลังเก็บกวาดรอบเก่า…')
+        await p48Prune()
       } catch (x) {
         setErr(readableError(x))
       } finally {
+        abort.current = null
         setBusy(false)
         setProg(null)
       }
@@ -297,9 +319,10 @@ export default function Pair() {
               }}
             />
             <span style={{ color: C.mute, fontSize: 13 }}>
-              ลากไฟล์ทั้งสองมาวางพร้อมกันได้
+              ลากไฟล์มาวางได้เลย ทีละใบหรือสองใบพร้อมกัน
               <span className="ml-2 text-[11.5px]" style={{ color: C.faint }}>
-                ระบบแยกเองจากเนื้อในไฟล์ ไม่สนชื่อไฟล์
+                ระบบแยกเองจากเนื้อในไฟล์ ไม่สนชื่อไฟล์ · ใบที่ VLOOKUP ชื่อสินค้ามาแล้วใช้ใบเดียวจบ
+                · ไฟล์ซ้ำชนิดเดียวกันจะถูกข้าม
               </span>
             </span>
             <button
@@ -326,8 +349,21 @@ export default function Pair() {
         )}
 
         {prog && (
-          <p className="rounded-card px-3 py-2 text-sm" style={{ background: C.amberBg, color: C.amberInk }}>
-            {prog}
+          <p
+            className="flex items-center gap-3 rounded-card px-3 py-2 text-sm"
+            style={{ background: C.amberBg, color: C.amberInk }}
+          >
+            <Spinner className="h-4 w-4" />
+            <span>{prog}</span>
+            <span className="flex-1" />
+            <button
+              type="button"
+              className="rounded-lg px-3 py-1 text-xs font-bold"
+              style={{ background: C.redBg, color: C.redInk, border: '1px solid #6a2a2a' }}
+              onClick={() => abort.current?.abort()}
+            >
+              หยุดอัป
+            </button>
           </p>
         )}
         {msg && (

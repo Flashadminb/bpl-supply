@@ -20,8 +20,20 @@ import { maybeDate, readXlsx } from './xlsx'
 /** ฮับเรา · เทียบแบบตัดช่องว่างทิ้ง เพราะในไฟล์เขียน "21 BPL_BHUB-บางพลี" */
 export const MY_HUB = '21BPL'
 
-/** กี่แถวต่อการส่งขึ้นฐานข้อมูลหนึ่งครั้ง */
-const CHUNK = 2000
+/**
+ * กี่แถวต่อการส่งขึ้นฐานข้อมูลหนึ่งครั้ง
+ *
+ * ของเดิม 2000 แถว = ก้อนละเกือบหนึ่งเมกะไบต์ ซึ่งบนเน็ตในฮับที่ไม่นิ่ง
+ * คือก้อนที่มีโอกาสหลุดกลางทางสูง และหลุดทีคือเสียทั้งก้อน
+ * ก้อนเล็กลงแต่ส่งพร้อมกันหลายก้อน เร็วกว่าและล้มแล้วเสียน้อยกว่า
+ */
+const CHUNK = 600
+
+/** ส่งพร้อมกันกี่ก้อน · มากกว่านี้เน็ตในฮับเริ่มแย่งกันเองจนช้าลง */
+const LANES = 4
+
+/** ก้อนที่ล้มลองซ้ำกี่ครั้งก่อนยอมแพ้ */
+const RETRY = 3
 
 /** กี่แถวต่อหน้าของตาราง · มากกว่านี้คนก็เลื่อนไม่ไหวและเน็ตในฮับก็ไม่ไหว */
 export const PAGE = 300
@@ -280,8 +292,40 @@ function parseProducts(rows: string[][], fileName: string): P48Parsed {
   return { kind: 'product', fileName, fileRows: rows.length, rows: out, other: 0 }
 }
 
-/** อ่านไฟล์หนึ่งใบแล้วบอกว่าเป็นใบไหนพร้อมแถวที่พร้อมส่ง */
-export async function parseP48(file: File): Promise<P48Parsed> {
+/**
+ * แกะรายละเอียดสินค้าออกจากไฟล์ใบใหญ่ ถ้าบังเอิญมีติดมาด้วย
+ *
+ * เจ้าของระบบบอกว่าบางครั้งไฟล์ที่ได้มาถูก VLOOKUP ชื่อสินค้าใส่ไว้แล้ว
+ * กรณีนั้นไม่ต้องหาไฟล์ที่สองมาอัปอีกใบ ใช้ของที่มีอยู่ในใบเดียวกันเลย
+ *
+ * คืน null ถ้าไม่มีคอลัมน์นั้น ซึ่งเป็นกรณีปกติของไฟล์ที่โหลดมาตรง ๆ
+ */
+function pluckProducts(rows: string[][], fileName: string): P48Parsed | null {
+  const head = (rows[0] ?? []).map((x) => String(x ?? ''))
+  const cT = findCol(head, 'เลขพัสดุ', '运单号')
+  const cD = findCol(head, 'รายละเอียดสินค้า', 'ชื่อสินค้า', 'รายละเอียดพัสดุ', '商品', '品名')
+  if (cT < 0 || cD < 0) return null
+
+  const out: Record<string, unknown>[] = []
+  const seen = new Set<string>()
+  for (let i = 1; i < rows.length; i++) {
+    const t = String(rows[i]?.[cT] ?? '').trim()
+    const d = String(rows[i]?.[cD] ?? '').replace(/s+/g, ' ').trim()
+    if (!t || !d || d === '--' || d === '-') continue
+    if (seen.has(t)) continue
+    seen.add(t)
+    out.push({ t, d })
+  }
+  if (!out.length) return null
+  return { kind: 'product', fileName, fileRows: out.length, rows: out, other: 0 }
+}
+
+/**
+ * อ่านไฟล์หนึ่งใบแล้วบอกว่าเป็นใบไหนพร้อมแถวที่พร้อมส่ง
+ *
+ * คืนเป็นรายการ เพราะไฟล์ใบใหญ่ที่มีชื่อสินค้าติดมาด้วย นับเป็นสองใบในไฟล์เดียว
+ */
+export async function parseP48(file: File): Promise<P48Parsed[]> {
   const sheet = await readXlsx(file)
   const rows = sheet.rows
   if (rows.length < 2) throw new Error(`${file.name} · ไฟล์นี้ไม่มีข้อมูล`)
@@ -295,7 +339,11 @@ export async function parseP48(file: File): Promise<P48Parsed> {
     )
   }
 
-  return kind === 'parcel' ? parseParcels(rows, file.name) : parseProducts(rows, file.name)
+  if (kind === 'product') return [parseProducts(rows, file.name)]
+
+  const main = parseParcels(rows, file.name)
+  const extra = pluckProducts(rows, file.name)
+  return extra ? [main, extra] : [main]
 }
 
 /* ------------------------------------------------------------- ส่งขึ้น */
@@ -307,10 +355,33 @@ export async function parseP48(file: File): Promise<P48Parsed> {
  * เน็ตหลุดกลางทางจึงไม่ทำให้จอว่าง แค่มีรอบค้างที่ไม่มีใครหยิบไปใช้
  * และรอบค้างจะถูกเก็บกวาดเองตอนอัปครั้งถัดไป
  */
-export async function importP48(
-  p: P48Parsed,
-  onProgress?: (done: number, total: number) => void,
-): Promise<{ rows: number }> {
+/** ตัดช่องที่ไม่มีค่าออกก่อนส่ง · ครึ่งหนึ่งของช่องในไฟล์จริงเป็น -- หรือว่าง */
+function thin(r: Record<string, unknown>): Record<string, unknown> {
+  const o: Record<string, unknown> = {}
+  for (const k in r) if (r[k] !== null && r[k] !== undefined && r[k] !== '') o[k] = r[k]
+  return o
+}
+
+export interface ImportOpts {
+  onProgress?: (done: number, total: number) => void
+  /** กดยกเลิกแล้วหยุดส่งก้อนถัดไป · ของที่ส่งไปแล้วจะกลายเป็นรอบค้างที่ไม่มีใครเห็น */
+  signal?: AbortSignal
+}
+
+/**
+ * ส่งรอบหนึ่งขึ้นฐานข้อมูล · เปิดรอบ ส่งเป็นก้อน แล้วปิดรอบ
+ *
+ * ส่งพร้อมกันทีละ LANES ก้อน ไม่ใช่เรียงทีละก้อน
+ * ก้อนแต่ละก้อนเป็นอิสระต่อกัน เพราะฝั่งฐานข้อมูลเป็น insert ที่ชนกันไม่ได้อยู่แล้ว
+ * ของเดิมเรียงทีละก้อน 28 รอบ แปลว่าต้องรอเน็ตไปกลับ 28 ครั้งเต็ม ๆ
+ *
+ * ก้อนไหนล้มลองซ้ำให้เอง เว้นช่วงถอยหลังก่อนลองใหม่
+ * เน็ตในฮับสะดุดหนึ่งครั้งไม่ควรแปลว่าต้องอัปไฟล์สิบเมกะใหม่ทั้งก้อน
+ *
+ * ของเดิมยังเป็นรอบที่ทุกคนเห็นจนกว่าจะปิดรอบใหม่สำเร็จ
+ */
+export async function importP48(p: P48Parsed, opts: ImportOpts = {}): Promise<{ rows: number }> {
+  const { onProgress, signal } = opts
   const { data: run, error: e1 } = await supabase.rpc('p48_begin', {
     p_kind: p.kind,
     p_file: p.fileName,
@@ -319,16 +390,53 @@ export async function importP48(
   if (e1) throw new Error(readableError(e1))
 
   const fn = p.kind === 'parcel' ? 'p48_put_parcels' : 'p48_put_products'
-  for (let i = 0; i < p.rows.length; i += CHUNK) {
-    const slice = p.rows.slice(i, i + CHUNK)
-    const { error } = await supabase.rpc(fn, { p_run: run, p_rows: slice })
-    if (error) throw new Error(readableError(error))
-    onProgress?.(Math.min(i + CHUNK, p.rows.length), p.rows.length)
+  const parts: Record<string, unknown>[][] = []
+  for (let i = 0; i < p.rows.length; i += CHUNK) parts.push(p.rows.slice(i, i + CHUNK).map(thin))
+
+  let done = 0
+  let next = 0
+  const lane = async () => {
+    for (;;) {
+      if (signal?.aborted) throw new Error('ยกเลิกการอัปแล้ว · ของเดิมยังอยู่ครบ')
+      const i = next++
+      if (i >= parts.length) return
+      let last = ''
+      let ok = false
+      for (let t = 0; t < RETRY && !ok; t++) {
+        if (t > 0) await new Promise((r) => setTimeout(r, 600 * t))
+        const { error } = await supabase.rpc(fn, { p_run: run, p_rows: parts[i] })
+        if (!error) ok = true
+        else last = readableError(error)
+      }
+      if (!ok) throw new Error(`ส่งก้อนที่ ${i + 1} จาก ${parts.length} ไม่สำเร็จ · ${last}`)
+      done += parts[i].length
+      onProgress?.(Math.min(done, p.rows.length), p.rows.length)
+    }
   }
+
+  await Promise.all(Array.from({ length: Math.min(LANES, parts.length) }, lane))
 
   const { data, error: e2 } = await supabase.rpc('p48_end', { p_run: run })
   if (e2) throw new Error(readableError(e2))
   return data as { rows: number }
+}
+
+/**
+ * เก็บกวาดรอบเก่า · เรียกวนจนไม่เหลือ
+ *
+ * แยกจากการอัปโดยตั้งใจ · ล้มตรงนี้ไม่กระทบไฟล์ที่เพิ่งอัปสำเร็จไปแล้ว
+ * แค่เหลือของเก่ากินที่อยู่อีกรอบ ซึ่งรอบหน้าจะมาเก็บต่อเอง
+ */
+export async function p48Prune(max = 12): Promise<number> {
+  let gone = 0
+  for (let i = 0; i < max; i++) {
+    const { data, error } = await supabase.rpc('p48_prune', { p_limit: 20000 })
+    if (error) return gone
+    const r = data as { deleted: number; left: number }
+    gone += r.deleted ?? 0
+    if (!r.left) break
+  }
+  return gone
 }
 
 /* ------------------------------------------------------------- อ่าน */
