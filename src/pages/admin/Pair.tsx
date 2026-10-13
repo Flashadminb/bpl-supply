@@ -156,7 +156,16 @@ export default function Pair() {
           เพราะรอบใหม่จะไม่ถูกเห็นจนกว่าจะปิดรอบสำเร็จ ของเดิมอยู่ครบตลอด
         */
         const said: string[] = []
-        const seen = new Set<string>()
+        /*
+          จำว่าแต่ละชนิดที่ส่งไปแล้ว มาจากไฟล์ตัวจริงหรือคอลัมน์ที่ติดมากับใบใหญ่
+
+          ไฟล์สินค้าตัวจริงต้องชนะคอลัมน์ที่ VLOOKUP มา ไม่ว่าจะมาถึงก่อนหรือหลัง
+          ไม่งั้นวันที่ลากสองใบพร้อมกันแล้วใบใหญ่มาก่อน คอลัมน์ที่อาจไม่ครบ
+          จะไปทับไฟล์ตัวจริงเงียบ ๆ แล้วไม่มีใครรู้ว่าชื่อสินค้าหายไปบางส่วน
+
+          ส่งซ้ำไม่เสียหาย เพราะรอบใหม่สุดที่ปิดสำเร็จคือรอบที่ทุกคนเห็น
+        */
+        const seen = new Map<string, boolean>()
 
         for (const f of files) {
           setProg(`กำลังอ่าน ${f.name}…`)
@@ -165,11 +174,18 @@ export default function Pair() {
           for (const one of parts) {
             if (ac.signal.aborted) throw new Error('ยกเลิกการอัปแล้ว · ของเดิมยังอยู่ครบ')
             const name = one.kind === 'parcel' ? 'ไฟล์รายละเอียด' : 'ไฟล์สินค้า'
-            if (seen.has(one.kind)) {
-              said.push(`ข้าม${name}ซ้ำจาก ${one.fileName}`)
+            const before = seen.get(one.kind)
+            const better = before === true && !one.embedded
+            if (before !== undefined && !better) {
+              said.push(
+                one.embedded
+                  ? `ไม่ใช้ชื่อสินค้าที่ติดมากับ ${one.fileName} เพราะมีไฟล์สินค้าตัวจริงแล้ว`
+                  : `ข้าม${name}ซ้ำจาก ${one.fileName}`,
+              )
               continue
             }
-            seen.add(one.kind)
+            if (better) said.push('ใช้ไฟล์สินค้าตัวจริงแทนชื่อสินค้าที่ติดมากับไฟล์ใบใหญ่')
+            seen.set(one.kind, one.embedded === true)
 
             const res = await importP48(one, {
               signal: ac.signal,

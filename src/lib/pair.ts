@@ -117,6 +117,13 @@ export interface P48Parsed {
   rows: Record<string, unknown>[]
   /** ตัดทิ้งเพราะเป็นของฮับอื่น */
   other: number
+  /**
+   * รายละเอียดสินค้าที่ติดมากับไฟล์ใบใหญ่ ไม่ใช่ไฟล์สินค้าของจริง
+   *
+   * ต้องแยกให้ออก เพราะคอลัมน์ที่ VLOOKUP มาเองมักไม่ครบเท่าไฟล์ต้นทาง
+   * ถ้าลากมาทั้งสองใบ ไฟล์สินค้าตัวจริงต้องชนะเสมอ ไม่ว่ามาถึงก่อนหรือหลัง
+   */
+  embedded?: boolean
 }
 
 /* ------------------------------------------------------------- แกะไฟล์ */
@@ -317,7 +324,7 @@ function pluckProducts(rows: string[][], fileName: string): P48Parsed | null {
     out.push({ t, d })
   }
   if (!out.length) return null
-  return { kind: 'product', fileName, fileRows: out.length, rows: out, other: 0 }
+  return { kind: 'product', fileName, fileRows: out.length, rows: out, other: 0, embedded: true }
 }
 
 /**
