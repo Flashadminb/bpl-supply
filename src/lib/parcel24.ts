@@ -84,6 +84,8 @@ export interface P24Row {
   province: string | null
   /** ประเภทลูกค้า เช่น shopee tiktok KA · เก็บไว้ดูเฉย ๆ ไม่ได้ใช้ตัดสินใจอะไร */
   cust_type: string | null
+  /** เลขถุงแบ๊กกิ้ง · ว่าง = ชิ้นนี้ไม่ได้อยู่ในถุง (ของจริงราว 64% ไม่มี) */
+  bag_no: string | null
 }
 
 export interface P24Snapshot {
@@ -191,6 +193,7 @@ export async function parseP24(file: File): Promise<ParsedP24> {
   const cProv = findCol(head, 'จังหวัด-ที่อยู่ผู้รับ', 'จังหวัดผู้รับ', 'จังหวัด')
   /* ไม่บังคับ · ไฟล์ที่ไม่มีคอลัมน์นี้ก็ยังอัปได้ตามปกติ ช่องนี้จะว่างเฉย ๆ */
   const cCust = findCol(head, 'ประเภทลูกค้า')
+  const cBag = findCol(head, 'เลขถุงแบ๊กกิ้ง', 'เลขถุง')
 
   /*
     บอกให้ชัดว่าขาดคอลัมน์ไหน พร้อมแปะหัวตารางที่เจอจริงมาด้วย
@@ -242,6 +245,7 @@ export async function parseP24(file: File): Promise<ParsedP24> {
       actor: cActor >= 0 ? clean(r[cActor]) : null,
       province: cProv >= 0 ? clean(r[cProv]) : null,
       cust_type: cCust >= 0 ? custTypeTH(clean(r[cCust]) ?? '') || null : null,
+      bag_no: cBag >= 0 ? clean(r[cBag]) : null,
     })
   }
 

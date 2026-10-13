@@ -334,6 +334,27 @@ function Graph({
   const [zone, setZone] = useState<string | null>(null)
   const [hover, setHover] = useState(false)
   const [stick, setStick] = useState(false)
+  /**
+   * กรองเหลือเฉพาะชิ้นที่อยู่ในถุงแบ๊กกิ้ง
+   *
+   * กรองที่กิ่ง ไม่ได้กรองแค่ตอนโชว์ · เลขใหญ่ จำนวนสาขา ยอดรายโซน
+   * และปุ่มคัดลอก จึงเปลี่ยนตามไปด้วยทั้งหมด
+   * ถ้ากรองแค่ตอนโชว์ เลขใหญ่จะบอก 249 แต่กางออกมาเจอ 80 ซึ่งคนจะไม่เชื่อหน้านี้อีกเลย
+   */
+  const [bagOnly, setBagOnly] = useState(false)
+  const bagTotal = useMemo(
+    () => groups.reduce((a, g) => a + g.rows.filter((r) => r.bag_no).length, 0),
+    [groups],
+  )
+  const base = useMemo(
+    () =>
+      !bagOnly
+        ? groups
+        : groups
+            .map((g) => ({ ...g, rows: g.rows.filter((r) => r.bag_no) }))
+            .filter((g) => g.rows.length > 0),
+    [groups, bagOnly],
+  )
 
   /**
    * โซนย่อยของหัวข้อที่เลือกอยู่
@@ -343,7 +364,7 @@ function Graph({
    */
   const zones = useMemo(() => {
     const m = new Map<string, { zone: string | null; items: number; branches: number }>()
-    for (const g of groups) {
+    for (const g of base) {
       const k = g.zone ?? ''
       const cur = m.get(k) ?? { zone: g.zone, items: 0, branches: 0 }
       cur.items += g.rows.length
@@ -351,12 +372,12 @@ function Graph({
       m.set(k, cur)
     }
     return [...m.values()].sort((a, b) => b.items - a.items)
-  }, [groups])
+  }, [base])
 
   /** กดโซนไหนก็เห็นเฉพาะโซนนั้น · กดตัวเลขใหญ่กลับไปเห็นทั้งหมด */
   const shownGroups = useMemo(
-    () => (zone === null ? groups : groups.filter((g) => (g.zone ?? '') === zone)),
-    [groups, zone],
+    () => (zone === null ? base : base.filter((g) => (g.zone ?? '') === zone)),
+    [base, zone],
   )
   const shownItems = shownGroups.reduce((a, g) => a + g.rows.length, 0)
   /** เมนูย่อยค้างไว้ถ้ากำลังเลือกโซนอยู่ ไม่งั้นพอเลื่อนเมาส์ออกจะไม่เหลือทางกลับ */
@@ -436,10 +457,12 @@ function Graph({
                 textShadow: current === CANCEL ? '0 0 34px rgba(226,75,74,.45)' : '0 0 34px rgba(79,163,227,.4)',
               }}
             >
-              {nf(zone === null ? total : shownItems)}
+              {nf(zone === null ? (bagOnly ? bagTotal : total) : shownItems)}
             </span>
             <span className="mt-1 block text-[12px]" style={{ color: C.faint }}>
-              {zone === null ? `${groups.length} สาขา` : `${zone || 'ไม่มีโซน'} · ${shownGroups.length} สาขา · กดเพื่อดูทั้งหมด`}
+              {zone === null
+                ? `${base.length} สาขา${bagOnly ? ' · เฉพาะที่อยู่ในถุง' : ''}`
+                : `${zone || 'ไม่มีโซน'} · ${shownGroups.length} สาขา · กดเพื่อดูทั้งหมด`}
             </span>
           </button>
 
@@ -453,6 +476,28 @@ function Graph({
             คัดลอก{zone === null ? 'ทั้ง' : `${zone || 'ไม่มีโซน'} `}
             {nf(shownItems)} เลข
           </button>
+          {/* ตัวกรองถุงแบ๊กกิ้ง · วางใต้ปุ่มคัดลอกตามที่เจ้าของระบบชี้จุดไว้
+              ปิดอยู่ = เห็นทุกชิ้นเหมือนเดิม ไม่ได้เปลี่ยนพฤติกรรมเดิมของหน้า */}
+          <button
+            type="button"
+            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[11.5px] font-bold"
+            style={
+              bagOnly
+                ? { background: 'rgba(79,163,227,.18)', color: C.lhHi, border: '1px solid rgba(79,163,227,.5)' }
+                : { background: C.groove, color: C.faint, border: `1px solid ${C.line2}` }
+            }
+            onClick={() => {
+              setBagOnly((v) => !v)
+              setZone(null)
+            }}
+          >
+            <span style={{ fontSize: 13 }}>▣</span>
+            {bagOnly ? 'เฉพาะที่อยู่ในถุง' : 'กรองเฉพาะที่มีเลขถุง'}
+            <span style={{ color: bagOnly ? C.lhHi : C.faint, fontFamily: 'ui-monospace, monospace' }}>
+              {nf(bagTotal)}
+            </span>
+          </button>
+
           <p className="mt-2 text-[11px] leading-relaxed" style={{ color: C.faint }}>
             {open
               ? 'กางครบทุกเลขในหน้าเดียว · กดที่เลขเพื่อคัดลอกทีละเลข'
@@ -606,15 +651,40 @@ function Branch({
       </div>
       <div className="mt-[5px] flex flex-wrap gap-[3px]">
         {show.map((r) => (
-          <button
-            key={r.tracking}
-            type="button"
-            onClick={() => onCopy(r.tracking, r.tracking)}
-            className="rounded-md px-[6px] py-[2px] font-mono text-[11.5px]"
-            style={{ background: '#101720', color: C.mute, border: `1px solid ${C.line2}` }}
-          >
-            {r.tracking}
-          </button>
+          /* เลขถุงห้อยท้ายเลขพัสดุ แต่อยู่ "นอก" ปุ่มคัดลอก
+             ทั้งกดคัดลอกทีละเลขและกดคัดลอกทั้งสาขา จึงไม่มีทางติดเลขถุงไปด้วย */
+          <span key={r.tracking} className="inline-flex items-center">
+            <button
+              type="button"
+              onClick={() => onCopy(r.tracking, r.tracking)}
+              className="rounded-md px-[6px] py-[2px] font-mono text-[11.5px]"
+              style={{
+                background: '#101720',
+                color: C.mute,
+                border: `1px solid ${C.line2}`,
+                borderTopRightRadius: r.bag_no ? 0 : undefined,
+                borderBottomRightRadius: r.bag_no ? 0 : undefined,
+              }}
+            >
+              {r.tracking}
+            </button>
+            {r.bag_no && (
+              <span
+                className="rounded-md px-[5px] py-[2px] font-mono text-[10.5px]"
+                style={{
+                  background: 'rgba(79,163,227,.14)',
+                  border: '1px solid rgba(79,163,227,.32)',
+                  borderLeft: 0,
+                  borderTopLeftRadius: 0,
+                  borderBottomLeftRadius: 0,
+                  color: C.lhHi,
+                }}
+                title="เลขถุงแบ๊กกิ้ง · คัดลอกไม่ติดมา"
+              >
+                ▣ {r.bag_no}
+              </span>
+            )}
+          </span>
         ))}
         {left > 0 && (
           <button type="button" className="px-1 text-[11px]" style={{ color: C.amberInk }} onClick={() => setMore(true)}>
@@ -782,15 +852,17 @@ function Table({ rows, snapAt, onCopy }: { rows: P24Row[]; snapAt: string; onCop
   const [q, setQ] = useState('')
   const [act, setAct] = useState(CANCEL)
   const [old, setOld] = useState(false)
+  const [bagOnly, setBagOnly] = useState(false)
 
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase()
     return rows
       .filter((r) => (act === '' ? true : (r.action || 'ยังไม่มีการดำเนินการ') === act))
       .filter((r) => (!old ? true : (heldHours(r, snapAt) ?? 0) > 48))
+      .filter((r) => (!bagOnly ? true : Boolean(r.bag_no)))
       .filter((r) => !s || r.tracking.toLowerCase().includes(s) || r.dest.toLowerCase().includes(s))
       .sort((a, b) => (heldHours(b, snapAt) ?? 0) - (heldHours(a, snapAt) ?? 0))
-  }, [rows, q, act, old, snapAt])
+  }, [rows, q, act, old, bagOnly, snapAt])
 
   const acts = useMemo(() => byAction(rows), [rows])
 
@@ -816,6 +888,14 @@ function Table({ rows, snapAt, onCopy }: { rows: P24Row[]; snapAt: string; onCop
         <label className="flex min-h-tap items-center gap-2 text-sm" style={{ color: C.mute }}>
           <input type="checkbox" className="h-[18px] w-[18px]" checked={old} onChange={(e) => setOld(e.target.checked)} />
           เฉพาะค้างเกิน 48 ชม
+        </label>
+        {/* ของจริงมีเลขถุงราว 36% · กรองแล้วเหลือเฉพาะที่ตามเป็นถุงได้ */}
+        <label className="flex min-h-tap items-center gap-2 text-sm" style={{ color: C.mute }}>
+          <input type="checkbox" className="h-[18px] w-[18px]" checked={bagOnly} onChange={(e) => setBagOnly(e.target.checked)} />
+          เฉพาะที่มีเลขถุง
+          <span style={{ color: C.faint, fontSize: 11 }}>
+            ({nf(rows.filter((r) => r.bag_no).length)})
+          </span>
         </label>
         <span className="flex-1" />
         <span className="text-sm" style={{ color: C.faint }}>
@@ -850,14 +930,31 @@ function Table({ rows, snapAt, onCopy }: { rows: P24Row[]; snapAt: string; onCop
               return (
                 <tr key={r.tracking} style={{ borderBottom: `1px solid ${C.line2}` }}>
                   <td className="px-3 py-[6px]">
-                    <button
-                      type="button"
-                      onClick={() => onCopy(r.tracking, r.tracking)}
-                      className="rounded-md px-[6px] py-[2px] font-mono text-[12px]"
-                      style={{ background: '#101720', color: C.mute, border: `1px solid ${C.line2}` }}
-                    >
-                      {r.tracking}
-                    </button>
+                    <span className="inline-flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => onCopy(r.tracking, r.tracking)}
+                        className="rounded-md px-[6px] py-[2px] font-mono text-[12px]"
+                        style={{ background: '#101720', color: C.mute, border: `1px solid ${C.line2}` }}
+                      >
+                        {r.tracking}
+                      </button>
+                      {/* เลขถุงอยู่ "นอก" ปุ่มคัดลอกโดยตั้งใจ
+                          ทั้งกดคัดลอกทีละเลขและกดคัดลอกทั้งหมด จึงไม่มีทางติดเลขถุงไปด้วย */}
+                      {r.bag_no && (
+                        <span
+                          className="rounded-md px-[6px] py-[2px] font-mono text-[11px]"
+                          style={{
+                            background: 'rgba(79,163,227,.12)',
+                            border: '1px solid rgba(79,163,227,.3)',
+                            color: C.lhHi,
+                          }}
+                          title="เลขถุงแบ๊กกิ้ง · ไม่ถูกคัดลอกไปด้วย"
+                        >
+                          {r.bag_no}
+                        </span>
+                      )}
+                    </span>
                   </td>
                   <td className="px-3 py-[6px]">{r.dest}</td>
                   <td className="px-3 py-[6px]">
