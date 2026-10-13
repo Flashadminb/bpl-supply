@@ -385,7 +385,12 @@ Deno.serve(async (req) => {
       /* ส่งไม้ต่อ · ไม่รอคำตอบ เพราะการรอคือเอาเวลาของไม้ถัดไปมาซ้อนในไม้นี้
          แล้วทั้งสายจะโดนตัดที่ 150 วินาทีเท่าเดิม ซึ่งคือปัญหาที่กำลังแก้อยู่
          waitUntil บอกให้ตัวรันอย่าเพิ่งดับเครื่องจนกว่าคำขอจะถูกส่งออกไปจริง */
-      const next = fetch(req.url, {
+      /* ต้องใช้ที่อยู่สาธารณะที่เก็บไว้ ไม่ใช่ req.url
+         ข้างใน Edge Function ตัว req.url เป็นที่อยู่ภายในของตัวรัน ไม่ใช่โดเมนของโปรเจกต์
+         ยิงไปแล้วไม่ถึงใคร และเงียบสนิทเพราะเราไม่ได้รอคำตอบอยู่แล้ว
+         อาการคือไม้แรกจบสวยงาม เขียนสรุปครบ แล้วไม่มีไม้สองเกิดขึ้นเลย */
+      const selfUrl = (await setting('backup_url')) ?? req.url
+      const next = fetch(selfUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-cron-key': key },
         body: JSON.stringify({ dated, allDir, keyDir, from: i, part: part + 1 }),
