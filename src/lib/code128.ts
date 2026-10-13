@@ -102,10 +102,74 @@ export function code128Svg(text: string, barHeight = 44): string | null {
     x += w
   })
 
+  /* ต้องใส่ width กับ height เป็น 100% ให้ชัด
+     svg ที่มีแต่ viewBox จะกินขนาดปริยาย 300x150 ของเบราว์เซอร์
+     แล้วล้นกรอบไปทับข้อความที่อยู่ถัดลงไป ซึ่งเจอมาแล้วรอบหนึ่ง */
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${barHeight}" ` +
-    `preserveAspectRatio="none" shape-rendering="crispEdges">` +
+    `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" ` +
+    `viewBox="0 0 ${total} ${barHeight}" ` +
+    `preserveAspectRatio="none" shape-rendering="crispEdges" style="display:block">` +
     `<rect width="${total}" height="${barHeight}" fill="#fff"/>` +
     `<path d="${d}" fill="#000"/></svg>`
   )
+}
+
+/**
+ * บาร์โค้ดเป็นไฟล์ภาพ พร้อมเลขพัสดุพิมพ์ไว้ใต้แถบ
+ *
+ * วาดลงผืนผ้าใบตรง ๆ ไม่ได้แปลงจาก SVG · การโหลด SVG เข้า canvas
+ * ติดเรื่องความปลอดภัยของเบราว์เซอร์บางตัวจนได้ภาพว่าง และต้องรอโหลดอีกชั้น
+ *
+ * เลขต้องติดไปกับภาพเสมอ · ภาพบาร์โค้ดเปล่า ๆ ที่ส่งต่อไปแล้วยิงไม่ติด
+ * คือภาพที่ไม่มีใครรู้ว่ามันคือพัสดุชิ้นไหน
+ *
+ * เว้นระยะตัวอักษรเองทีละตัว ไม่ใช้ letterSpacing ของ canvas
+ * เพราะเบราว์เซอร์รุ่นเก่ายังไม่รองรับแล้วจะได้ตัวอักษรเบียดกัน
+ */
+export async function code128Png(
+  text: string,
+  opts: { module?: number; barHeight?: number } = {},
+): Promise<Blob | null> {
+  const bars = code128Bars(text)
+  if (!bars) return null
+
+  const M = opts.module ?? 3
+  const BAR = opts.barHeight ?? 88
+  const QUIET = 10
+  const PAD = 14
+  const TEXT = 30
+
+  const mods = bars.reduce((a, b) => a + b, 0) + QUIET * 2
+  const w = mods * M
+  const h = PAD + BAR + TEXT + PAD
+
+  const cv = document.createElement('canvas')
+  cv.width = w
+  cv.height = h
+  const g = cv.getContext('2d')
+  if (!g) return null
+
+  g.fillStyle = '#fff'
+  g.fillRect(0, 0, w, h)
+
+  g.fillStyle = '#000'
+  let x = QUIET * M
+  bars.forEach((bw, i) => {
+    if (i % 2 === 0) g.fillRect(x, PAD, bw * M, BAR)
+    x += bw * M
+  })
+
+  const size = Math.min(26, Math.max(13, Math.floor(w / (text.length * 0.78))))
+  g.font = `bold ${size}px ui-monospace, Menlo, Consolas, monospace`
+  g.textBaseline = 'top'
+  const gap = size * 0.18
+  const widths = [...text].map((c) => g.measureText(c).width)
+  const line = widths.reduce((a, b) => a + b, 0) + gap * (text.length - 1)
+  let tx = (w - line) / 2
+  for (let i = 0; i < text.length; i++) {
+    g.fillText(text[i], tx, PAD + BAR + 7)
+    tx += widths[i] + gap
+  }
+
+  return new Promise((resolve) => cv.toBlob((b) => resolve(b), 'image/png'))
 }

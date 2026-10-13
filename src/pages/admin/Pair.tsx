@@ -4,7 +4,7 @@ import { useAuth } from '../../lib/auth'
 import { useAsync } from '../../lib/useAsync'
 import { Spinner } from '../../components/ui'
 import { readableError } from '../../lib/supabase'
-import { code128Svg } from '../../lib/code128'
+import { code128Png, code128Svg } from '../../lib/code128'
 import { C, CARD, field, nf, tabOff, tabOn, thFull } from '../../lib/boardTheme'
 import {
   CJK,
@@ -924,6 +924,8 @@ function Side({
             {tracking}
           </span>
           <Chip onClick={() => onCopy(tracking, tracking)}>⎘ คัดลอก</Chip>
+          {/* บาร์โค้ดอยู่ขวามือของเลข ไม่ได้กินทั้งแผงเหมือนรอบแรก */}
+          <Barcode value={tracking} detail={detail} dest={String(data?.dest_branch ?? '')} />
           <span className="flex-1" />
           {loading && <Spinner className="h-4 w-4" />}
           <button type="button" aria-label="ปิด" className="text-base" style={{ color: C.faint }} onClick={onClose}>
@@ -944,7 +946,6 @@ function Side({
           {detail && <Chip onClick={() => onCopy(detail, 'ชื่อสินค้า')}>⎘ คัดลอกเฉพาะชื่อสินค้า</Chip>}
         </div>
 
-        <Barcode value={tracking} />
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto px-3 pb-3">
@@ -985,47 +986,109 @@ function Side({
 }
 
 /**
- * บาร์โค้ดของเลขพัสดุ · ไว้ยิงจากจอได้เลย
+ * บาร์โค้ดของเลขพัสดุ · เล็กไว้ก่อน กดแล้วค่อยใหญ่
  *
- * พื้นขาวเสมอแม้จอทั้งจอเป็นสีเข้ม · เครื่องยิงอ่านจากคอนทราสต์ระหว่าง
- * แถบดำกับพื้นขาว ถ้าเอาแถบดำไปวางบนพื้นเข้มคือยิงไม่ติด
- * และต้องมีขอบขาวซ้ายขวา ซึ่ง code128Svg ใส่มาให้แล้วสิบหน่วย
+ * รอบแรกทำเต็มความกว้างแผงแล้วมันบังทุกอย่าง · ของจริงคนเปิดแผงนี้
+ * เพื่ออ่านรายละเอียด ไม่ได้เปิดมายิงทุกครั้ง บาร์โค้ดจึงควรอยู่เงียบ ๆ
+ * ข้างเลขพัสดุ แล้วค่อยขยายตอนจะยิงจริง
  *
- * ตัวเลขใต้แถบเว้นระยะตัวอักษรกว้างกว่าปกติ · ไว้ให้คนอ่านทวนตอนยิงไม่ติด
- * ซึ่งเป็นตอนเดียวที่มีคนอ่านบรรทัดนั้นจริง ๆ
- *
- * เข้ารหัสไม่ได้ก็ไม่วาด · บาร์โค้ดที่ยิงแล้วได้คนละเลขกับที่ตาเห็น
- * อันตรายกว่าไม่มีบาร์โค้ด เพราะไม่มีอะไรบอกว่ามันผิด
+ * พื้นขาวเสมอแม้ทั้งจอเป็นสีเข้ม · เครื่องยิงอ่านจากคอนทราสต์ระหว่าง
+ * แถบดำกับพื้นขาว เอาแถบดำไปวางบนพื้นเข้มคือยิงไม่ติด
  */
-function Barcode({ value }: { value: string }) {
-  const svg = useMemo(() => code128Svg(value, 44), [value])
+function Barcode({ value, detail, dest }: { value: string; detail: string; dest: string }) {
+  const svg = useMemo(() => code128Svg(value, 40), [value])
   const [big, setBig] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
   if (!svg) return null
 
+  const say = (t: string) => {
+    setNote(t)
+    window.setTimeout(() => setNote(null), 2200)
+  }
+
+  /** ข้อความที่ติดไปกับภาพ · เลขพัสดุ ชื่อสินค้า แล้วสาขาปลายทาง */
+  const caption = () =>
+    [value, detail || null, dest ? 'ปลายทาง ' + shortName(dest) : null].filter(Boolean).join('\n')
+
+  async function save() {
+    const blob = await code128Png(value)
+    if (!blob) return say('สร้างไฟล์ภาพไม่ได้')
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = value + '.png'
+    a.click()
+    /* คืนหน่วยความจำทันทีที่เบราว์เซอร์หยิบไฟล์ไปแล้ว */
+    window.setTimeout(() => URL.revokeObjectURL(url), 4000)
+    say('เซฟรูปบาร์โค้ดแล้ว')
+  }
+
+  /**
+   * ส่งต่อ · พยายามส่งรูปพร้อมข้อความก่อน
+   *
+   * ช่องแชร์ของเครื่องจะมีไลน์อยู่ในนั้น และส่งได้ทั้งรูปกับข้อความ
+   * เครื่องไหนไม่รองรับการแนบไฟล์ ถอยไปเปิดไลน์พร้อมข้อความอย่างเดียว
+   * ซึ่งยังได้เลขพัสดุกับชื่อสินค้าครบ แค่ไม่มีรูปบาร์โค้ดติดไป
+   */
+  async function share() {
+    const text = caption()
+    const blob = await code128Png(value)
+    const nav = navigator as Navigator & {
+      canShare?: (d: unknown) => boolean
+      share?: (d: unknown) => Promise<void>
+    }
+
+    if (blob && nav.share && nav.canShare) {
+      const file = new File([blob], value + '.png', { type: 'image/png' })
+      if (nav.canShare({ files: [file] })) {
+        try {
+          await nav.share({ files: [file], text, title: value })
+          return
+        } catch (e) {
+          /* กดยกเลิกช่องแชร์เอง ไม่ใช่ความผิดพลาด อย่าขึ้นข้อความอะไร */
+          if ((e as Error)?.name === 'AbortError') return
+        }
+      }
+    }
+
+    window.open('https://line.me/R/msg/text/?' + encodeURIComponent(text), '_blank', 'noopener')
+    say('เครื่องนี้แนบรูปไปกับไลน์ไม่ได้ · ส่งเป็นข้อความให้แทน กดเซฟรูปแล้วแนบเองได้')
+  }
+
   return (
-    <div className="mt-3">
+    <span className="relative flex items-center gap-[6px]">
       <button
         type="button"
         title={big ? 'กดเพื่อย่อ' : 'กดเพื่อขยาย · ยิงไม่ติดลองขยายก่อน'}
         onClick={() => setBig((v) => !v)}
-        className="block w-full rounded-lg bg-white px-3 pb-[6px] pt-[10px]"
+        className="rounded bg-white px-[6px] pb-[2px] pt-[4px]"
+        style={{ width: big ? 420 : 168 }}
       >
+        <span className="block" style={{ height: big ? 68 : 26 }} dangerouslySetInnerHTML={{ __html: svg }} />
         <span
-          className="block w-full"
-          style={{ height: big ? 96 : 46 }}
-          dangerouslySetInnerHTML={{ __html: svg }}
-        />
-        <span
-          className="mt-[3px] block text-center font-mono font-bold text-black"
-          style={{ letterSpacing: big ? '5px' : '3px', fontSize: big ? 16 : 12.5 }}
+          className="mt-[1px] block text-center font-mono font-bold text-black"
+          style={{ fontSize: big ? 12 : 8, letterSpacing: big ? '2.5px' : '0.5px', lineHeight: 1.1 }}
         >
           {value}
         </span>
       </button>
-      <p className="mt-[3px] text-center text-[10.5px]" style={{ color: C.faint }}>
-        Code 128 · ยิงจากจอได้เลย · กดที่บาร์โค้ดเพื่อ{big ? 'ย่อ' : 'ขยาย'}
-      </p>
-    </div>
+
+      <button type="button" title="เซฟรูปบาร์โค้ด พร้อมเลขพัสดุใต้ภาพ" className="rounded-lg px-[7px] py-[5px] text-[11.5px]" style={tabOff} onClick={() => void save()}>
+        ⤓ เซฟ
+      </button>
+      <button type="button" title="ส่งต่อทางไลน์ พร้อมรูปบาร์โค้ดและรายละเอียดสินค้า" className="rounded-lg px-[7px] py-[5px] text-[11.5px]" style={tabOff} onClick={() => void share()}>
+        ➤ ส่งไลน์
+      </button>
+
+      {note && (
+        <span
+          className="absolute left-0 top-full z-10 mt-1 whitespace-normal rounded-lg px-2 py-1 text-[11px]"
+          style={{ background: C.greenBg, color: C.greenInk, border: '1px solid #1E5C3C', maxWidth: 320 }}
+        >
+          {note}
+        </span>
+      )}
+    </span>
   )
 }
 
