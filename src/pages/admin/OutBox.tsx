@@ -12,9 +12,11 @@ import {
   importOut,
   outBoard,
   outLatest,
+  outRuns,
   parseOutFile,
   undoOut,
   type OutCalc,
+  type OutRun,
   type OutState,
 } from '../../lib/hubOut'
 
@@ -234,7 +236,7 @@ function barStyle(lane: 'LH' | 'FD', side: 'l' | 'r', pct: number): React.CSSPro
 export default function OutBox() {
   const nav = useNavigate()
   const board = useAsync(() => outBoard(), [])
-  const [page, setPage] = useState<'main' | 'tv' | 'zone' | 'table'>('main')
+  const [page, setPage] = useState<'main' | 'tv' | 'zone' | 'table' | 'log'>('main')
   const [swap, setSwap] = useState(true)
   const [swapSec, setSwapSec] = useState(20)
   const [clock, setClock] = useState(() => new Date())
@@ -257,7 +259,11 @@ export default function OutBox() {
     หน้างานเปิดหน้านี้ได้แล้วตั้งแต่ไฟล์ 167 แต่ดูได้อย่างเดียว
   */
   const { can } = useAuth()
-  const mayUpload = can('admin')
+  /* เจ้าของระบบสั่งให้หน้างานอัปได้ตั้งแต่ไฟล์ 168 · สิ่งที่แลกมาคือประวัติที่ตามตัวได้
+     ฐานข้อมูลเป็นด่านจริงเหมือนเดิม ตรงนี้แค่เรื่องว่าจะวางปุ่มให้ใครเห็น */
+  const mayUpload = true
+  /** ประวัติการอัปยังเป็นของผู้ดูแลระบบ · เป็นเครื่องมือตรวจสอบ ไม่ใช่ข้อมูลหน้างาน */
+  const maySeeLog = can('admin')
 
   useEffect(() => {
     const t = setInterval(() => setClock(new Date()), 1000)
@@ -267,7 +273,7 @@ export default function OutBox() {
   /* สลับสามหน้าจอวนไปเรื่อย ๆ · ไม่แตะหน้าตาราง เพราะหน้านั้นคนกำลังค้นอยู่
      ถ้าสลับทิ้งกลางคันตอนเขาพิมพ์ค้นหา คือแย่งงานจากมือคน */
   useEffect(() => {
-    if (!swap || page === 'table') return
+    if (!swap || page === 'table' || page === 'log') return
     const t = setInterval(
       () => setPage((p) => (p === 'main' ? 'tv' : p === 'tv' ? 'zone' : 'main')),
       swapSec * 1000,
@@ -440,6 +446,7 @@ export default function OutBox() {
               ['tv', 'จอทีวี', '电视屏'],
               ['zone', 'จอโซน D0', 'D0 分区屏'],
               ['table', 'ตาราง', '表格'],
+              ...(maySeeLog ? [['log', 'ประวัติอัป', '上传记录'] as const] : []),
             ] as const).map(([k, label, cn]) => (
               <button key={k} type="button" className="h-tap rounded-btn px-4 text-sm" style={page === k ? tabOn : tabOff} onClick={() => setPage(k)}>
                 {label} <Cn>{cn}</Cn>
@@ -616,8 +623,127 @@ export default function OutBox() {
             </section>
           </>
         )}
+
+        {/* ═══════════════════════ ประวัติการอัป */}
+        {maySeeLog && page === 'log' && <UploadLog onChanged={() => board.reload()} />}
       </div>
     </div>
+  )
+}
+
+/**
+ * ประวัติการอัปไฟล์
+ *
+ * มีขึ้นเพราะเจ้าของระบบเปิดให้หน้างานอัปได้ · ของที่ใครก็อัปทับได้
+ * ต้องตอบให้ได้เสมอว่ารอบไหนใครเป็นคนอัปและอัปไฟล์ชื่ออะไร
+ * ไม่งั้นวันที่กระดานเพี้ยนจะไม่มีทางรู้ว่าเริ่มเพี้ยนตอนไหน
+ *
+ * เวลาในไฟล์กับเวลาที่กดอัปเป็นคนละเวลา และต่างกันได้หลายชั่วโมง
+ * ถ้าโชว์อันเดียวจะแยกไม่ออกว่าไฟล์เก่าถูกอัปช้า หรือเพิ่งโหลดไฟล์มาสด ๆ
+ */
+function UploadLog({ onChanged }: { onChanged: () => void }) {
+  const runs = useAsync(() => outRuns(60), [])
+  const { can } = useAuth()
+  const [busy, setBusy] = useState<number | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function drop(r: OutRun) {
+    if (!window.confirm(`ถอนรอบของ ${thFull(r.snap_at)} ทิ้ง
+ข้อมูลรอบนี้จะหายจากกระดาน ย้อนคืนไม่ได้`)) return
+    setBusy(r.id)
+    setErr(null)
+    try {
+      await undoOut(r.id)
+      runs.reload()
+      onChanged()
+    } catch (e) {
+      setErr(readableError(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const list = runs.data ?? []
+
+  return (
+    <section className="px-3 py-3" style={CARD}>
+      <p className="mb-1 text-lg font-bold">
+        ประวัติการอัปไฟล์ <Cn>上传记录</Cn>
+      </p>
+      <p className="mb-3 text-sm" style={{ color: C.mute }}>
+        หน้างานอัปได้แล้ว ทุกรอบจึงบันทึกไว้ว่าใครเป็นคนอัป · เก็บย้อนหลัง 60 รอบล่าสุด
+      </p>
+
+      {runs.loading && <p style={{ color: C.mute }}>กำลังโหลด…</p>}
+      {runs.error && (
+        <p className="rounded-lg px-3 py-2 text-sm" style={{ background: 'rgba(255,92,92,.12)', color: C.redInk }}>
+          {runs.error}
+        </p>
+      )}
+      {err && (
+        <p className="mb-2 rounded-lg px-3 py-2 text-sm" style={{ background: 'rgba(255,92,92,.12)', color: C.redInk }}>
+          {err}
+        </p>
+      )}
+      {!runs.loading && !list.length && <p style={{ color: C.mute }}>ยังไม่เคยมีใครอัปไฟล์</p>}
+
+      {list.length > 0 && (
+        <div className="overflow-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr style={{ color: C.faint }}>
+                <th className="px-2 py-2 text-left font-medium">เวลาในไฟล์</th>
+                <th className="px-2 py-2 text-left font-medium">เวลาที่กดอัป</th>
+                <th className="px-2 py-2 text-left font-medium">ใครอัป</th>
+                <th className="px-2 py-2 text-left font-medium">ชื่อไฟล์</th>
+                <th className="px-2 py-2 text-right font-medium">สาขา</th>
+                <th className="px-2 py-2 text-right font-medium">คัน</th>
+                <th className="px-2 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((r, i) => (
+                <tr key={r.id} style={{ borderTop: `1px solid ${C.line2}` }}>
+                  <td className="whitespace-nowrap px-2 py-[7px] font-mono">
+                    {thFull(r.snap_at)}
+                    {i === 0 && (
+                      <span className="ml-2 rounded px-[5px] py-[1px] text-[10px] font-bold" style={{ background: '#11301F', color: C.greenInk }}>
+                        ใช้อยู่
+                      </span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-[7px] font-mono" style={{ color: C.mute }}>
+                    {thFull(r.uploaded_at)}
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-[7px]">
+                    {r.by_name || <span style={{ color: C.faint }}>ไม่ทราบชื่อ</span>}
+                    {r.by_code && <span className="ml-1 font-mono text-[11px]" style={{ color: C.faint }}>({r.by_code})</span>}
+                  </td>
+                  <td className="max-w-[260px] truncate px-2 py-[7px]" style={{ color: C.mute }} title={r.file_name ?? ''}>
+                    {r.file_name || '—'}
+                  </td>
+                  <td className="px-2 py-[7px] text-right font-mono">{nf(r.row_count)}</td>
+                  <td className="px-2 py-[7px] text-right font-mono">{nf(r.truck_count)}</td>
+                  <td className="px-2 py-[7px] text-right">
+                    {can('admin') && (
+                      <button
+                        type="button"
+                        className="rounded-btn px-3 py-1 text-xs"
+                        style={{ background: C.chip, color: C.redInk, opacity: busy === r.id ? 0.5 : 1 }}
+                        disabled={busy === r.id}
+                        onClick={() => void drop(r)}
+                      >
+                        ถอนรอบนี้
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   )
 }
 

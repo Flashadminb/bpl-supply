@@ -68,6 +68,11 @@ export interface OutRun {
   uploaded_at: string
   row_count: number
   truck_count: number
+  /** ชื่อไฟล์ที่อัปขึ้นมา · ของเก่าก่อนมีช่องนี้จะว่าง */
+  file_name: string | null
+  /** ใครอัป · ว่างแปลว่าเป็นรอบเก่าที่ยังไม่ได้เก็บชื่อ หรือบัญชีถูกลบไปแล้ว */
+  by_name: string
+  by_code: string
 }
 
 /* ------------------------------------------------------------- อ่านไฟล์ */
