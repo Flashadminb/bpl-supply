@@ -14,8 +14,16 @@
  * แต่รองรับ sharedStrings กับวันที่แบบเลขซีเรียลไว้ด้วย เผื่อวันหนึ่งบริษัทเปลี่ยนรูปแบบไฟล์
  */
 
-/** ไฟล์ใหญ่กว่านี้ไม่ใช่ไฟล์รายงานรายชั่วโมงแล้ว · กันเครื่องหน้างานค้าง */
-const MAX_BYTES = 10 * 1024 * 1024
+/**
+ * เพดานขนาดไฟล์ · กันเครื่องค้างเวลาเผลอลากไฟล์ผิดอันเข้ามา
+ *
+ * เดิมตั้งไว้ 10 MB สมัยที่มีแต่ไฟล์รายงานรายชั่วโมงซึ่งไม่ถึงหนึ่งเมกะ
+ * ไฟล์รายละเอียดของงาน 48 ชั่วโมงวันที่ 13 ต.ค. 2569 คือ 9.82 MB
+ * ซึ่งเฉียดเพดานเดิมจนเดือนหน้าของจริงจะอัปไม่ได้โดยไม่มีใครคาดคิด
+ * ขยับเป็น 25 MB · หน้าที่ใช้ไฟล์ใหญ่ขนาดนี้เปิดเฉพาะหลังบ้านบนคอม
+ */
+const MAX_BYTES = 25 * 1024 * 1024
+const MAX_TXT = '25 MB'
 
 const td = new TextDecoder('utf-8')
 
@@ -191,7 +199,7 @@ export interface XlsxSheet {
  * เดาแล้วผิดคือได้ตารางเปล่าโดยไม่มีอะไรฟ้อง
  */
 export async function readXlsx(file: File): Promise<XlsxSheet> {
-  if (file.size > MAX_BYTES) throw new Error('ไฟล์ใหญ่เกิน 10 MB')
+  if (file.size > MAX_BYTES) throw new Error('ไฟล์ใหญ่เกิน ' + MAX_TXT)
 
   const buf = new Uint8Array(await file.arrayBuffer())
   const entries = zipEntries(buf)
@@ -250,7 +258,7 @@ export function maybeDate(v: string): string {
  * อ่านแผ่นเดียวจึงไม่พอ และเดาเลขแผ่นก็ไม่ได้ เพราะไฟล์รุ่นหน้าอาจสลับลำดับ
  */
 export async function readXlsxSheets(file: File): Promise<XlsxSheet[]> {
-  if (file.size > MAX_BYTES) throw new Error('ไฟล์ใหญ่เกิน 10 MB')
+  if (file.size > MAX_BYTES) throw new Error('ไฟล์ใหญ่เกิน ' + MAX_TXT)
 
   const buf = new Uint8Array(await file.arrayBuffer())
   const entries = zipEntries(buf)

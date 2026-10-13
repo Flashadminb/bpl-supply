@@ -94,10 +94,13 @@ export default function Parcel24() {
       .then(async (p) => {
         const res = await importP24(p, f.name)
         setLastId(res.id)
+        /* บอกชื่อหัวตารางที่อ่านจริงทุกครั้ง · สองช่องนี้เป็นตัวตัดสินว่าจอจะมีของหรือว่าง
+           ถ้าไฟล์รุ่นหน้าเปลี่ยนชื่อหัวแล้วเราไปชนคอลัมน์สำรอง จะเห็นตั้งแต่บรรทัดนี้ */
         setMsg(
           `อัปทับรอบ ${thFull(p.dataAt)} แล้ว · ${nf(res.rows)} ชิ้น · ยกเลิกการส่งต่อ ${nf(res.cancel)} · เก่าสุดค้างมา ${p.oldestHours} ชม` +
             (p.other > 0 ? ` · ตัดของฮับอื่นออก ${nf(p.other)} ชิ้น` : '') +
-            ' · ของที่ไม่มีในไฟล์ใหม่หายจากจอแล้ว',
+            ' · ของที่ไม่มีในไฟล์ใหม่หายจากจอแล้ว' +
+            `\nกรองฮับจากคอลัมน์ "${p.usedFrom}" · โชว์สาขาจากคอลัมน์ "${p.usedDest}"`,
         )
         board.reload()
       })
@@ -243,7 +246,10 @@ export default function Parcel24() {
         </div>
 
         {msg && (
-          <p className="mb-2 rounded-card px-3 py-2 text-sm" style={{ background: C.greenBg, color: C.greenInk }}>
+          <p
+            className="mb-2 whitespace-pre-line rounded-card px-3 py-2 text-sm"
+            style={{ background: C.greenBg, color: C.greenInk }}
+          >
             {msg}
           </p>
         )}
@@ -729,7 +735,7 @@ function Cards({
         <Tile label={<>ยกเลิกการส่งต่อพัสดุ <Cn>取消转寄</Cn></>} n={cancel.length} prev={snapCancelPrev} color={C.redInk} edge={C.red} vs={vs} />
         <Tile label="พัสดุค้างทั้งหมด" n={rows.length} prev={null} color={C.lhHi} edge={C.lh} vs={vs} />
         <Tile label="ค้างเกิน 48 ชม" n={over48} prev={null} color={C.amberInk} edge={C.amber} vs={vs} />
-        <Tile label="สาขาปลายทางที่มีของค้าง" n={dests.length} prev={null} color={C.ink} edge={C.line} vs={vs} />
+        <Tile label="ฮับถัดไปที่มีของค้าง" n={dests.length} prev={null} color={C.ink} edge={C.line} vs={vs} />
       </div>
 
       {/*
@@ -930,7 +936,7 @@ function Table({ rows, snapAt, onCopy }: { rows: P24Row[]; snapAt: string; onCop
             <tr style={{ borderBottom: `1px solid ${C.line2}` }}>
               <th className="px-3 py-2 text-xs font-medium">เลขพัสดุ</th>
               <th className="w-[124px] px-3 py-2 text-xs font-medium">ถุงแบ๊กกิ้ง</th>
-              <th className="px-3 py-2 text-xs font-medium">สาขาปลายทาง</th>
+              <th className="px-3 py-2 text-xs font-medium">ฮับถัดไป</th>
               <th className="w-[70px] px-3 py-2 text-xs font-medium">โซน</th>
               <th className="w-[92px] px-3 py-2 text-xs font-medium">ลูกค้า</th>
               <th className="px-3 py-2 text-xs font-medium">การดำเนินการล่าสุด</th>

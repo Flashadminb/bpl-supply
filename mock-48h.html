@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>งาน 48 ชั่วโมง · แบบร่าง</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Kanit:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0B0E11; --panel:#121820; --panel2:#151C26;
+  --line:#243040; --line2:#1E2733; --ink:#F0F4F9; --mute:#AFC0D4; --faint:#5A646F;
+  --brand:#FFC400; --red:#FF5C5C; --redBg:#351317; --redInk:#FF9A9A;
+  --amber:#FFB038; --amberInk:#FFC77A;
+  --greenBg:#11301F; --greenInk:#8FE8BC; --green:#35D98A;
+  --lh:#4FA3E3; --lhHi:#9BD4FF;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans Thai',system-ui,sans-serif;font-size:13px;overflow:hidden}
+.card{border-radius:14px;border:1px solid var(--line2);
+  background:radial-gradient(120% 90% at 50% -20%,rgba(255,255,255,.045),transparent 60%),linear-gradient(180deg,#161D27,#10151C);
+  box-shadow:0 18px 40px -22px #000, inset 0 1px 0 rgba(255,255,255,.05)}
+.wrap{height:100%;display:flex;flex-direction:column;gap:7px;padding:9px;max-width:1900px;margin:0 auto}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+
+.top{display:flex;align-items:center;gap:10px;padding:6px 11px}
+.bpl{background:var(--brand);color:#111;font-weight:800;font-size:12.5px;border-radius:5px;padding:1px 7px}
+.n48{background:#1E3246;color:#8FD0FF;font-weight:800;font-size:15px;border-radius:7px;padding:1px 9px;font-family:ui-monospace,monospace}
+.ttl{font-family:Kanit;font-weight:600;font-size:17px}
+.grow{flex:1}
+
+.upRow{display:flex;gap:7px;align-items:stretch}
+.upCard{flex:1;padding:7px 11px;display:flex;align-items:center;gap:11px;min-width:0}
+.upCard .lab{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);font-family:ui-monospace,monospace}
+.upCard b.num{display:block;font-family:ui-monospace,monospace;font-size:18px;font-weight:800;line-height:1.1;color:var(--brand)}
+.dot{width:7px;height:7px;border-radius:99px;flex:none}
+.upMeta{font-size:11px;color:var(--mute);line-height:1.35;min-width:0}
+.drop{border:1.5px dashed var(--line);border-radius:14px;display:flex;align-items:center;gap:9px;padding:7px 14px;color:var(--mute);font-size:12px}
+.btn{height:34px;border-radius:9px;padding:0 14px;font-size:12.5px;font-weight:700}
+.btnY{background:var(--brand);color:#111}
+.btnG{background:#161E28;color:var(--mute);border:1px solid var(--line2)}
+
+.filt{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:7px 10px}
+.search{display:flex;align-items:center;gap:7px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:0 11px;height:32px;width:250px}
+.search input{background:none;border:0;outline:0;color:var(--ink);font:inherit;width:100%;font-family:ui-monospace,monospace;font-size:12.5px}
+.sel{background:var(--panel2);border:1px solid var(--line);border-radius:9px;height:32px;color:var(--ink);font:inherit;font-size:12px;padding:0 8px}
+.ch{border-radius:8px;padding:5px 10px;font-size:11.5px;background:#161E28;color:var(--mute);border:1px solid var(--line2);white-space:nowrap}
+.ch.on{background:var(--brand);color:#111;font-weight:700;border-color:var(--brand)}
+.sep{width:1px;height:20px;background:var(--line2);margin:0 3px}
+.lab2{font-size:10.5px;color:var(--faint);font-family:ui-monospace,monospace;text-transform:uppercase;letter-spacing:.06em}
+
+.body{flex:1;display:flex;gap:7px;min-height:0}
+.tableCard{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.tHead{display:flex;align-items:center;gap:9px;padding:6px 12px;border-bottom:1px solid var(--line2);font-size:11.5px;color:var(--mute)}
+.scroll{flex:1;overflow:auto}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+thead th{position:sticky;top:0;background:#141B24;z-index:2;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--faint);font-weight:600;text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;white-space:nowrap}
+tbody td{padding:5px 9px;border-bottom:1px solid #161D26;vertical-align:middle;overflow:hidden}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:#151D28}
+tbody tr.sel{background:#17293A;box-shadow:inset 3px 0 0 var(--lh)}
+.tn{font-family:ui-monospace,monospace;font-size:12.5px;font-weight:700;color:var(--lhHi);letter-spacing:-.2px}
+.bag{font-family:ui-monospace,monospace;font-size:9.5px;font-weight:700;background:#2A2412;color:#E8C86A;border-radius:4px;padding:1px 4px;margin-left:5px;white-space:nowrap}
+.cp{opacity:0;font-size:11px;color:var(--faint);margin-left:5px}
+tr:hover .cp{opacity:1}
+.cp:hover{color:var(--brand)}
+.pd{font-size:12px;color:var(--ink);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pdNone{font-size:11.5px;color:#4a5460;font-style:italic}
+.cu{font-size:10.5px;font-weight:700;border-radius:5px;padding:1.5px 6px;white-space:nowrap}
+.cuShopee{background:#3A2210;color:#FFB071}
+.cuTiktok{background:#331726;color:#FF8FC0}
+.cuLazada{background:#17253E;color:#8FB8FF}
+.cuKA{background:#2A1F3A;color:#C0A6FF}
+.cuGen{background:#1F2730;color:#9FB0C2}
+.br{font-size:12px;color:var(--mute);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kg{font-family:ui-monospace,monospace;font-size:12px;color:var(--mute);text-align:right}
+.hr{font-family:ui-monospace,monospace;font-size:13px;font-weight:800;text-align:right}
+.act{font-size:11.5px;color:var(--mute);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.side{width:40%;min-width:380px;display:flex;flex-direction:column;overflow:hidden}
+.sHead{padding:10px 13px;border-bottom:1px solid var(--line2)}
+.sBody{flex:1;overflow:auto;padding:4px 13px 13px}
+.grp{margin-top:12px}
+.grpT{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-family:ui-monospace,monospace;
+  padding-bottom:4px;border-bottom:1px solid var(--line2);margin-bottom:5px}
+.kv{display:flex;gap:10px;padding:1px 0;align-items:baseline}
+.kv .k{width:150px;flex:none;font-size:11.5px;color:var(--faint)}
+/* ทุกค่ากดคัดลอกได้ · ชี้แล้วพื้นเปลี่ยนให้รู้ว่ากดได้ ไม่ต้องยัดไอคอนทุกบรรทัด */
+.kv .v{flex:1;font-size:12.5px;color:var(--ink);word-break:break-word;cursor:pointer;
+  border-radius:5px;padding:2px 5px;margin:-2px -5px;position:relative}
+.kv .v:hover{background:#1C2735;box-shadow:inset 0 0 0 1px var(--line)}
+.kv .v:hover::after{content:'\9113';color:var(--brand);font-size:10.5px;margin-left:7px;vertical-align:1px}
+.kv .v.m{font-family:ui-monospace,monospace;font-size:12px}
+.kv .v.off{cursor:default}
+.kv .v.off:hover{background:none;box-shadow:none}
+.kv .v.off:hover::after{content:''}
+.empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:12.5px;text-align:center;padding:20px;line-height:1.7}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--greenBg);color:var(--greenInk);
+  border:1px solid #1E5C3C;border-radius:9px;padding:7px 15px;font-size:12.5px;font-weight:700;opacity:0;transition:opacity .15s;pointer-events:none}
+.toast.on{opacity:1}
+.note{background:#17202B;border:1px dashed var(--line);border-radius:9px;padding:7px 10px;font-size:11.5px;color:var(--mute);line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="card top">
+    <button style="font-size:18px;color:var(--mute)">&#8592;</button>
+    <span class="bpl">BPL</span>
+    <span class="n48">48</span>
+    <span class="ttl">งาน 48 ชั่วโมง</span>
+    <span style="font-size:11.5px;color:var(--faint)">จับคู่เลขพัสดุกับรายละเอียดสินค้า</span>
+    <span class="grow"></span>
+    <span style="font-family:ui-monospace,monospace;font-size:21px;font-weight:800;color:var(--brand)">11:42:07</span>
+  </div>
+
+  <div class="upRow">
+    <div class="card upCard">
+      <span class="dot" style="background:var(--green)"></span>
+      <span><span class="lab">ไฟล์รายละเอียด</span><b class="num">54,834</b></span>
+      <span class="upMeta">13 ต.ค. 69 · 11:04<br>โดย <b style="color:var(--ink);font-weight:600">ธนวัฒน์ (A001)</b></span>
+    </div>
+    <div class="card upCard">
+      <span class="dot" style="background:var(--green)"></span>
+      <span><span class="lab">ไฟล์สินค้า</span><b class="num">60,146</b></span>
+      <span class="upMeta">13 ต.ค. 69 · 11:04<br>โดย <b style="color:var(--ink);font-weight:600">ธนวัฒน์ (A001)</b></span>
+    </div>
+    <div class="card upCard">
+      <span class="dot" style="background:var(--amber)"></span>
+      <span><span class="lab">จับคู่ได้</span><b class="num" style="color:var(--amberInk)">39,933</b></span>
+      <span class="upMeta">73% ของทั้งหมด<br><span style="color:var(--faint)">ไม่มีรายละเอียด 14,901</span></span>
+    </div>
+    <div class="card drop">
+      <span style="font-size:17px">&#8681;</span>
+      <span>ลากไฟล์ทั้งสองมาวางพร้อมกันได้<br><span style="color:var(--faint);font-size:11px">ระบบแยกเองจากเนื้อในไฟล์ ไม่สนชื่อไฟล์</span></span>
+      <button class="btn btnY" style="margin-left:4px">เลือกไฟล์</button>
+      <button class="btn btnG">&#8630; ย้อนกลับ</button>
+    </div>
+  </div>
+
+  <div class="card filt">
+    <span class="search"><span style="color:var(--faint)">&#9906;</span><input placeholder="เลขพัสดุ / เลขแบ็กกิ้ง / ชื่อสินค้า" oninput="setQ(this.value)"></span>
+    <span class="sep"></span>
+    <span class="lab2">ลูกค้า</span>
+    <button class="ch on" onclick="tog('cust','')">ทั้งหมด</button>
+    <button class="ch" onclick="tog('cust','Shopee')">Shopee</button>
+    <button class="ch" onclick="tog('cust','Tiktok')">Tiktok</button>
+    <button class="ch" onclick="tog('cust','KA')">KA</button>
+    <button class="ch" onclick="tog('cust','Lazada')">Lazada</button>
+    <button class="ch" onclick="tog('cust','ลูกค้าทั่วไป')">ทั่วไป</button>
+    <span class="sep"></span>
+    <span class="lab2">ค้าง</span>
+    <button class="ch on" onclick="tog('age','')">ทั้งหมด</button>
+    <button class="ch" onclick="tog('age','24')">24 ชม.+</button>
+    <button class="ch" onclick="tog('age','48')">48 ชม.+</button>
+    <button class="ch" onclick="tog('age','72')">72 ชม.+</button>
+    <span class="sep"></span>
+    <button class="ch" onclick="tog('bag','1')">&#9703; มีเลขแบ็กกิ้ง</button>
+    <button class="ch" onclick="tog('nop','1')">&#8960; ไม่มีรายละเอียด</button>
+    <button class="ch" onclick="tog('cn','1')">文 รายละเอียดเป็นจีน</button>
+    <span class="sep"></span>
+    <select class="sel"><option>สาขาปลายทาง · ทั้งหมด</option><option>2PCU_BDC-ประชาอุทิศ</option><option>Virtual_9BPL_ODS-TCL Return</option></select>
+    <select class="sel"><option>การดำเนินการล่าสุด · ทั้งหมด</option><option>สแกนเข้าคลัง (16,162)</option><option>ยกเลิกการส่งต่อพัสดุ (604)</option></select>
+    <select class="sel"><option>จังหวัด · ทั้งหมด</option><option>กรุงเทพ</option><option>สมุทรปราการ</option></select>
+  </div>
+
+  <div class="body">
+    <div class="card tableCard">
+      <div class="tHead">
+        <b style="font-size:13px">ผลการค้นหา</b>
+        <span style="font-family:ui-monospace,monospace;color:var(--brand);font-weight:800;font-size:14px" id="cnt">26</span>
+        <span style="color:var(--faint)">จาก 54,834 ชิ้น</span>
+        <span class="grow"></span>
+        <button class="ch" onclick="cpList('t')">&#9113; เลขพัสดุทั้งหมด</button>
+        <button class="ch" onclick="cpList('p')">&#9113; ชื่อสินค้าทั้งหมด</button>
+        <button class="ch" onclick="cpList('tsv')">&#9113; ทั้งตาราง (วางลง Excel)</button>
+        <button class="ch">&#10515; ออกไฟล์ xlsx</button>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead><tr>
+            <th style="width:29%">เลขพัสดุ</th>
+            <th>รายละเอียดสินค้า</th>
+            <th style="width:80px">ลูกค้า</th>
+            <th style="width:19%">สาขาปลายทาง</th>
+            <th style="width:62px;text-align:right">น้ำหนัก</th>
+            <th style="width:62px;text-align:right">ค้าง</th>
+            <th style="width:15%">ล่าสุด</th>
+          </tr></thead>
+          <tbody id="tb"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card side" id="side"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast">คัดลอกแล้ว</div>
+
+<script>
+const DATA = {"head":["เลขพัสดุ","สถานะพัสดุ","COD","น้ำหนัก","เวลาที่คาดว่าจะออกเดินทาง","เวลาถึงตามจริง","เวลาสแกนพัสดุออกคลัง","เลขแบ็กกิ้ง","สาเหตุพัสดุคงคลัง","การดำเนินการล่าสุด","เวลาที่ดำเนินการล่าสุด","หมายเลขโทรศัพท์ผู้ที่ดำเนินการครั้งสุดท้าย","หมายเลขโทรศัพท์ผู้จัดการสาขาที่ดำเนินการครั้งสุดท้าย","ชื่อสาขาต่อไป","สาขาที่รับพัสดุ","เวลาเข้ารับสินค้า","HUBปลายทาง","สาขาปลายทาง","จังหวัด-ที่อยู่ผู้รับ","อำเภอ/เขต-ที่อยู่ผู้รับ","รหัสไปรษณีย์-ที่อยู่ผู้รับ","ประเภทลูกค้า","ลูกค้า"],"rows":[{"t":"LEXPU0714408816","p":"[ของแถม] รองเท้า Slipper Moomin & Little Witch,ไฮยีน พรี-วอช น้ำยาขจัดคราบเฉพาะจุด ขนาด 250 มล. แบบมีหัวแปรง,ไฮยีน เอ็กซ์เพิร์ท วอช ผลิตภัณฑ์ซักผ้าชนิดน้ำ 2800มล. และ น้ำยาปรับผ้านุ่มสูตรเข้มข้นพิเศษ 3300มล. (เลือกกลิ่นได้),ไฮยีน น้ำยาขจัดคราบสำหรับผ้าขาวและผ้าสี กลิ่นฟลอรัล 1000 มล.","raw":["LEXPU0714408816","ระหว่างการขนส่ง","0.00","9kg","2026-10-03 21:00:00","2026-10-03 21:32:46","2026-10-03 20:41:07","--","-","ทีมตัดสิน&เคลมดำเนินการ","2026-10-07 00:00:14","(10001)","(6)",null,"(TH02030145)5BPA_PDC-บางปลา","2026-10-03 15:41:32","21 BPL_BHUB-บางพลี","(TH02030115)2BPY_BDC-บางพลีใหญ่","(TH02)สมุทรปราการ","(TH0203)บางพลี","10540","Lazada","(AA0330)บริษัท ลาซาด้า เอ็กซ์เพรส จำกัด LEX"]},{"t":"SSLT711167276681","p":"ลายฉลุใบไม้คละสําหรับงานฝีมือ - ดีไซน์ไม้โอ๊ค เมเปิ้ล เถาวัลย์สําหรับการตกแต่ง DIY การทําการ์ด","raw":["SSLT711167276681","ระหว่างการขนส่ง","65.02","0.5kg","2026-10-13 00:30:00","2026-10-07 18:56:00","2026-10-12 19:25:22","P2996350336","-","-","2026-10-13 07:53:46","()","()",null,"(TH02030145)5BPA_PDC-บางปลา","2026-10-07 11:38:58","21 BPL_BHUB-บางพลี","(TH02030115)2BPY_BDC-บางพลีใหญ่","(TH02)สมุทรปราการ","(TH0203)บางพลี","10540","Lazada","(AA0330)บริษัท ลาซาด้า เอ็กซ์เพรส จำกัด LEX"]},{"t":"TH000286089","p":"【赵露思推荐】自然堂控油蓬松去屑止痒洗发水洗发露洗护套装,星月菜刀具套装厨房全套厨具组合家用切菜刀切菜板砧板二合一刀架,Pro升级版 欧莱雅玻色因安瓶面膜B5玻尿酸补水保湿双仓女3代第4代,1L大容量洗澡栀子花香氛沐浴露持久留香72小时香水男女士通用套装,好管家乌檀木菜板抗菌防霉家用砧板占粘防裂黑金檀实木案板切菜板","raw":["TH000286089","ระหว่างการขนส่ง","0.00","6kg","2026-10-13 05:00:00","2026-10-13 07:47:59","2026-10-13 04:28:59","--","-","รถที่เชื่อมโยงกับพัสดุถึงคลังแล้ว","2026-10-13 07:47:59","(57050)นาย จีรพงษ์ สระโร 0993814476","(TH02030116)21 BPL_BHUB-บางพลี นาย อุทร ธนูชาญ 0801099569",null,"(TH02030204)05 LAS_HUB-ลาซาล","2026-10-10 17:50:32","21 BPL_BHUB-บางพลี","(TH01280152)2DMI_BDC-ดอกไม้","(TH01)กรุงเทพ","(TH0128)ประเวศ","10250","KA","(AA0906)【Alibaba】杭州菜鸟供应链管理有限公司（淘天）"]},{"t":"TH000287859","p":"美式复古双面穿复合640g空气层连帽拉链卫衣秋季情侣外套cleanfit","raw":["TH000287859","ระหว่างการขนส่ง","0.00","2kg","2026-10-07 21:00:00","2026-10-07 21:42:30","2026-10-07 20:43:09","--","-","ตอบกลับ Ticket","2026-10-12 15:46:15","(724214)นางสาว จิตติมา บุญทอง 0996281879","(TH02030116)21 BPL_BHUB-บางพลี นาย อุทร ธนูชาญ 0801099569",null,"(TH02030204)05 LAS_HUB-ลาซาล","2026-10-07 19:35:15","21 BPL_BHUB-บางพลี","(TH02030214)2BKE_BDC-บางแก้ว","(TH02)สมุทรปราการ","(TH0203)บางพลี","10540","KA","(AA0906)【Alibaba】杭州菜鸟供应链管理有限公司（淘天）"]},{"t":"TH000288898","p":"淄博烧烤签一次性竹签子串串香羊肉串关东煮签子水果烧烤竹签","raw":["TH000288898","ระหว่างการขนส่ง","0.00","12kg","2026-10-11 14:00:00","2026-10-11 12:00:45","2026-10-11 10:27:50","--","-","ทีมตัดสิน&เคลมดำเนินการ","2026-10-13 06:50:17","(10001)","(6)",null,"(TH02030204)05 LAS_HUB-ลาซาล","2026-10-10 22:39:56","21 BPL_BHUB-บางพลี","(TH01120274)2PCU_BDC-ประชาอุทิศ","(TH01)กรุงเทพ","(TH0112)ทุ่งครุ","10140","KA","(AA0906)【Alibaba】杭州菜鸟供应链管理有限公司（淘天）"]},{"t":"TH000291406","p":"MOSI月落星辰60色透色甲油胶显白四季百搭新款套装美甲店专用","raw":["TH000291406","ระหว่างการขนส่ง","0.00","2kg","2026-10-11 02:00:00","2026-10-12 11:33:35","2026-10-11 02:04:43","--","-","ยกเลิกการส่งต่อพัสดุ","2026-10-13 08:04:41","(5068084)21BPL-042 0981492606","(TH02030116)21 BPL_BHUB-บางพลี นาย อุทร ธนูชาญ 0801099569","5BST_PDC-บางเสาธง","(TH02030204)05 LAS_HUB-ลาซาล","2026-10-10 19:58:43","21 BPL_BHUB-บางพลี","(TH01170296)5BKT_PDC-บางขุนเทียน","(TH16)สมุทรสาคร","(TH1601)เมืองสมุทรสาคร","74000","KA","(AA0906)【Alibaba】杭州菜鸟供应链管理有限公司（淘天）"]},{"t":"TH000292544","p":"圣百合饼干棉花娃娃可爱10cm毛绒公仔努努玩偶饼干人王国周边礼物","raw":["TH000292544","ระหว่างการขนส่ง","0.00","0.5kg","2026-10-12 22:00:00","--","2026-10-12 20:05:06","--","-","รถที่เชื่อมโยงกับพัสดุออกคลังแล้ว","2026-10-12 21:58:07","(728301)นาย สุชาติ ปินใจ 0639183291","(TH47190703)07 NO3_HUB เชียงใหม่ นาย เฉลิมพล สุนันตา 0808482544",null,"(TH02030204)05 LAS_HUB-ลาซาล","2026-10-10 23:57:15","21 BPL_BHUB-บางพลี","(TH02011009)2BMN_BDC-บางเมืองใหม่","(TH02)สมุทรปราการ","(TH0201)เมืองสมุทรปราการ","10270","KA","(AA0906)【Alibaba】杭州菜鸟供应链管理有限公司（淘天）"]},{"t":"TH000294446","p":"顺冠中抽擦手纸卷筒抹手纸自动出纸机纸巾酒店厨房纸断点式擦拭纸","raw":["TH000294446","ระหว่างการขนส่ง","0.00","7kg","2026-10-11 14:00:00","2026-10-11 12:00:45","2026-10-11 08:56:15","--","-","ดำเนินการส่งพัสดุมีปัญหา","2026-10-12 18:47:22","(10001)","(6)",null,"(TH02030204)05 LAS_HUB-ลาซาล","2026-10-10 22:33:24","21 BPL_BHUB-บางพลี","(TH01510308)2RM9_BDC-พระรามที่9","(TH01)กรุงเทพ","(TH0151)ห้วยขวาง","10310","KA","(AA0906)【Alibaba】杭州菜鸟供应链管理有限公司（淘天）"]},{"t":"TH010197HWE13C","p":"ราวผ้าม่าน ราวม่าน ปรับขนาดได้ ราวม่านไม่ต้องเจาะ คลิปยึดราวม่าน ราวม่านอาบน้ำ ราวม่านห้องน้ำ ห้องนอ","raw":["TH010197HWE13C","ระหว่างการขนส่ง","125.00","1kg","2026-10-04 18:00:00","2026-10-04 20:09:01","2026-10-04 15:05:06","--","-","ทีมตัดสิน&เคลมดำเนินการ","2026-10-06 21:52:50","(10001)","(6)",null,"(TH01170296)5BKT_PDC-บางขุนเทียน","2026-10-03 14:05:49","21 BPL_BHUB-บางพลี","(TH01010223)2BGK_BDC-บางจาก","(TH01)กรุงเทพ","(TH0101)คลองเตย","10110","Shopee","(AA0569) SPX Express (Thailand) Co.,Ltd.-DOF"]},{"t":"TH010197RK997B","p":"กล่องกระดาษ เก็บเอกสาร ลังใส่ของ มี 2 ไซส์ M L กระดาษลูกฟูก ราคาถูก (กระดาษแข็งแรงพิเศษ) บรรจุ 5 ชิ้","raw":["TH010197RK997B","ระหว่างการขนส่ง","0.00","9kg","2026-10-12 22:30:00","2026-10-13 00:07:10","2026-10-12 21:29:53","--","-","ทีมตัดสิน&เคลมดำเนินการ","2026-10-13 06:57:19","(10000)System 0000000000","(1)",null,"(TH02060149)5BST_PDC-บางเสาธง","2026-10-05 16:15:02","21 BPL_BHUB-บางพลี","(TH01010223)2BGK_BDC-บางจาก","(TH01)กรุงเทพ","(TH0101)คลองเตย","10110","Shopee","(AA0427) SPX Express (Thailand) Co.,Ltd.-seller"]},{"t":"TH0101981T086B","p":"วงล้อหมุนนำโชค ตั้งพื้นได้ พับเก็บได้ ปรับระดับความสูง เคลื่อนย้ายง่าย [จัดส่งจากไทย] สำหรับงานเลี้ย","raw":["TH0101981T086B","ระหว่างการขนส่ง","0.00","2.5kg","2026-10-10 23:00:00","2026-10-11 01:14:07","2026-10-10 19:13:01","P2997722790","-","ปริ้นท์ใบลาเบล","2026-10-12 14:45:38","(737913)นางสาว ศิริวิภา หมุดธรรม 0946212860","(TH02030116)21 BPL_BHUB-บางพลี นาย อุทร ธนูชาญ 0801099569",null,"(TH02010609)2PKS_BDC-แพรกษา","2026-10-08 18:02:00","21 BPL_BHUB-บางพลี","(TH01010223)2BGK_BDC-บางจาก","(TH01)กรุงเทพ","(TH0101)คลองเตย","10110","Shopee","(AA0427) SPX Express (Thailand) Co.,Ltd.-seller"]},{"t":"TH010198650Y7B","p":"นมกล่อง ยกลังx2ลัง นมยูเอชที นมไฮคิวสูตร4 เอกซ์พลอเรอร์ พรีไบโอโพรเทก รสจืด180มล(72 กล่อง)UHT HiQ Ex","raw":["TH010198650Y7B","ระหว่างการขนส่ง","0.00","16kg","2026-10-11 02:00:00","2026-10-11 19:35:34","2026-10-10 19:42:48","--","-","ทีมตัดสิน&เคลมดำเนินการ","2026-10-13 06:50:00","(10001)","(6)",null,"(TH71140100)BGM_SP-บางกล่ำ","2026-10-10 09:51:34","21 BPL_BHUB-บางพลี","(TH01010223)2BGK_BDC-บางจาก","(TH01)กรุงเทพ","(TH0101)คลองเตย","10110","Shopee","(AA0612) SPX Express (Thailand) Co.,Ltd.- BGWH-1"]},{"t":"TH0101986JHK3B","p":"BOOMJOY ไม้ถูพื้นขี้เกียจเปลี่ยนผ้าอัตโนมัติมัลติฟังก์ชั่น, ไม้ถูพื้นสกปรกแบบใช้แล้วทิ้งแบบไม่ต้องสั,BOOMJOY แปรงทําความสะอาดฝักบัวและชุดขัดอ่างอาบน้ําที่มี58ยืดด้ามยาว,แปรงทําความสะอาดห้องน้ําที่มีแผ่","raw":["TH0101986JHK3B","ระหว่างการขนส่ง","0.00","1.5kg","2026-10-13 02:00:00","2026-10-13 04:29:30","2026-10-13 02:34:09","--","-","รถที่เชื่อมโยงกับพัสดุถึงคลังแล้ว","2026-10-13 04:29:30","(57050)นาย จีรพงษ์ สระโร 0993814476","(TH02030116)21 BPL_BHUB-บางพลี นาย อุทร ธนูชาญ 0801099569",null,"(TH02060149)5BST_PDC-บางเสาธง","2026-10-09 17:39:01","21 BPL_BHUB-บางพลี","(TH01010223)2BGK_BDC-บางจาก","(TH01)กรุงเทพ","(TH0101)คลองเตย","10110","Shopee","(AA0427) SPX Express (Thailand) Co.,Ltd.-seller"]},{"t":"TH0101988U6C0C","p":"","raw":["TH0101988U6C0C","ระหว่างการขนส่ง","0.00","5kg","2026-10-12 04:00:00","2026-10-12 15:21:36","2026-10-12 01:12:26","--","-","สแกนเข้าคลัง","2026-10-12 19:20:07","(72875)นางสาว ธิดารัตน์ ตุ่นเปี้ย 0636321089","(TH02030116)21 BPL_BHUB-บางพลี นาย อุทร ธนูชาญ 0801099569",null,"(TH67010507)Shop Naka","2026-10-10 18:14:34","21 BPL_BHUB-บางพลี","(TH01010223)2BGK_BDC-บางจาก","(TH01)กรุงเทพ","(TH0101)คลองเตย","10110","KA","(CBD7064)นาย ดุลยวัต แซ่อึ่ง"]},{"t":"TH01019890ZN2B","p":"อะไหล่ยนต์","raw":["TH01019890ZN2B","ระหว่างการขนส่ง","2,100.00","45kg","2026-10-13 08:45:00","--","2026-10-12 14:44:33","--","-","-","2026-10-13 07:04:57","()","()",null,"(TH31041201)FH-อุบลราชธานี202","2026-10-09 16:34:29","21 BPL_BHUB-บางพลี","(TH01010223)2BGK_BDC-บางจาก","(TH01)กรุงเทพ","(TH0101)คลองเตย","10110","ลูกค้าทั่วไป","(16204439)"]},{"t":"TH0101989P313B","p":"WTHB เก้าอี้สนาม เก้าอี้สนามพับ เก้าอี้พกพาพับได้ เก้าอี้แคมป์ปิ้ง เก้าอี้พกพา เก้าอี้ชายหาด เก้าอี้ปิกนิก เก้าอี้สนาม camping รับน้ำหนักได้ 200kg,รับประกัน10ปี เต้นท์ขายของ เต็นท์พับ 2x2 2x3 3x3 เต้นขายของ เต้นท์ขนาดใหญ่ ร่มขายของ2000D ผ้าหนาผ้าใบ+โครงเหล็กหนาพิเศษ","raw":["TH0101989P313B","ระหว่างการขนส่ง","0.00","16kg","2026-10-10 19:00:00","2026-10-10 17:43:09","2026-10-10 14:21:58","--","-","ทีมตัดสิน&เคลมดำเนินการ","2026-10-12 11:06:52","(10000)System 0000000000","(1)",null,"(TH02060111)2BST_BDC-บางเสาธง","2026-10-10 14:21:58","21 BPL_BHUB-บางพลี","(TH01010223)2BGK_BDC-บางจาก","(TH01)กรุงเทพ","(TH0101)คลองเตย","10110","Lazada","(AA0415)บริษัท ลาซาด้า เอ็กซ์เพรส จำกัด Seller"]},{"t":"TH0101989SGK7C","p":"ลูกส้มซ่า ส้มซ่า เก็บสดจากต้น 1 กิโลกรัม","raw":["TH0101989SGK7C","ระหว่างการขนส่ง","0.00","6kg","2026-10-10 23:00:00","2026-10-11 03:32:27","2026-10-10 19:36:24","--","-","ทีมตัดสิน&เคลมดำเนินการ","2026-10-12 15:52:13","(10001)","(6)",null,"(TH57010119)7UTT_DC-อุทัยธานี","2026-10-10 17:20:59","21 BPL_BHUB-บางพลี","(TH01010223)2BGK_BDC-บางจาก","(TH01)กรุงเทพ","(TH0101)คลองเตย","10110","Shopee","(AA0569) SPX Express (Thailand) Co.,Ltd.-DOF"]},{"t":"TH010198AE9J6A","p":"(Live) กาแฟเบอร์ดี้ 180 มล. (ยกลัง 30 กระป๋อง) เลือกรสชาติได้","raw":["TH010198AE9J6A","ระหว่างการขนส่ง","0.00","7kg","2026-10-11 07:00:00","2026-10-11 14:51:43","2026-10-11 02:05:52","--","-","ทีมตัดสิน&เคลมดำเนินการ","2026-10-12 20:42:38","(10001)","(6)",null,"(TH38160400)NSA_SP-หนองแสง","2026-10-10 17:33:52","21 BPL_BHUB-บางพลี","(TH01010223)2BGK_BDC-บางจาก","(TH01)กรุงเทพ","(TH0101)คลองเตย","10110","Shopee","(AA0569) SPX Express (Thailand) Co.,Ltd.-DOF"]},{"t":"TH010198AEFW3C","p":"สายสะพาย เครื่องตัดหญ้า ชนิดบ่าคู่ แบรนด์ ECOMAX รุ่น SPARTAN สามารถใช้กับเครื่องตัดหญ้าได้ทุกรุ่น","raw":["TH010198AEFW3C","ระหว่างการขนส่ง","0.00","2kg","2026-10-11 02:00:00","2026-10-11 04:37:10","2026-10-10 23:10:00","--","-","ทีมตัดสิน&เคลมดำเนินการ","2026-10-12 15:52:15","(10001)","(6)",null,"(TH10010200)2SAR_BDC-สระบุรี","2026-10-10 16:55:21","21 BPL_BHUB-บางพลี","(TH01010223)2BGK_BDC-บางจาก","(TH01)กรุงเทพ","(TH0101)คลองเตย","10110","Lazada","(AA0415)บริษัท ลาซาด้า เอ็กซ์เพรส จำกัด Seller"]},{"t":"TH010198AGRY8B","p":"ไม้สักไสเรียบ หน้าไม้ หนา 1.5ซม. × 2 นิ้ว × ยาว 2 เมตร  ระแนง ตกแต่ง ไม้จริง บ้านและสวน ไม้สักไสเรียบ ไม้สัก ไม้สักทอง ไม้สักถูก","raw":["TH010198AGRY8B","ระหว่างการขนส่ง","1,705.28","20kg","2026-10-11 22:00:00","2026-10-12 09:51:35","2026-10-11 17:11:15","--","-","สแกนเข้าคลัง","2026-10-12 15:22:30","(4900585)21BPL-032 0981492606","(TH02030116)21 BPL_BHUB-บางพลี นาย อุทร ธนูชาญ 0801099569",null,"(TH48060100)PAS_SP-ป่าซาง","2026-10-10 15:14:54","21 BPL_BHUB-บางพลี","(TH01010223)2BGK_BDC-บางจาก","(TH01)กรุงเทพ","(TH0101)คลองเตย","10110","Lazada","(AA0936) บริษัท ลาซาด้า เอ็กซ์เพรส จำกัด MP Bulky"]},{"t":"TH010198AGS00B","p":"ไม้สักไสเรียบ หน้าไม้ หนา 1.5ซม. × 2 นิ้ว × ยาว 2 เมตร  ระแนง ตกแต่ง ไม้จริง บ้านและสวน ไม้สักไสเรียบ ไม้สัก ไม้สักทอง ไม้สักถูก","raw":["TH010198AGS00B","ระหว่างการขนส่ง","426.30","5kg","2026-10-11 22:00:00","2026-10-12 09:51:35","2026-10-11 17:12:37","--","-","สแกนเข้าคลัง","2026-10-12 15:22:09","(4900585)21BPL-032 0981492606","(TH02030116)21 BPL_BHUB-บางพลี นาย อุทร ธนูชาญ 0801099569",null,"(TH48060100)PAS_SP-ป่าซาง","2026-10-10 15:16:19","21 BPL_BHUB-บางพลี","(TH01010223)2BGK_BDC-บางจาก","(TH01)กรุงเทพ","(TH0101)คลองเตย","10110","Lazada","(AA0936) บริษัท ลาซาด้า เอ็กซ์เพรส จำกัด MP Bulky"]},{"t":"TH010198AGXH3B","p":"ลำพูนค้าไม้ (ศูนย์รวมไม้ครบวงจร) ไม้สัก ทุกขนาด จำนวน 1 ท่อน เลือกควาทยาวได้ ไม้บันได ท็อปโต๊ะ แต่งบ้าน กันเปื้อน ระแนง รั้ว ไม้สักไสเรียบ","raw":["TH010198AGXH3B","ระหว่างการขนส่ง","258.07","4kg","2026-10-11 22:00:00","2026-10-12 09:51:35","2026-10-11 17:12:43","--","-","รถที่เชื่อมโยงกับพัสดุถึงคลังแล้ว","2026-10-12 09:51:35","(625855)นาย ซุลกิฟลี มะแซ 0980623503","(TH02030116)21 BPL_BHUB-บางพลี นาย อุทร ธนูชาญ 0801099569",null,"(TH48060100)PAS_SP-ป่าซาง","2026-10-10 15:22:42","21 BPL_BHUB-บางพลี","(TH01010223)2BGK_BDC-บางจาก","(TH01)กรุงเทพ","(TH0101)คลองเตย","10110","Lazada","(AA0936) บริษัท ลาซาด้า เอ็กซ์เพรส จำกัด MP Bulky"]},{"t":"TH010198AZZ09B","p":"iF เตียง 2 ชั้น เตียงสองชั้น 3/3.3/4ฟุต มี กระดานไม้ ให้มาด้วย ประกอบง่าย ไม่ต้องใช้น็อตยึด นักศึกษา","raw":["TH010198AZZ09B","ระหว่างการขนส่ง","2,639.00","52kg","2026-10-11 12:00:00","2026-10-11 13:58:37","2026-10-11 08:51:33","--","-","ทีมตัดสิน&เคลมดำเนินการ","2026-10-13 08:44:04","(10000)System 0000000000","(1)",null,"(TH16011071)6SAS_PDC-สมุทรสาคร","2026-10-10 22:26:42","21 BPL_BHUB-บางพลี","(TH01010223)2BGK_BDC-บางจาก","(TH01)กรุงเทพ","(TH0101)คลองเตย","10110","Shopee","(AA0574) SPX Express (Thailand) Co.,Ltd.-BG MP"]},{"t":"TH010198B9MF0B","p":"Applecrumby Slimdry Easyday Baby diapers Mega (2 แพ็ค/ยกลัง) ผ้าอ้อมสำหรับกลางวัน แบบกางเกง บางแต่ดี","raw":["TH010198B9MF0B","ระหว่างการขนส่ง","0.00","3kg","2026-10-12 02:00:00","2026-10-12 18:34:56","2026-10-11 22:36:48","--","-","สแกนเข้าคลัง","2026-10-12 18:50:22","(5068094)21BPL-052 0981492606","(TH02030116)21 BPL_BHUB-บางพลี นาย อุทร ธนูชาญ 0801099569",null,"(TH77010129)7NRW_DC-นราธิวาส","2026-10-10 20:11:06","21 BPL_BHUB-บางพลี","(TH01010223)2BGK_BDC-บางจาก","(TH01)กรุงเทพ","(TH0101)คลองเตย","10110","Lazada","(AA0415)บริษัท ลาซาด้า เอ็กซ์เพรส จำกัด Seller"]},{"t":"TH010198BEXQ4B","p":"ซื้อ10ใบ แถม1ใบ Makita ใบเจียรเหล็ก 4 นิ้ว มีขนาด หนา6มิล - บาง2มิล หินเจียร์เหล็ก เจียร์หนา เจียร์บาง ราคาส่ง,Makita ใบตัดเหล็ก 4 นิ้ว บาง 1 มิล 1 กล่องได้ 10 ใบ ตัดเหล็ก สแตนเลส","raw":["TH010198BEXQ4B","ระหว่างการขนส่ง","606.00","1.5kg","2026-10-11 01:00:00","2026-10-12 04:52:47","2026-10-10 22:30:58","--","-","ยกเลิกการส่งต่อพัสดุ","2026-10-13 04:41:49","(5068084)21BPL-042 0981492606","(TH02030116)21 BPL_BHUB-บางพลี นาย อุทร ธนูชาญ 0801099569","2TND_BDC-ท่านัด","(TH01170296)5BKT_PDC-บางขุนเทียน","2026-10-10 17:48:20","21 BPL_BHUB-บางพลี","(TH01080138)2RNG_BDC-รองเมือง","(TH01)กรุงเทพ","(TH0127)ปทุมวัน","10330","Lazada","(AA0477)บริษัท ลาซาด้า เอ็กซ์เพรส จำกัด Drop-off"]},{"t":"TH010297ES4E0C","p":"ที่นอนท็อปเปอร์ ครบเซ็ท6ชิ้น Topper ท็อปเปอร์หนา8นิ้ว พร้อมส่ง ใยหนาพิเศษ 4 ชั้น","raw":["TH010297ES4E0C","ระหว่างการขนส่ง","0.00","5kg","2026-10-13 05:00:00","2026-10-13 07:47:59","2026-10-13 05:37:50","--","-","รถที่เชื่อมโยงกับพัสดุถึงคลังแล้ว","2026-10-13 07:47:59","(57050)นาย จีรพงษ์ สระโร 0993814476","(TH02030116)21 BPL_BHUB-บางพลี นาย อุทร ธนูชาญ 0801099569",null,"(TH43070126)HUG_SP-หัวงัว","2026-10-02 17:43:02","21 BPL_BHUB-บางพลี","(TH01130103)2TON_BDC-ธนบุรี","(TH01)กรุงเทพ","(TH0113)ธนบุรี","10600","Shopee","(AA0574) SPX Express (Thailand) Co.,Ltd.-BG MP"]}]};
+const NOW = new Date('2026-10-13T11:42:00+07:00').getTime();
+const F = { cust:'', age:'', bag:'', nop:'', cn:'', q:'' };
+const CJK = /[一-鿿]/;
+let selIdx = -1;
+
+/* ตัดรหัสในวงเล็บหน้าชื่อสาขาออก ให้เหลือชื่อที่คนอ่าน */
+const nm = s => String(s||'').replace(/^\(([^)]*)\)\s*/,'');
+const hrs = s => { const t = Date.parse(String(s||'').replace(' ','T')+'+07:00'); return t ? Math.floor((NOW-t)/3600000) : null };
+const CU = { Shopee:'cuShopee', Tiktok:'cuTiktok', Lazada:'cuLazada', KA:'cuKA' };
+const custShort = c => c === 'ลูกค้าทั่วไป' ? 'ทั่วไป' : c;
+const bagOf = r => { const b = String(r.raw[7]||'').trim(); return (b && b !== '--' && b !== '-') ? b : '' };
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ถังพักข้อความที่คัดลอกได้ · เก็บค่าดิบไว้ในนี้แล้วอ้างด้วยเลข
+   ดีกว่ายัดข้อความลง onclick ตรง ๆ เพราะชื่อสินค้ามีทั้งเครื่องหมายคำพูดและอัญประกาศจีน */
+const CB = [];
+const put = v => (CB.push(String(v == null ? '' : v)) - 1);
+
+function pass(r){
+  const h = hrs(r.raw[5]);
+  if (F.cust && r.raw[21] !== F.cust) return false;
+  if (F.age && !(h !== null && h >= +F.age)) return false;
+  if (F.bag && !bagOf(r)) return false;
+  if (F.nop && r.p) return false;
+  if (F.cn && !CJK.test(r.p)) return false;
+  if (F.q){ const q = F.q.toLowerCase();
+    if (!(r.t.toLowerCase().includes(q) || r.p.toLowerCase().includes(q) || bagOf(r).toLowerCase().includes(q))) return false }
+  return true;
+}
+
+function render(){
+  CB.length = 0;
+  const out = [];
+  DATA.rows.forEach((r,i) => {
+    if (!pass(r)) return;
+    const h = hrs(r.raw[5]);
+    const hc = h === null ? 'var(--faint)' : h >= 48 ? 'var(--redInk)' : h >= 24 ? 'var(--amberInk)' : 'var(--mute)';
+    const bag = bagOf(r);
+    out.push('<tr class="' + (i===selIdx?'sel':'') + '" onclick="pick(' + i + ')">'
+      + '<td><span class="tn">' + esc(r.t) + '</span>'
+        + (bag ? '<span class="bag">&#9703; ' + esc(bag) + '</span>' : '')
+        + '<span class="cp" onclick="cp(event,' + i + ')">&#9113;</span></td>'
+      + '<td><span style="display:flex;align-items:center;min-width:0"><span class="' + (r.p?'pd':'pdNone') + '">'
+        + (r.p ? esc(r.p) : 'ไม่มีในไฟล์สินค้า') + '</span>'
+        + (r.p ? '<span class="cp" onclick="cpv(' + put(r.p) + ',event)">&#9113;</span>' : '') + '</span></td>'
+      + '<td><span class="cu ' + (CU[r.raw[21]]||'cuGen') + '">' + esc(custShort(r.raw[21])) + '</span></td>'
+      + '<td><span class="br">' + esc(nm(r.raw[17])) + '</span></td>'
+      + '<td class="kg">' + (esc(r.raw[3]) || '—') + '</td>'
+      + '<td class="hr" style="color:' + hc + '">' + (h===null ? '—' : h + 'ช') + '</td>'
+      + '<td><span class="act">' + (r.raw[9]==='-' ? '—' : esc(r.raw[9])) + '</span></td>'
+      + '</tr>');
+  });
+  document.getElementById('cnt').textContent = out.length.toLocaleString('th-TH');
+  document.getElementById('tb').innerHTML = out.join('');
+  side();
+}
+
+function side(){
+  const el = document.getElementById('side');
+  if (selIdx < 0){
+    el.innerHTML = '<div class="empty">กดที่แถวไหนก็ได้<br><span style="color:#3d454e">รายละเอียดทุกช่องในไฟล์จะขึ้นตรงนี้<br>และทุกช่องกดคัดลอกได้</span></div>';
+    return;
+  }
+  const r = DATA.rows[selIdx], H = DATA.head, h = hrs(r.raw[5]);
+  /* ทุกช่องกดคัดลอกได้ ยกเว้นช่องที่ไม่มีค่า */
+  const kv = (k,v,m) => {
+    const has = v && v !== '-' && v !== '--';
+    return '<div class="kv"><span class="k">' + esc(k) + '</span>'
+      + '<span class="v' + (m?' m':'') + (has?'':' off') + '"'
+      + (has ? ' onclick="cpv(' + put(v) + ')" title="กดเพื่อคัดลอก"' : '') + '>'
+      + (has ? esc(v) : '<span style="color:#3d454e">—</span>') + '</span></div>';
+  };
+  const bag = bagOf(r);
+  el.innerHTML =
+    '<div class="sHead">'
+    + '<div style="display:flex;align-items:center;gap:8px">'
+      + '<span class="tn" style="font-size:16px">' + esc(r.t) + '</span>'
+      + '<button class="ch" onclick="cp(event,' + selIdx + ')">&#9113; คัดลอก</button>'
+      + '<span class="grow"></span>'
+      + '<button style="color:var(--faint);font-size:16px" onclick="selIdx=-1;render()">&#10005;</button>'
+    + '</div>'
+    + '<div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
+      + '<span class="cu ' + (CU[r.raw[21]]||'cuGen') + '">' + esc(custShort(r.raw[21])) + '</span>'
+      + (bag ? '<span class="bag" style="margin:0">&#9703; ' + esc(bag) + '</span>' : '')
+      + '<span class="ch" style="background:' + (h>=48?'var(--redBg)':'#161E28') + ';color:' + (h>=48?'var(--redInk)':'var(--mute)') + '">ค้าง ' + (h===null?'—':h + ' ชม.') + '</span>'
+      + '<span class="ch">' + esc(r.raw[1]) + '</span>'
+    + '</div>'
+    + '<div class="kv" style="margin-top:7px"><span class="v' + (r.p?'':' off') + '" style="font-size:13px;line-height:1.5"'
+      + (r.p ? ' onclick="cpv(' + put(r.p) + ')" title="กดเพื่อคัดลอกชื่อสินค้า"' : '') + '>'
+      + (r.p ? esc(r.p) : '<span style="color:#3d454e">ยังไม่มีรายละเอียดสินค้าของเลขนี้ในไฟล์ที่อัปล่าสุด</span>') + '</span></div>'
+    + '<div style="margin-top:8px;display:flex;gap:6px">'
+      + '<button class="ch" onclick="cpAll(' + selIdx + ')">&#9113; คัดลอกทั้งใบเป็นข้อความ</button>'
+      + (r.p ? '<button class="ch" onclick="cpv(' + put(r.p) + ')">&#9113; คัดลอกเฉพาะชื่อสินค้า</button>' : '')
+    + '</div>'
+    + '</div>'
+    + '<div class="sBody">'
+    + '<div class="grp"><div class="grpT">ปลายทาง</div>'
+      + kv(H[16], nm(r.raw[16])) + kv(H[17], nm(r.raw[17])) + kv(H[18], nm(r.raw[18]))
+      + kv(H[19], nm(r.raw[19])) + kv(H[20], r.raw[20], 1) + kv(H[13], nm(r.raw[13])) + '</div>'
+    + '<div class="grp"><div class="grpT">ของ</div>'
+      + kv(H[3], r.raw[3], 1) + kv(H[2], r.raw[2], 1) + kv(H[7], r.raw[7], 1) + kv(H[8], r.raw[8]) + '</div>'
+    + '<div class="grp"><div class="grpT">เวลา</div>'
+      + kv(H[15], r.raw[15], 1) + kv(H[5], r.raw[5], 1) + kv(H[6], r.raw[6], 1)
+      + kv(H[4], r.raw[4], 1) + kv(H[10], r.raw[10], 1) + '</div>'
+    + '<div class="grp"><div class="grpT">การดำเนินการ</div>'
+      + kv(H[1], r.raw[1]) + kv(H[9], r.raw[9]) + kv(H[14], nm(r.raw[14]))
+      + kv(H[11], r.raw[11], 1) + kv(H[12], r.raw[12], 1) + '</div>'
+    + '<div class="grp"><div class="grpT">ลูกค้า</div>' + kv(H[21], r.raw[21]) + kv(H[22], r.raw[22]) + '</div>'
+    + '<div class="grp"><div class="note">ทุกช่องในไฟล์ถูกเก็บไว้ครบ ไม่ได้ตัดทิ้งช่องไหน ตารางหน้าแรกโชว์แค่ 7 ช่อง เพราะต้องจบใน 1 หน้าจอ<br>'
+      + '<b style="color:var(--brand)">ทุกค่าในแผงนี้กดคัดลอกได้</b> เอาเมาส์ชี้แล้วพื้นจะสว่างขึ้นพร้อมไอคอน &#9113; กดครั้งเดียวได้เลย</div></div>'
+    + '</div>';
+}
+
+function pick(i){ selIdx = (selIdx === i ? -1 : i); render() }
+
+/* คัดลอกยกชุดเฉพาะที่กรองอยู่ · tsv วางลง Excel แล้วแตกเป็นช่องเอง */
+function cpList(kind){
+  const list = DATA.rows.filter(pass);
+  if (kind === 't') return copyText(list.map(r => r.t).join('\n'));
+  if (kind === 'p') return copyText(list.filter(r => r.p).map(r => r.p).join('\n'));
+  const H = ['เลขพัสดุ','รายละเอียดสินค้า','ประเภทลูกค้า','สาขาปลายทาง','น้ำหนัก','ค้าง (ชม.)','การดำเนินการล่าสุด'];
+  const body = list.map(r => [r.t, r.p, r.raw[21], nm(r.raw[17]), r.raw[3], hrs(r.raw[5]) ?? '', r.raw[9]]
+    .map(v => String(v ?? '').replace(/[\t\n]/g, ' ')).join('\t'));
+  copyText([H.join('\t')].concat(body).join('\n'));
+}
+
+function tog(k,v){
+  F[k] = (k === 'bag' || k === 'nop' || k === 'cn') ? (F[k] ? '' : v) : v;
+  document.querySelectorAll('.filt .ch').forEach(x => {
+    const m = /tog\('(\w+)','([^']*)'\)/.exec(x.getAttribute('onclick') || '');
+    if (m) x.classList.toggle('on', F[m[1]] === m[2]);
+  });
+  render();
+}
+function setQ(v){ F.q = v.trim(); render() }
+/* คัดลอกข้อความอะไรก็ได้ · จุดเดียวที่แตะคลิปบอร์ดทั้งหน้า */
+function copyText(t){
+  t = String(t == null ? '' : t);
+  if (!t) return;
+  if (navigator.clipboard) navigator.clipboard.writeText(t);
+  const el = document.getElementById('toast');
+  el.textContent = 'คัดลอกแล้ว · ' + (t.length > 46 ? t.slice(0, 46) + '…' : t);
+  el.classList.add('on');
+  clearTimeout(copyText.t);
+  copyText.t = setTimeout(() => el.classList.remove('on'), 1100);
+}
+function cp(e,i){ e.stopPropagation(); copyText(DATA.rows[i].t) }
+function cpv(n,e){ if (e) e.stopPropagation(); copyText(CB[n]) }
+
+/* ทั้งใบเป็นข้อความ ช่องละบรรทัด · วางลง Google แปลภาษา หรือระบบอื่นได้ทันที */
+function cpAll(i){
+  const r = DATA.rows[i], H = DATA.head;
+  const L = ['เลขพัสดุ: ' + r.t, 'รายละเอียดสินค้า: ' + (r.p || '-')];
+  H.forEach((h,j) => { if (j !== 0) L.push(h + ': ' + (r.raw[j] || '-')) });
+  copyText(L.join('\n'));
+}
+
+render();
+</script>
+</body>
+</html>

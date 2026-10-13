@@ -361,6 +361,42 @@ export default function Home() {
                 </svg>
             </Link>
 
+            {/*
+              งาน 48 ชั่วโมง · เจ้าของระบบกับผู้ดูแลระบบเท่านั้น หน้างานยังไม่เปิด
+              ไอคอนเป็นเลข 48 ในกรอบ ชุดเดียวกับเลข 24 ที่อยู่ข้าง ๆ
+              เจ้าของระบบเรียกสองหน้านี้ว่า "ไอคอน 24" กับ "ไอคอน 48" จึงต้องเป็นเลข
+            */}
+            {can('admin') && (
+              <Link
+                to="/parcel48"
+                aria-label="งาน 48 ชั่วโมง"
+                className="flex h-tap w-tap items-center justify-center rounded-btn border border-ink/15 bg-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,.7)]"
+              >
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" aria-hidden>
+                  <rect
+                    x="2.6"
+                    y="4.4"
+                    width="18.8"
+                    height="15.2"
+                    rx="3.4"
+                    stroke="currentColor"
+                    strokeWidth="1.9"
+                  />
+                  <text
+                    x="12"
+                    y="16.3"
+                    textAnchor="middle"
+                    fontSize="10"
+                    fontWeight="800"
+                    fill="currentColor"
+                    fontFamily="ui-monospace, monospace"
+                  >
+                    48
+                  </text>
+                </svg>
+              </Link>
+            )}
+
             {/* ลิงก์งาน — เห็นเฉพาะแอดมิน เจ้าของระบบ และผู้ตรวจสอบ */}
             <WorkLinks />
             {can(...MANAGER_ROLES) && <NotifyBell />}
@@ -594,6 +630,42 @@ export default function Home() {
                   </text>
                 </svg>
             </Link>
+
+            {/*
+              งาน 48 ชั่วโมง · เจ้าของระบบกับผู้ดูแลระบบเท่านั้น หน้างานยังไม่เปิด
+              ไอคอนเป็นเลข 48 ในกรอบ ชุดเดียวกับเลข 24 ที่อยู่ข้าง ๆ
+              เจ้าของระบบเรียกสองหน้านี้ว่า "ไอคอน 24" กับ "ไอคอน 48" จึงต้องเป็นเลข
+            */}
+            {can('admin') && (
+              <Link
+                to="/parcel48"
+                aria-label="งาน 48 ชั่วโมง"
+                className="flex h-tap w-tap items-center justify-center rounded-btn border border-ink/15 bg-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,.7)]"
+              >
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" aria-hidden>
+                  <rect
+                    x="2.6"
+                    y="4.4"
+                    width="18.8"
+                    height="15.2"
+                    rx="3.4"
+                    stroke="currentColor"
+                    strokeWidth="1.9"
+                  />
+                  <text
+                    x="12"
+                    y="16.3"
+                    textAnchor="middle"
+                    fontSize="10"
+                    fontWeight="800"
+                    fill="currentColor"
+                    fontFamily="ui-monospace, monospace"
+                  >
+                    48
+                  </text>
+                </svg>
+              </Link>
+            )}
 
             {/* ลิงก์งาน — เห็นเฉพาะแอดมิน เจ้าของระบบ และผู้ตรวจสอบ */}
             <WorkLinks />
