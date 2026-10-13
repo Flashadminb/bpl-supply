@@ -1,5 +1,5 @@
-import { supabase, readableError } from './supabase'
 import { maybeDate, readXlsx } from './xlsx'
+import { pairCall } from './pairBackend'
 
 /**
  * จับคู่ — เอาเลขพัสดุไปต่อกับรายละเอียดสินค้า
@@ -81,6 +81,8 @@ export interface P48Stats {
   matched: number
   can_undo_parcel: boolean
   can_undo_product: boolean
+  /** ชื่อฐานข้อมูลที่ตัวเลขชุดนี้มาจาก · ถามจากฐานข้อมูลเอง ไม่ใช่ข้อความที่เขียนตายไว้ */
+  source?: string
 }
 
 export interface P48Facet {
@@ -399,14 +401,12 @@ export interface ImportOpts {
  */
 export async function importP48(p: P48Parsed, opts: ImportOpts = {}): Promise<{ rows: number }> {
   const { onProgress, signal } = opts
-  const { data: run, error: e1 } = await supabase.rpc('p48_begin', {
-    p_kind: p.kind,
-    p_file: p.fileName,
-    p_file_rows: p.fileRows,
+  const { run } = await pairCall<{ run: number }>('/begin', {
+    kind: p.kind,
+    file: p.fileName,
+    fileRows: p.fileRows,
   })
-  if (e1) throw new Error(readableError(e1))
 
-  const fn = p.kind === 'parcel' ? 'p48_put_parcels' : 'p48_put_products'
   const parts: Record<string, unknown>[][] = []
   for (let i = 0; i < p.rows.length; i += CHUNK) parts.push(p.rows.slice(i, i + CHUNK).map(thin))
 
@@ -421,9 +421,12 @@ export async function importP48(p: P48Parsed, opts: ImportOpts = {}): Promise<{ 
       let ok = false
       for (let t = 0; t < RETRY && !ok; t++) {
         if (t > 0) await new Promise((r) => setTimeout(r, 600 * t))
-        const { error } = await supabase.rpc(fn, { p_run: run, p_rows: parts[i] })
-        if (!error) ok = true
-        else last = readableError(error)
+        try {
+          await pairCall('/put', { kind: p.kind, run, rows: parts[i] })
+          ok = true
+        } catch (e) {
+          last = (e as Error).message
+        }
       }
       if (!ok) throw new Error(`ส่งก้อนที่ ${i + 1} จาก ${parts.length} ไม่สำเร็จ · ${last}`)
       done += parts[i].length
@@ -433,9 +436,7 @@ export async function importP48(p: P48Parsed, opts: ImportOpts = {}): Promise<{ 
 
   await Promise.all(Array.from({ length: Math.min(LANES, parts.length) }, lane))
 
-  const { data, error: e2 } = await supabase.rpc('p48_end', { p_run: run })
-  if (e2) throw new Error(readableError(e2))
-  return data as { rows: number }
+  return (await pairCall<{ data: { rows: number } }>('/end', { run })).data
 }
 
 /**
@@ -447,11 +448,15 @@ export async function importP48(p: P48Parsed, opts: ImportOpts = {}): Promise<{ 
 export async function p48Prune(max = 12): Promise<number> {
   let gone = 0
   for (let i = 0; i < max; i++) {
-    const { data, error } = await supabase.rpc('p48_prune', { p_limit: 20000 })
-    if (error) return gone
-    const r = data as { deleted: number; left: number }
-    gone += r.deleted ?? 0
-    if (!r.left) break
+    /* ฐานข้อมูลไม่ได้บอกว่าเหลืออีกเท่าไหร่ · ลบได้ศูนย์แถวคือสัญญาณว่าหมดแล้ว */
+    let n = 0
+    try {
+      n = (await pairCall<{ deleted: number }>('/prune', { limit: 20000 })).deleted ?? 0
+    } catch {
+      return gone
+    }
+    gone += n
+    if (!n) break
   }
   return gone
 }
@@ -459,27 +464,22 @@ export async function p48Prune(max = 12): Promise<number> {
 /* ------------------------------------------------------------- อ่าน */
 
 export async function p48Stats(): Promise<P48Stats> {
-  const { data, error } = await supabase.rpc('p48_stats')
-  if (error) throw new Error(readableError(error))
-  return (data ?? { matched: 0, can_undo_parcel: false, can_undo_product: false }) as P48Stats
+  return (await pairCall<{ data: P48Stats }>('/stats')).data
 }
 
 export async function p48Facets(): Promise<P48Facets> {
-  const { data, error } = await supabase.rpc('p48_facets')
-  if (error) throw new Error(readableError(error))
-  return (data ?? { dest: [], action: [], prov: [], cust: [] }) as P48Facets
+  return (await pairCall<{ data: P48Facets }>('/facets')).data
 }
 
 export async function p48Search(f: P48Filter): Promise<P48Found> {
-  const { data, error } = await supabase.rpc('p48_search', { p: f })
-  if (error) throw new Error(readableError(error))
-  return (data ?? { total: 0, all: 0, rows: [] }) as P48Found
+  return (await pairCall<{ data: P48Found }>('/search', f)).data
 }
 
 export async function p48One(tracking: string): Promise<Record<string, unknown> | null> {
-  const { data, error } = await supabase.rpc('p48_one', { p_tracking: tracking })
-  if (error) throw new Error(readableError(error))
-  return (data ?? null) as Record<string, unknown> | null
+  const r = await pairCall<{ data: Record<string, unknown> | null }>(
+    `/one?tracking=${encodeURIComponent(tracking)}`,
+  )
+  return r.data ?? null
 }
 
 /**
@@ -500,14 +500,11 @@ export interface P48RunRow {
 }
 
 export async function p48Runs(): Promise<P48RunRow[]> {
-  const { data, error } = await supabase.rpc('p48_run_list')
-  if (error) throw new Error(readableError(error))
-  return (data ?? []) as P48RunRow[]
+  return (await pairCall<{ data: P48RunRow[] }>('/runs')).data ?? []
 }
 
 export async function p48Undo(kind: P48Kind) {
-  const { error } = await supabase.rpc('p48_undo', { p_kind: kind })
-  if (error) throw new Error(readableError(error))
+  await pairCall('/undo', { kind })
 }
 
 /* ------------------------------------------------------------- ตัวช่วยหน้าจอ */
@@ -539,19 +536,15 @@ export interface P48Sla {
 }
 
 export async function p48SlaList(): Promise<P48Sla[]> {
-  const { data, error } = await supabase.rpc('p48_sla_list')
-  if (error) throw new Error(readableError(error))
-  return (data ?? []) as P48Sla[]
+  return (await pairCall<{ data: P48Sla[] }>('/sla')).data ?? []
 }
 
 export async function p48SlaSet(custType: string, days: number) {
-  const { error } = await supabase.rpc('p48_sla_set', { p_type: custType, p_days: days })
-  if (error) throw new Error(readableError(error))
+  await pairCall('/sla', { cust_type: custType, days })
 }
 
 export async function p48SlaDelete(custType: string) {
-  const { error } = await supabase.rpc('p48_sla_delete', { p_type: custType })
-  if (error) throw new Error(readableError(error))
+  await pairCall('/sla-delete', { cust_type: custType })
 }
 
 /** ตัดรหัสในวงเล็บหน้าชื่อสาขาออก · "(TH01120274)2PCU_BDC-ประชาอุทิศ" อ่านยาก */

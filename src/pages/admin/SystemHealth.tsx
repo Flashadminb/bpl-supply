@@ -1,4 +1,8 @@
+import { useEffect, useState } from 'react'
 import { useAsync } from '../../lib/useAsync'
+import { useAuth } from '../../lib/auth'
+import { isOwner } from '../../lib/roles'
+import { pairCall } from '../../lib/pairBackend'
 import { systemHealth } from '../../lib/api'
 import { ErrorBox, Loading } from '../../components/ui'
 import { fmtDateTime } from '../../lib/format'
@@ -14,6 +18,96 @@ import { fmtDateTime } from '../../lib/format'
  * egress กับ Edge Function นับที่ชั้นเครือข่ายของ Supabase เราอ่านไม่ได้
  * จึงคำนวณย้อนจากขนาดรูปที่บันทึกไว้ และลิงก์ไปหน้า Usage ตัวจริงให้กดดูได้
  */
+
+/**
+ * ข้อมูลหน้าจับคู่ไปอยู่อีกที่แล้ว · อ่านเท่านั้น
+ *
+ * มีขึ้นเพราะมาตรวัดทั้งหน้านี้วัดเฉพาะฐานข้อมูลหลัก
+ * ถ้าไม่บอกไว้ วันหนึ่งจะมีคนสงสัยว่าของหน้าจับคู่ห้าหมื่นแถวไปอยู่ไหน
+ * แล้วสรุปว่ามาตรวัดหน้านี้นับไม่ครบ ซึ่งจะทำให้เลิกเชื่อหน้านี้ทั้งหน้า
+ */
+function PairDbNote() {
+  const [probe, setProbe] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const check = async () => {
+    setBusy(true)
+    setProbe(null)
+    try {
+      const r = await pairCall<{
+        ms: number
+        parcels: string
+        products: string
+        runs: string
+        db: string
+        bytes: string
+      }>('/dbcheck')
+      /* เขียนกำกับว่าเป็นยอดรวมทุกรอบ ไม่ใช่ยอดที่หน้าจับคู่แสดง
+         สองเลขนี้ไม่เท่ากันเป็นเรื่องปกติ เพราะรอบเก่าจะยังอยู่จนกว่าจะถูกเก็บกวาด
+         ถ้าไม่บอกไว้ คนอ่านจะเทียบกับหน้าจับคู่แล้วสรุปว่ามีอะไรผิด */
+      /* โควตาของ Neon แผนฟรีคือหนึ่งกิกะไบต์ต่อโปรเจกต์
+         เขียนตัวเลขนี้ไว้ตรงนี้เพราะมันคือเพดานที่ต้องคอยดู ไม่ใช่ค่าคงที่ที่ใช้คำนวณอะไรต่อ */
+      const mb = Number(r.bytes) / (1024 * 1024)
+      setProbe(
+        `ต่อติด · ฐาน ${r.db} ตอบใน ${r.ms} มิลลิวินาที · ` +
+          `ใช้ไป ${mb.toFixed(0)} MB จาก 1,024 MB (${Math.round((mb / 1024) * 100)}%) · ` +
+          `เก็บอยู่ ${Number(r.parcels).toLocaleString('th-TH')} + ` +
+          `${Number(r.products).toLocaleString('th-TH')} แถว จาก ${r.runs} รอบอัป ` +
+          `(รวมรอบเก่าที่ยังรอเก็บกวาด จึงมากกว่าที่หน้าจับคู่แสดง)`,
+      )
+    } catch (e) {
+      setProbe(`ต่อไม่ติด · ${(e as Error).message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /* ตรวจให้เองตั้งแต่เปิดหน้า ไม่ต้องรอให้กด
+     คำถามที่หน้านี้ต้องตอบคือ ตอนนี้ของอยู่ไหนและยังดีอยู่ไหม
+     ถ้าต้องกดก่อนถึงจะรู้ แปลว่าคนที่ไม่ได้กดจะเดินออกไปโดยยังไม่ได้คำตอบ */
+  useEffect(() => {
+    void check()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return (
+    <section className="panel mt-3 p-4">
+      <h2 className="font-display text-md">ข้อมูลหน้าจับคู่ไม่ได้นับรวมอยู่ในนี้</h2>
+      <p className="mt-1 text-sm text-ink-600">
+        ไฟล์สองใบของหน้าจับคู่กินที่ราวเก้าสิบเปอร์เซ็นต์ของฐานข้อมูลเดิม จึงย้ายไปอยู่ฐานข้อมูลของตัวเอง
+        ตั้งแต่ 14 ต.ค. 2569 และของเก่าที่นี่ถูกลบทิ้งแล้ว
+        <br />
+        มาตรวัดด้านบนทั้งหมดจึงเป็นของงานอื่นล้วน ๆ และโตช้ากว่าที่เคยเห็นมาก
+        ส่วนการล็อกอินยังเป็นที่เดิมทั้งหมด ไม่มีอะไรเปลี่ยนในมุมของคนใช้งาน
+      </p>
+
+      <dl className="mt-3 grid gap-1 text-sm sm:grid-cols-2">
+        <div className="rounded-card bg-neutralbg px-3 py-2">
+          <dt className="text-xs text-ink-500">งานอื่นทั้งหมด</dt>
+          <dd className="font-display">Supabase · วัดอยู่ด้านบน</dd>
+        </div>
+        <div className="rounded-card bg-neutralbg px-3 py-2">
+          <dt className="text-xs text-ink-500">หน้าจับคู่อย่างเดียว</dt>
+          <dd className="font-display">Neon · แยกโควตาคนละก้อน</dd>
+        </div>
+      </dl>
+
+      <button type="button" className="btn-soft mt-3 h-tap px-3 text-sm" onClick={check} disabled={busy}>
+        {busy ? 'กำลังตรวจ…' : 'ตรวจใหม่อีกครั้ง'}
+      </button>
+
+      {probe && (
+        <p
+          className={`mt-2 rounded-card px-3 py-2 text-sm ${
+            probe.startsWith('ต่อติด') ? 'bg-success-bg text-success-txt' : 'bg-danger-bg text-danger-txt'
+          }`}
+        >
+          {probe}
+        </p>
+      )}
+    </section>
+  )
+}
 
 const GB = 1024 ** 3
 const MB = 1024 ** 2
@@ -87,6 +181,7 @@ function Gauge({
 }
 
 export default function SystemHealth() {
+  const { profile } = useAuth()
   const feed = useAsync(systemHealth, [])
 
   if (feed.loading) return <Loading />
@@ -225,6 +320,10 @@ export default function SystemHealth() {
           เปิดหน้า Usage ตัวจริงของ Supabase ↗
         </a>
       </section>
+
+      {/* เห็นเฉพาะเจ้าของระบบ · เส้นทางนี้ผู้ตรวจสอบกับแอดมินเข้าถึงได้ด้วย
+          แต่เรื่องว่าข้อมูลไปอยู่ฐานไหนเป็นของเจ้าของระบบคนเดียว */}
+      {isOwner(profile) && <PairDbNote />}
 
       <p className="mt-3 text-center text-xs text-ink-400">
         เปอร์เซ็นต์ยิ่งต่ำยิ่งดี · เขียวคือสบาย เหลืองคือเริ่มต้องจับตา แดงคือต้องจัดการ

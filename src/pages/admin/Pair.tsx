@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
+import { isOwner } from '../../lib/roles'
 import { useAsync } from '../../lib/useAsync'
 import { Spinner } from '../../components/ui'
 import { readableError } from '../../lib/supabase'
@@ -678,6 +679,8 @@ function Pick({
 
 /** การ์ดอัปเดตล่าสุดสามใบบนแถบหัว */
 function Cards({ stats, loading }: { stats: P48Stats | null; loading: boolean }) {
+  const { profile } = useAuth()
+  const nav = useNavigate()
   if (loading) return <Spinner className="h-5 w-5" />
   if (!stats) return null
   const one = (
@@ -730,6 +733,40 @@ function Cards({ stats, loading }: { stats: P48Stats | null; loading: boolean })
           {stats.parcel?.rows ? `ไม่มีรายละเอียด ${nf(stats.parcel.rows - stats.matched)}` : ''}
         </span>
       </span>
+
+      {/* ตัวเลขทั้งแถวนี้มาจากไหน · เห็นเฉพาะเจ้าของระบบคนเดียว
+          ไม่ใช้ can('admin') เพราะผู้ดูแลระบบกับเจ้าของระบบใช้ role เดียวกัน
+          ซึ่งจะกว้างเกินไป · ตัวที่แยกสองคนนี้ออกจากกันได้คือ is_owner เท่านั้น
+          มีขึ้นเพราะหน้าตาก่อนกับหลังย้ายฐานข้อมูลเหมือนกันเป๊ะ ซึ่งตั้งใจให้เป็นแบบนั้น
+          แต่พอไม่มีอะไรบอกเลย ก็ไม่มีทางรู้ว่ากำลังดูของจากที่ไหนอยู่
+          ชื่อที่ขึ้นตรงนี้ถามมาจากฐานข้อมูลเองพร้อมกับตัวเลขชุดเดียวกัน
+          ไม่ใช่ข้อความที่เขียนตายไว้ จึงโกหกไม่ได้แม้วันหนึ่งจะย้ายอีก */}
+      {isOwner(profile) && (
+        <button
+          type="button"
+          onClick={() => nav('/admin/health')}
+          className="flex items-center gap-2 rounded px-2 py-1 text-left"
+          title="ตัวเลขทั้งแถวนี้อ่านมาจากฐานข้อมูลนี้ · กดเพื่อดูที่หลังบ้าน"
+        >
+          <span
+            className="h-[7px] w-[7px] shrink-0 rounded-full"
+            style={{ background: stats.source ? C.green : C.faint }}
+          />
+          <span className="text-right">
+            <span className="block font-mono text-[10px] uppercase tracking-wider" style={{ color: C.faint }}>
+              ฐานข้อมูล
+            </span>
+            <b className="block font-mono text-[14px] font-extrabold leading-tight" style={{ color: C.brand }}>
+              {stats.source || 'ไม่ทราบ'}
+            </b>
+          </span>
+          <span className="text-[10.5px] leading-tight" style={{ color: C.faint }}>
+            แยกออกจากงานอื่นแล้ว
+            <br />
+            กดดูที่หลังบ้าน
+          </span>
+        </button>
+      )}
     </span>
   )
 }
