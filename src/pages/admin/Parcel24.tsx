@@ -860,9 +860,20 @@ function Table({ rows, snapAt, onCopy }: { rows: P24Row[]; snapAt: string; onCop
       .filter((r) => (act === '' ? true : (r.action || 'ยังไม่มีการดำเนินการ') === act))
       .filter((r) => (!old ? true : (heldHours(r, snapAt) ?? 0) > 48))
       .filter((r) => (!bagOnly ? true : Boolean(r.bag_no)))
-      .filter((r) => !s || r.tracking.toLowerCase().includes(s) || r.dest.toLowerCase().includes(s))
+      .filter(
+        (r) =>
+          !s ||
+          r.tracking.toLowerCase().includes(s) ||
+          r.dest.toLowerCase().includes(s) ||
+          (r.bag_no ?? '').toLowerCase().includes(s),
+      )
       .sort((a, b) => (heldHours(b, snapAt) ?? 0) - (heldHours(a, snapAt) ?? 0))
   }, [rows, q, act, old, bagOnly, snapAt])
+
+  /* กดเลขถุงในตาราง = เอาเลขนั้นใส่ช่องค้นหา
+     ใช้ช่องเดิมแทนที่จะทำตัวกรองใหม่ซ้อนเข้าไป คนจะได้เห็นว่ากรองด้วยอะไรอยู่
+     และล้างทิ้งได้ด้วยวิธีเดียวกับที่เคยล้างคำค้น */
+  const onBag = (b: string) => setQ(b)
 
   const acts = useMemo(() => byAction(rows), [rows])
 
@@ -873,7 +884,7 @@ function Table({ rows, snapAt, onCopy }: { rows: P24Row[]; snapAt: string; onCop
           className="h-tap min-w-[200px] flex-1 rounded-btn px-3 text-sm"
           style={{ ...field, maxWidth: 320 }}
           type="search"
-          placeholder="พิมพ์เลขพัสดุ หรือชื่อสาขา"
+          placeholder="พิมพ์เลขพัสดุ ชื่อสาขา หรือเลขถุง"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
@@ -912,10 +923,11 @@ function Table({ rows, snapAt, onCopy }: { rows: P24Row[]; snapAt: string; onCop
       </div>
 
       <section className="overflow-x-auto p-2" style={CARD}>
-        <table className="w-full min-w-[1000px] text-left text-sm">
+        <table className="w-full min-w-[1120px] text-left text-sm">
           <thead style={{ color: C.faint }}>
             <tr style={{ borderBottom: `1px solid ${C.line2}` }}>
               <th className="px-3 py-2 text-xs font-medium">เลขพัสดุ</th>
+              <th className="w-[124px] px-3 py-2 text-xs font-medium">ถุงแบ๊กกิ้ง</th>
               <th className="px-3 py-2 text-xs font-medium">สาขาปลายทาง</th>
               <th className="w-[70px] px-3 py-2 text-xs font-medium">โซน</th>
               <th className="w-[92px] px-3 py-2 text-xs font-medium">ลูกค้า</th>
@@ -930,31 +942,36 @@ function Table({ rows, snapAt, onCopy }: { rows: P24Row[]; snapAt: string; onCop
               return (
                 <tr key={r.tracking} style={{ borderBottom: `1px solid ${C.line2}` }}>
                   <td className="px-3 py-[6px]">
-                    <span className="inline-flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onCopy(r.tracking, r.tracking)}
+                      className="rounded-md px-[6px] py-[2px] font-mono text-[12px]"
+                      style={{ background: '#101720', color: C.mute, border: `1px solid ${C.line2}` }}
+                    >
+                      {r.tracking}
+                    </button>
+                  </td>
+                  {/* คอลัมน์ของตัวเอง · ไม่ได้อยู่ในปุ่มคัดลอก จึงไม่ติดไปเวลาคัดลอก
+                      กดได้ด้วย · กดแล้วกรองเหลือเฉพาะชิ้นที่อยู่ถุงเดียวกัน
+                      เพราะถ้าเจอถุงนั้นจริง ก็เคลียร์ได้ทีเดียวหลายชิ้น */}
+                  <td className="px-3 py-[6px]">
+                    {r.bag_no ? (
                       <button
                         type="button"
-                        onClick={() => onCopy(r.tracking, r.tracking)}
-                        className="rounded-md px-[6px] py-[2px] font-mono text-[12px]"
-                        style={{ background: '#101720', color: C.mute, border: `1px solid ${C.line2}` }}
+                        onClick={() => onBag(r.bag_no as string)}
+                        className="rounded-md px-[6px] py-[2px] font-mono text-[11.5px]"
+                        style={{
+                          background: 'rgba(79,163,227,.12)',
+                          border: '1px solid rgba(79,163,227,.3)',
+                          color: C.lhHi,
+                        }}
+                        title="กดเพื่อดูเฉพาะชิ้นที่อยู่ถุงนี้"
                       >
-                        {r.tracking}
+                        {r.bag_no}
                       </button>
-                      {/* เลขถุงอยู่ "นอก" ปุ่มคัดลอกโดยตั้งใจ
-                          ทั้งกดคัดลอกทีละเลขและกดคัดลอกทั้งหมด จึงไม่มีทางติดเลขถุงไปด้วย */}
-                      {r.bag_no && (
-                        <span
-                          className="rounded-md px-[6px] py-[2px] font-mono text-[11px]"
-                          style={{
-                            background: 'rgba(79,163,227,.12)',
-                            border: '1px solid rgba(79,163,227,.3)',
-                            color: C.lhHi,
-                          }}
-                          title="เลขถุงแบ๊กกิ้ง · ไม่ถูกคัดลอกไปด้วย"
-                        >
-                          {r.bag_no}
-                        </span>
-                      )}
-                    </span>
+                    ) : (
+                      <span style={{ color: C.faint, fontSize: 11 }}>—</span>
+                    )}
                   </td>
                   <td className="px-3 py-[6px]">{r.dest}</td>
                   <td className="px-3 py-[6px]">
@@ -977,7 +994,7 @@ function Table({ rows, snapAt, onCopy }: { rows: P24Row[]; snapAt: string; onCop
             })}
             {shown.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-8 text-center" style={{ color: C.faint }}>
+                <td colSpan={8} className="px-3 py-8 text-center" style={{ color: C.faint }}>
                   ไม่พบพัสดุตามเงื่อนไข
                 </td>
               </tr>
