@@ -4,6 +4,7 @@ import { useAuth } from '../../lib/auth'
 import { useAsync } from '../../lib/useAsync'
 import { Spinner } from '../../components/ui'
 import { readableError } from '../../lib/supabase'
+import { code128Svg } from '../../lib/code128'
 import { C, CARD, field, nf, tabOff, tabOn, thFull } from '../../lib/boardTheme'
 import {
   CJK,
@@ -942,6 +943,8 @@ function Side({
           <Chip onClick={() => onCopy(all(), 'ทั้งใบ')}>⎘ คัดลอกทั้งใบเป็นข้อความ</Chip>
           {detail && <Chip onClick={() => onCopy(detail, 'ชื่อสินค้า')}>⎘ คัดลอกเฉพาะชื่อสินค้า</Chip>}
         </div>
+
+        <Barcode value={tracking} />
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto px-3 pb-3">
@@ -977,6 +980,51 @@ function Side({
           <b style={{ color: C.brand }}>ทุกค่าในแผงนี้กดคัดลอกได้</b> ชี้แล้วพื้นจะสว่างขึ้นพร้อมไอคอน ⎘
         </p>
       </div>
+    </div>
+  )
+}
+
+/**
+ * บาร์โค้ดของเลขพัสดุ · ไว้ยิงจากจอได้เลย
+ *
+ * พื้นขาวเสมอแม้จอทั้งจอเป็นสีเข้ม · เครื่องยิงอ่านจากคอนทราสต์ระหว่าง
+ * แถบดำกับพื้นขาว ถ้าเอาแถบดำไปวางบนพื้นเข้มคือยิงไม่ติด
+ * และต้องมีขอบขาวซ้ายขวา ซึ่ง code128Svg ใส่มาให้แล้วสิบหน่วย
+ *
+ * ตัวเลขใต้แถบเว้นระยะตัวอักษรกว้างกว่าปกติ · ไว้ให้คนอ่านทวนตอนยิงไม่ติด
+ * ซึ่งเป็นตอนเดียวที่มีคนอ่านบรรทัดนั้นจริง ๆ
+ *
+ * เข้ารหัสไม่ได้ก็ไม่วาด · บาร์โค้ดที่ยิงแล้วได้คนละเลขกับที่ตาเห็น
+ * อันตรายกว่าไม่มีบาร์โค้ด เพราะไม่มีอะไรบอกว่ามันผิด
+ */
+function Barcode({ value }: { value: string }) {
+  const svg = useMemo(() => code128Svg(value, 44), [value])
+  const [big, setBig] = useState(false)
+  if (!svg) return null
+
+  return (
+    <div className="mt-3">
+      <button
+        type="button"
+        title={big ? 'กดเพื่อย่อ' : 'กดเพื่อขยาย · ยิงไม่ติดลองขยายก่อน'}
+        onClick={() => setBig((v) => !v)}
+        className="block w-full rounded-lg bg-white px-3 pb-[6px] pt-[10px]"
+      >
+        <span
+          className="block w-full"
+          style={{ height: big ? 96 : 46 }}
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
+        <span
+          className="mt-[3px] block text-center font-mono font-bold text-black"
+          style={{ letterSpacing: big ? '5px' : '3px', fontSize: big ? 16 : 12.5 }}
+        >
+          {value}
+        </span>
+      </button>
+      <p className="mt-[3px] text-center text-[10.5px]" style={{ color: C.faint }}>
+        Code 128 · ยิงจากจอได้เลย · กดที่บาร์โค้ดเพื่อ{big ? 'ย่อ' : 'ขยาย'}
+      </p>
     </div>
   )
 }
