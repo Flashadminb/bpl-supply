@@ -53,6 +53,8 @@ const ISSUE_HEADER = [
   'สถานะ',
   'วันที่เคลียร์',
   'เลขที่รายการ',
+  'หลักฐาน',
+  'Drive File ID',
 ]
 
 const BY_HEADER = [
@@ -192,6 +194,12 @@ const BREAK_HEADER = [
   'หมายเหตุ',
   'รูปตอนปล่อย',
   'รูปตอนรับกลับ',
+  /* สามคอลัมน์นี้คือของเดิมในรูปแบบที่เครื่องบวกลบได้
+     คอลัมน์สวยด้านบนเขียนว่า 03:45 กับ ขาด 2 คน ซึ่งอ่านง่ายแต่คำนวณไม่ได้
+     ส่วนรหัสไฟล์รูปไม่ต้องเติม เพราะฝังอยู่ในสูตร HYPERLINK ของสองคอลัมน์ก่อนหน้าแล้ว */
+  'วินาทีที่ออกไป',
+  'วินาทีที่เกิน',
+  'ขาดกี่คน',
 ]
 
 /**
@@ -683,6 +691,7 @@ interface DbIssue {
   assets: { asset_types: { name: string } | null } | null
   profiles: { full_name: string; employee_code: string } | null
   asset_txns: { ref_no: string } | null
+  asset_issue_photos?: { file_id: string }[]
 }
 
 /** เดือน พ.ศ. ของแท็บ เช่น "2569-09" */
@@ -754,6 +763,16 @@ async function ensureTab(
     await writeHeader()
     return 1
   }
+
+  /* แท็บที่มีอยู่แล้วอาจมีหัวตารางรุ่นเก่าที่แคบกว่าของตอนนี้
+     ตอนเพิ่มคอลัมน์ใหม่ แถวข้อมูลจะกว้างขึ้นทันที แต่หัวตารางไม่ขยับตาม
+     ผลคือเปิดชีตมาเห็นคอลัมน์ท้าย ๆ มีข้อมูลแต่ไม่มีชื่อ ซึ่งอ่านไม่ออกว่าคืออะไร
+     เขียนทับเฉพาะแถวแรกเมื่อเห็นว่าแคบกว่า · ไม่แตะข้อมูลสักแถว */
+  const head1 = (await gfetch(api(sheetId, `/values/${encodeURIComponent(`${tab}!1:1`)}`), token)) as {
+    values?: string[][]
+  }
+  if ((head1.values?.[0]?.length ?? 0) < header.length) await writeHeader()
+
   return used
 }
 
@@ -764,6 +783,8 @@ interface OutRow {
   key: RowKey
   tab: string
   values: (string | number)[]
+  /** เวลาดิบของแถวนี้แบบ ISO · ใส่ท้ายชีตให้เครื่องอ่านกลับได้ ดู pushRows */
+  at?: string
 }
 
 /**
@@ -777,6 +798,23 @@ async function pushRows(
   placed: Map<RowKey, { tab: string; row_no: number }>,
   header: string[],
 ): Promise<{ updated: number; appended: number; fresh: OutRow[]; rowNos: number[]; tabs: string[] }> {
+  /* ─────────────────────────────────────────────────────────────────
+     เติมสองคอลัมน์ท้ายสุดให้ทุกชีต · รหัสแถว กับ เวลาเต็ม
+
+     คอลัมน์ที่มีอยู่เดิมเขียนไว้ให้คนอ่าน เช่น 03:45 · ขาด 2 คน · 14:32
+     ซึ่งสวยและอ่านง่าย แต่พอต้องให้เครื่องอ่านกลับมาทำสถิติหรือค้นย้อนหลัง
+     มันต้องมานั่งแกะข้อความ แล้ววันที่มีคนพิมพ์ต่างไปนิดเดียวก็พังทั้งแดชบอร์ด
+
+     สองคอลัมน์นี้คือของดิบที่เครื่องอ่านได้ตรง ๆ
+       รหัสแถว  ใช้จับคู่กลับไปยังแถวต้นทาง และกันนับซ้ำ
+       เวลาเต็ม ใช้กรองช่วงวันได้โดยไม่ต้องแกะข้อความไทย
+
+     ทำที่นี่ที่เดียวเพราะทุกชีตผ่านฟังก์ชันนี้หมด
+     ถ้าไปเติมในตัวสร้างแถวทีละชุด สิบชุดคือสิบโอกาสที่จะลืมหรือเรียงสลับ
+     ───────────────────────────────────────────────────────────────── */
+  header = [...header, 'รหัสแถว', 'เวลาเต็ม']
+  rows = rows.map((r) => ({ ...r, values: [...r.values, String(r.key), r.at ?? ''] }))
+
   const end = colLetter(header.length)
   const tabs = new Set<string>()
   let updated = 0
@@ -843,7 +881,25 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'ใช้ได้เฉพาะ POST' }, 405)
 
   try {
-    await requireUser(req)
+    /* ─────────────────────────────────────────────────────────────────
+       สองทางเข้า · คนกดเองต้องมี token ส่วนนาฬิกาใช้กุญแจ
+
+       เดิมมีทางเดียวคือ token ของคนที่ล็อกอินอยู่ จึงตั้งเวลาให้ทำเองไม่ได้เลย
+       ผลคือการส่งขึ้นชีตเป็นการกดเองมาตลอด และค้างไม่ได้ส่งสองวัน
+       จนมีบัตรเบรค 1,363 ใบที่ไม่เคยมีสำเนาอยู่นอกฐานข้อมูล
+
+       ใช้กุญแจใบเดียวกับงานสำรอง เพราะเป็นกุญแจของงานเบื้องหลังเหมือนกัน
+       และการมีกุญแจหลายใบให้ดูแลคือการมีกุญแจที่ลืมหมุนเพิ่มอีกใบ
+       ───────────────────────────────────────────────────────────────── */
+    const cronKey = req.headers.get('x-cron-key') ?? ''
+    let byCron = false
+    if (cronKey) {
+      const rows = await db<{ value: string }[]>(
+        'private_settings?key=eq.backup_cron_secret&select=value',
+      ).catch(() => [] as { value: string }[])
+      byCron = rows.length > 0 && rows[0].value === cronKey
+    }
+    if (!byCron) await requireUser(req)
     const payload = (await req.json().catch(() => ({}))) as {
       requisitionId?: string
       from?: string
@@ -892,6 +948,7 @@ Deno.serve(async (req) => {
           rows.push({
             key: l.id,
             tab: `เบิก-คืน ${monthOf(r.created_at)}`,
+at: r.created_at,
             values: [
               r.ref_no,
               thaiDateTime(r.created_at),
@@ -964,6 +1021,7 @@ Deno.serve(async (req) => {
         rows.push({
           key: it.id,
           tab: `Asset ${monthOf(t.created_at)}`,
+at: t.created_at,
           values: [
             t.ref_no,
             thaiDateTime(t.created_at),
@@ -1010,6 +1068,10 @@ Deno.serve(async (req) => {
       const iqs = new URLSearchParams({
         select:
           'id,asset_code,symptom,phase,reported_at,reported_name,resolved_at,' +
+          /* ชีตนี้เป็นชีตเดียวที่ไม่เคยมีคอลัมน์รูปเลย
+             ถ้าวันหนึ่งลบใบแจ้งเสียเก่าทิ้ง รูปจะยังอยู่บนไดรฟ์แต่กลายเป็นรูปกำพร้า
+             ที่ไม่มีใครรู้ว่าของเครื่องไหน ใบไหน · เติมก่อนที่จะมีใครลบอะไร */
+          'asset_issue_photos(file_id),' +
           'assets(asset_types(name)),' +
           'profiles!asset_issues_reported_by_fkey(full_name,employee_code),' +
           'asset_txns(ref_no)',
@@ -1022,6 +1084,7 @@ Deno.serve(async (req) => {
       const irows: OutRow[] = issues.map((i) => ({
         key: i.id,
         tab: `ชำรุด ${monthOf(i.reported_at)}`,
+at: i.reported_at,
         values: [
           thaiDateTime(i.reported_at),
           i.asset_code,
@@ -1033,6 +1096,14 @@ Deno.serve(async (req) => {
           i.resolved_at ? 'เคลียร์แล้ว' : 'ยังค้าง',
           i.resolved_at ? thaiDateTime(i.resolved_at) : '',
           i.asset_txns?.ref_no ?? '',
+          ...(() => {
+            const ph = (i.asset_issue_photos ?? []).map((x) => x.file_id)
+            const main = ph[0] ?? null
+            return [
+              main ? driveLink(main, ph.length > 1 ? `ดูรูป (${ph.length} ใบ)` : 'ดูรูป') : '',
+              ph.join(' '),
+            ]
+          })(),
         ],
       }))
 
@@ -1074,6 +1145,7 @@ Deno.serve(async (req) => {
         return {
           key: b.id,
           tab: `บาร์โค้ด BY ${monthOf(b.created_at)}`,
+at: b.created_at,
           values: [
             b.ref_no,
             thaiDateTime(b.created_at),
@@ -1130,6 +1202,7 @@ Deno.serve(async (req) => {
       const mrows: OutRow[] = meets.map((m) => ({
         key: m.id,
         tab: `ประชุม ${monthOf(m.created_at)}`,
+at: m.created_at,
         values: [
           m.ref_no,
           thaiDateTime(m.created_at),
@@ -1197,6 +1270,7 @@ Deno.serve(async (req) => {
         return {
           key: s.id,
           tab: `กระสอบ ${monthOf(s.created_at)}`,
+at: s.created_at,
           values: [
             s.ref_no,
             s.hub_code,
@@ -1255,6 +1329,7 @@ Deno.serve(async (req) => {
       const trows: OutRow[] = runs.map((t) => ({
         key: t.id,
         tab: `ปล่อยรถ ${monthOf(t.arrived_at)}`,
+at: t.arrived_at,
         values: [
           t.branch_name,
           t.branch_code ?? '',
@@ -1323,6 +1398,7 @@ Deno.serve(async (req) => {
       const brows: OutRow[] = passes.map((b) => ({
         key: b.id,
         tab: `เบรค ${monthOf(b.issued_at)}`,
+at: b.issued_at,
         values: [
           b.ref_no,
           b.card_code,
@@ -1344,6 +1420,9 @@ Deno.serve(async (req) => {
           b.problem_note ?? '',
           b.issue_links ?? '',
           b.return_links ?? '',
+          b.out_sec ?? '',
+          b.over_sec ?? 0,
+          b.missing_people ?? 0,
         ],
       }))
 
@@ -1398,6 +1477,7 @@ Deno.serve(async (req) => {
       const orows: OutRow[] = scans.map((s) => ({
         key: s.id,
         tab: `สแกนบัตร OS ${monthOf(s.scanned_at)}`,
+at: s.scanned_at,
         values: [
           thaiDateTime(s.scanned_at),
           scanResultText(s.result),
@@ -1457,6 +1537,7 @@ Deno.serve(async (req) => {
       const wrows: OutRow[] = waits.map((w) => ({
         key: w.id,
         tab: `รถรอลงงาน ${monthOf(w.arrived_at)}`,
+at: w.arrived_at,
         values: [
           w.truck_barcode,
           thaiDateTime(w.arrived_at),
