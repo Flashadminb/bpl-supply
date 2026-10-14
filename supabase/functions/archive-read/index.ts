@@ -16,8 +16,12 @@
 // ปัญหาที่รู้ล่วงหน้าว่าจะเจอ และทางกันไว้แล้ว
 //
 // ① ชีตไม่มีดัชนี ดึงทั้งแผ่นมากรองเองคือช้าและกินหน่วยความจำ
-//    กัน: ใช้ช่องทาง gviz ให้ Google กรองให้ตั้งแต่ฝั่งเขา
-//        วัดแล้วตอบใน ~450 มิลลิวินาที แทนการลากสามหมื่นแถวข้ามเน็ต
+//    เคยลองช่องทาง gviz ที่ให้ Google กรองให้ตั้งแต่ฝั่งเขา เร็วมาก ~450 มิลลิวินาที
+//    แต่มันไม่รับกุญแจ service account ตอบ 401 ทุกครั้ง รับแต่การล็อกอินของคน
+//    ซึ่งใช้กับงานเบื้องหลังไม่ได้
+//    กัน: อ่านทีละช่วงแถวจากล่างขึ้นบนแทน แล้วหยุดทันทีที่ได้ครบตามที่ขอ
+//        แถวใหม่สุดอยู่ท้ายชีตเสมอ และคนมองของใหม่ก่อนแทบทุกครั้ง
+//        จึงแทบไม่เคยต้องอ่านถึงต้นเดือน · หน่วยความจำก็ถูกจำกัดด้วยขนาดช่วง
 //
 // ② เดือนหนึ่งของบัตรเบรคมีราวสามหมื่นแถว
 //    กัน: ชีตแยกแท็บรายเดือนอยู่แล้ว ช่วงวันที่ขอจึงแตะแค่แท็บที่เกี่ยวข้อง
@@ -59,6 +63,12 @@ function envOrThrow(name: string): string {
 
 /** อ่านอย่างเดียวก็พอ · ขอสิทธิ์เท่าที่ใช้จริงเสมอ */
 const READ_SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly'
+
+/** อ่านทีละกี่แถวต่อครั้ง · ใหญ่กว่านี้เริ่มกินหน่วยความจำ เล็กกว่านี้ไปกลับบ่อยเกิน */
+const CHUNK = 4000
+
+/** ไล่ขึ้นไปได้สูงสุดกี่ช่วงต่อแท็บ · กันคำค้นที่ไม่เจออะไรเลยลากยาวทั้งเดือน */
+const MAX_CHUNKS = 6
 
 /**
  * งานไหนอยู่ชีตไหน แท็บขึ้นต้นด้วยอะไร
@@ -237,52 +247,82 @@ interface Found {
   cols: string[]
   rows: (string | number | null)[][]
   ms: number
+  /** ไล่อ่านไปกี่แถวกว่าจะได้เท่านี้ · ไว้ดูว่าคำค้นแพงแค่ไหน */
+  scanned: number
+}
+
+/** มีกี่แถวในแท็บนี้ · อ่านคอลัมน์เดียวพอ ไม่ได้ลากข้อมูลมาทั้งแผ่น */
+async function tabRows(sheetId: string, tab: string, token: string): Promise<number> {
+  return await memoized(`n:${sheetId}:${tab}`, async () => {
+    const url =
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/` +
+      `${encodeURIComponent(`${tab}!A:A`)}`
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) throw new Error(`นับแถวของ ${tab} ไม่ได้ · ${res.status}`)
+    const body = (await res.json()) as { values?: string[][] }
+    return body.values?.length ?? 0
+  })
 }
 
 /**
- * ถาม Google ให้กรองให้ แล้วคืนเฉพาะแถวที่ตรง
+ * อ่านแท็บเดียว เอาเฉพาะแถวที่ตรงกับที่ขอ
  *
- * ใช้ช่องทาง gviz เพราะเป็นทางเดียวที่กรองได้ตั้งแต่ฝั่ง Google
- * ส่วน values.get ดึงได้อย่างเดียวว่าทั้งแผ่น ซึ่งเดือนละสามหมื่นแถวคือช้าเกินใช้งาน
+ * ─────────────────────────────────────────────────────────────────
+ * ทำไมอ่านจากล่างขึ้นบน
+ *
+ * ตัวส่งชีตต่อแถวใหม่ท้ายตารางเสมอ แถวล่างสุดจึงใหม่สุดเสมอ
+ * และคนที่เปิดดูประวัติมองของใหม่ก่อนแทบทุกครั้ง
+ *
+ * อ่านจากล่างขึ้นทีละสี่พันแถวแล้วหยุดเมื่อได้ครบ
+ * แปลว่ากรณีปกติแตะแค่ช่วงเดียว ไม่ต้องลากทั้งเดือนสามหมื่นแถวข้ามเน็ตมาทิ้ง
+ * ─────────────────────────────────────────────────────────────────
  */
 async function queryTab(
   sheetId: string,
   tab: string,
   token: string,
-  where: string,
+  lastCol: string,
+  match: ((row: (string | number | null)[]) => boolean) | null,
   limit: number,
 ): Promise<Found> {
   const t0 = Date.now()
-  const tq = `select * ${where ? `where ${where} ` : ''}limit ${limit}`
-  const url =
-    `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq` +
-    `?sheet=${encodeURIComponent(tab)}&tqx=out:json&tq=${encodeURIComponent(tq)}`
+  const total = await tabRows(sheetId, tab, token)
+  const out: (string | number | null)[][] = []
+  let scanned = 0
 
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-  const txt = await res.text()
-  const m = txt.match(/setResponse\(([\s\S]*?)\);?\s*$/)
-  if (!m) throw new Error(`ชีตตอบมาในรูปแบบที่อ่านไม่ออก · ${res.status}`)
+  /* แถวที่ 1 คือหัวตาราง ข้อมูลจริงเริ่มที่ 2 */
+  let end = total
+  for (let i = 0; i < MAX_CHUNKS && end >= 2 && out.length < limit; i++) {
+    const start = Math.max(2, end - CHUNK + 1)
+    const url =
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/` +
+      `${encodeURIComponent(`${tab}!A${start}:${lastCol}${end}`)}` +
+      `?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING`
 
-  const j = JSON.parse(m[1]) as {
-    status?: string
-    errors?: { detailed_message?: string; message?: string }[]
-    table?: { cols?: { label?: string }[]; rows?: { c: ({ v?: unknown } | null)[] }[] }
-  }
-  if (j.status === 'error') {
-    const e = (j.errors ?? []).map((x) => x.detailed_message ?? x.message).join(' · ')
-    throw new Error(`ชีตปฏิเสธคำค้น · ${e}`)
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) throw new Error(`อ่าน ${tab} ช่วง ${start}-${end} ไม่ได้ · ${res.status}`)
+    const body = (await res.json()) as { values?: (string | number | null)[][] }
+    const got = body.values ?? []
+    scanned += got.length
+
+    /* ในช่วงเดียวกันก็ยังต้องกลับหัว เพราะต้องการใหม่สุดก่อน */
+    for (let k = got.length - 1; k >= 0 && out.length < limit; k--) {
+      const row = got[k]
+      if (!match || match(row)) out.push(row)
+    }
+
+    end = start - 1
   }
 
-  return {
-    tab,
-    cols: (j.table?.cols ?? []).map((c) => String(c.label ?? '')),
-    rows: (j.table?.rows ?? []).map((r) => (r.c ?? []).map((c) => (c?.v ?? null) as string | number | null)),
-    ms: Date.now() - t0,
-  }
+  return { tab, cols: [], rows: out, ms: Date.now() - t0, scanned }
 }
 
-/** ใส่เครื่องหมายคำพูดให้ค่าที่ยัดเข้าไปในคำค้น · ห้ามต่อสตริงดิบ ๆ เด็ดขาด */
-const qq = (s: string) => `'${String(s).replace(/'/g, "''")}'`
+/** A → 1, AA → 27 · ย้อนทางของ colLetter */
+function colNum(letter: string): number {
+  let n = 0
+  for (const ch of letter) n = n * 26 + (ch.charCodeAt(0) - 64)
+  return n
+}
 
 /* ------------------------------------------------------------- เส้นทาง */
 
@@ -328,7 +368,7 @@ Deno.serve(async (req) => {
 
     /* ไล่ทีละแท็บจากใหม่ไปเก่า · พอได้ครบตามที่ขอก็หยุด ไม่ไปรบกวนเดือนที่เหลือ */
     const rows: Record<string, unknown>[] = []
-    const touched: { tab: string; ms: number; n: number }[] = []
+    const touched: { tab: string; ms: number; n: number; ไล่อ่าน?: number }[] = []
     const problems: string[] = []
 
     for (const mo of months) {
@@ -339,27 +379,35 @@ Deno.serve(async (req) => {
         const head = await headerMap(spec.id, tab, token)
         const names = Object.keys(head)
 
-        let where = ''
+        /* ลำดับคอลัมน์ตามหัวตารางจริงของแท็บนั้น ไม่ใช่ลำดับที่โค้ดเดาเอง */
+        const order = names.slice().sort((a, b) => colNum(head[a]) - colNum(head[b]))
+        const lastCol = order.length ? head[order[order.length - 1]] : 'Z'
+
+        /* ช่องที่จะใช้ค้น · แปลงชื่อหัวเป็นเลขลำดับช่องในแถว */
+        let idxs: number[] = []
         if (p.q) {
           const want = (p.cols ?? names).filter((c) => head[c])
           if (!want.length) throw new Error('ไม่เจอคอลัมน์ที่จะใช้ค้นในแท็บนี้')
-          where = want.map((c) => `lower(${head[c]}) contains ${qq(p.q!.toLowerCase())}`).join(' or ')
+          idxs = want.map((c) => colNum(head[c]) - 1)
         }
+        const needle = (p.q ?? '').toLowerCase()
+        const match = p.q
+          ? (row: (string | number | null)[]) =>
+              idxs.some((i) => String(row[i] ?? '').toLowerCase().includes(needle))
+          : null
 
-        const key = `q:${spec.id}:${tab}:${where}:${limit - rows.length}`
+        const key = `q:${spec.id}:${tab}:${needle}:${idxs.join(',')}:${limit - rows.length}`
         const got = await memoized(key, () =>
-          queryTab(spec.id, tab, token, where, limit - rows.length),
+          queryTab(spec.id, tab, token, lastCol, match, limit - rows.length),
         )
 
         for (const r of got.rows) {
           const o: Record<string, unknown> = {}
-          got.cols.forEach((c, i) => {
-            if (c) o[c] = r[i]
-          })
+          for (const name of order) o[name] = r[colNum(head[name]) - 1] ?? null
           o['__แท็บ'] = tab
           rows.push(o)
         }
-        touched.push({ tab, ms: got.ms, n: got.rows.length })
+        touched.push({ tab, ms: got.ms, n: got.rows.length, ไล่อ่าน: got.scanned })
       } catch (e) {
         /* แท็บเดียวมีปัญหาไม่ควรทำให้ทั้งคำขอล้ม · เดือนที่เหลือยังมีค่า
            แต่ต้องบอกออกไปด้วย ไม่งั้นคนจะคิดว่าเดือนนั้นไม่มีข้อมูลจริง ๆ */
