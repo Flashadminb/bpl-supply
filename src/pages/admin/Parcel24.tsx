@@ -293,7 +293,7 @@ export default function Parcel24() {
         {snap && page === 'table' && <Table rows={rows} snapAt={snap.data_at} onCopy={copy} />}
 
         {snap && page === 'zones' && (
-          <Zones groups={groups} actions={actions} current={current} onPick={setPick} onCopy={copy} />
+          <Zones rows={rows} actions={actions} onCopy={copy} />
         )}
       </div>
     </div>
@@ -877,19 +877,45 @@ function Tile({
  * ซึ่งทำลายเหตุผลเดียวที่หน้านี้มีอยู่
  */
 function Zones({
-  groups,
+  rows,
   actions,
-  current,
-  onPick,
   onCopy,
 }: {
-  groups: P24Group[]
+  rows: P24Row[]
   actions: { action: string; n: number }[]
-  current: string
-  onPick: (a: string) => void
   onCopy: (text: string, what: string) => void
 }) {
   const [open, setOpen] = useState<Set<string>>(new Set())
+  const [menu, setMenu] = useState(false)
+
+  /**
+   * หัวข้อที่ติ๊กไว้ · ติ๊กได้หลายอันพร้อมกัน
+   *
+   * ค่าตั้งต้นคือยกเลิกการส่งต่อเสมอ ถ้ารอบนี้ไม่มีค่อยตกไปที่หัวข้อที่เยอะสุด
+   * เก็บเป็นชุดของชื่อหัวข้อ ไม่ใช่ตัวเดียว เพราะบางคืนต้องตามสองสามหัวข้อพร้อมกัน
+   * แล้วการกดสลับไปมาทำให้มองไม่เห็นว่ารวมกันแล้วโซนไหนหนักสุด
+   */
+  const [picks, setPicks] = useState<Set<string> | null>(null)
+
+  const chosen = useMemo(() => {
+    if (picks) return picks
+    const first = actions.some((a) => a.action === CANCEL) ? CANCEL : (actions[0]?.action ?? '')
+    return new Set(first ? [first] : [])
+  }, [picks, actions])
+
+  const flip = (a: string) =>
+    setPicks(() => {
+      const n = new Set(chosen)
+      if (n.has(a)) n.delete(a)
+      else n.add(a)
+      return n
+    })
+
+  const picked = useMemo(
+    () => rows.filter((r) => chosen.has(r.action || 'ยังไม่มีการดำเนินการ')),
+    [rows, chosen],
+  )
+  const groups = useMemo(() => byDest(picked), [picked])
 
   const toggle = (k: string) =>
     setOpen((s) => {
@@ -926,23 +952,80 @@ function Zones({
 
   return (
     <div className="space-y-3">
-      {/* เลือกว่าจะดูการดำเนินการล่าสุดแบบไหน · ค่าตั้งต้นคือยกเลิกการส่งต่อ */}
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2" style={CARD}>
+      {/* เลือกว่าจะดูการดำเนินการล่าสุดแบบไหนบ้าง · ติ๊กได้หลายอัน */}
+      <div className="relative flex flex-wrap items-center gap-2 px-3 py-2" style={CARD}>
         <span className="text-xs" style={{ color: C.faint }}>
           การดำเนินการล่าสุด <Cn>最新操作</Cn>
         </span>
-        <select
-          value={current}
-          onChange={(e) => onPick(e.target.value)}
-          className="h-tap rounded-btn px-2 text-sm"
+
+        <button
+          type="button"
+          onClick={() => setMenu((v) => !v)}
+          className="h-tap min-w-[220px] rounded-btn px-3 text-left text-sm"
           style={{ background: C.panel2, color: C.mute, border: `1px solid ${C.line2}` }}
         >
-          {actions.map((a) => (
-            <option key={a.action} value={a.action}>
-              {a.action} ({nf(a.n)})
-            </option>
-          ))}
-        </select>
+          {chosen.size === 0
+            ? 'ยังไม่ได้เลือกหัวข้อ'
+            : chosen.size === 1
+              ? [...chosen][0]
+              : `เลือกไว้ ${chosen.size} หัวข้อ`}
+          <span className="ml-2" style={{ color: C.faint }}>
+            {menu ? '▴' : '▾'}
+          </span>
+        </button>
+
+        {menu && (
+          <>
+            {/* คลิกที่ว่างรอบ ๆ แล้วปิด · ไม่ต้องเล็งปุ่มเดิมให้โดน */}
+            <button
+              type="button"
+              aria-label="ปิดรายการ"
+              className="fixed inset-0 z-10 cursor-default"
+              onClick={() => setMenu(false)}
+            />
+            <div
+              className="absolute left-3 top-[52px] z-20 max-h-[340px] w-[340px] overflow-auto p-2"
+              style={{ ...CARD, background: C.panel }}
+            >
+              <div className="mb-1 flex gap-2">
+                <button
+                  type="button"
+                  className="flex-1 rounded-md px-2 py-1 text-xs"
+                  style={{ background: C.panel2, color: C.mute, border: `1px solid ${C.line2}` }}
+                  onClick={() => setPicks(new Set(actions.map((a) => a.action)))}
+                >
+                  เลือกทั้งหมด
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 rounded-md px-2 py-1 text-xs"
+                  style={{ background: C.panel2, color: C.mute, border: `1px solid ${C.line2}` }}
+                  onClick={() => setPicks(new Set())}
+                >
+                  ล้างทั้งหมด
+                </button>
+              </div>
+              {actions.map((a) => (
+                <label
+                  key={a.action}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-[5px] text-[12.5px]"
+                  style={{ color: C.mute }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={chosen.has(a.action)}
+                    onChange={() => flip(a.action)}
+                    className="h-4 w-4 shrink-0"
+                  />
+                  <span className="min-w-0 flex-1 truncate">{a.action}</span>
+                  <b className="shrink-0 font-mono text-[12px]" style={{ color: C.faint }}>
+                    {nf(a.n)}
+                  </b>
+                </label>
+              ))}
+            </div>
+          </>
+        )}
         <span className="flex-1" />
         <b className="font-mono text-[17px]" style={{ color: C.brand }}>
           {nf(total)}
