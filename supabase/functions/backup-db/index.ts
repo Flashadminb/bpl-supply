@@ -78,8 +78,63 @@ const KEEP = 8
  */
 const SLICE_MS = 110_000
 
-/** กันวิ่งผลัดไม่รู้จบ · 84 ตารางไม่มีทางใช้เกินนี้ ถ้าถึงแปลว่ามีอะไรผิด */
-const MAX_PARTS = 12
+/** กันวิ่งผลัดไม่รู้จบ · เดินช้าแล้วใช้หลายไม้ขึ้น เผื่อไว้ให้พอ */
+const MAX_PARTS = 30
+
+/**
+ * ─────────────────────────────────────────────────────────────────
+ * เดินช้า ๆ และหลบเองเมื่อหน้างานยุ่ง
+ *
+ * 14 ต.ค. เช้า รุ่นที่อ่านเร็วที่สุดเท่าที่ทำได้ ทำ IOwait พุ่ง 75-80%
+ * รปภ สแกนบัตรเบรคไม่ได้ หน้าจอหมุนค้าง ทั้งที่ไม่มีอะไรพังสักอย่าง
+ * ดิสก์แค่ถูกยึดไว้คนเดียวจนทุกคำสั่งของหน้างานต้องต่อคิว
+ *
+ * ถามเจ้าของระบบแล้วว่าช่วงไหนฮับเงียบ คำตอบคือไม่แน่นอน แล้วแต่งานที่เข้ามา
+ * คำตอบนั้นถูก และมันแปลว่าการเลือกเวลาไม่ใช่ทางแก้
+ * ต้องทำให้งานนี้เบาพอที่จะรันตอนไหนก็ไม่มีใครรู้สึก
+ *
+ * งานสำรองไม่มีใครรอ ช้าอีกสิบนาทีไม่มีใครเดือดร้อน
+ * แต่คนที่ยืนอยู่หน้าประตูรอสแกนบัตร รอไม่ได้
+ * ─────────────────────────────────────────────────────────────────
+ */
+
+/** พักหลังอ่านแต่ละหน้า · ให้คำสั่งของหน้างานแทรกคิวเข้ามาได้ */
+const PAUSE_PAGE_MS = 150
+
+/** พักหลังจบแต่ละตาราง · ยาวกว่าเพราะเพิ่งอ่านมาทั้งก้อน */
+const PAUSE_TABLE_MS = 400
+
+/** มีคำสั่งของหน้างานทำงานพร้อมกันเกินกี่คำสั่งถึงถือว่ายุ่ง */
+const BUSY_AT = 4
+
+/** ยุ่งแล้วรอรอบละกี่มิลลิวินาที และรอได้สูงสุดกี่รอบก่อนยอมไปต่อ */
+const BUSY_WAIT_MS = 2000
+const BUSY_TRIES = 10
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * รอจนกว่าหน้างานจะว่างพอ
+ *
+ * ยอมไปต่อหลังรอครบจำนวนรอบ ไม่รอไปเรื่อย ๆ
+ * เพราะถ้าฮับยุ่งทั้งคืน การไม่ได้สำรองเลยแย่กว่าการแทรกเบา ๆ เข้าไป
+ * และการอ่านทีละห้าร้อยแถวแล้วพัก ก็เบาพออยู่แล้วแม้ตอนมีคนใช้งาน
+ */
+async function waitIfBusy(): Promise<number> {
+  let waited = 0
+  for (let i = 0; i < BUSY_TRIES; i++) {
+    let busy = 0
+    try {
+      busy = await rpc<number>('backup_busy', {})
+    } catch {
+      return waited /* ถามไม่ได้ก็ไปต่อ · ไม่ใช่เหตุให้หยุดสำรอง */
+    }
+    if (busy < BUSY_AT) return waited
+    await sleep(BUSY_WAIT_MS)
+    waited += BUSY_WAIT_MS
+  }
+  return waited
+}
 
 /**
  * ตารางที่ได้สำเนาแบบอ่านด้วยตาเปล่าเพิ่มอีกชุด
@@ -255,7 +310,10 @@ async function gzip(text: string): Promise<Uint8Array> {
 
 /** อ่านตารางหนึ่งออกมาเป็นข้อความ JSON · ทีละหน้าเพื่อไม่ให้หน่วยความจำบาน */
 async function dumpTable(name: string): Promise<{ text: string; rows: number }> {
-  const PAGE = 2000
+  /* ห้าร้อยแถวต่อครั้ง ไม่ใช่สองพัน
+     ก้อนเล็กลงแปลว่าแต่ละคำสั่งจับดิสก์สั้นลง คนอื่นไม่ต้องรอคิวยาว
+     แลกกับการต้องไปกลับมากขึ้น ซึ่งงานที่ไม่มีใครรออยู่ยอมได้สบาย */
+  const PAGE = 500
   const parts: string[] = []
   let rows = 0
   for (let offset = 0; ; offset += PAGE) {
@@ -268,6 +326,7 @@ async function dumpTable(name: string): Promise<{ text: string; rows: number }> 
     for (const r of chunk) parts.push(JSON.stringify(r))
     rows += chunk.length
     if (chunk.length < PAGE) break
+    await sleep(PAUSE_PAGE_MS)
   }
   return { text: `[${parts.join(',\n')}]`, rows }
 }
@@ -324,6 +383,7 @@ Deno.serve(async (req) => {
     const failed: string[] = []
     const started = baton.from ?? 0
     let bytes = 0
+    let waitedMs = 0
     let i = started
 
     for (; i < tables.length; i++) {
@@ -334,6 +394,7 @@ Deno.serve(async (req) => {
 
       const t = tables[i]
       try {
+        waitedMs += await waitIfBusy()
         const { text, rows } = await dumpTable(t.name)
         report[t.name] = rows
 
@@ -344,6 +405,7 @@ Deno.serve(async (req) => {
         if (PRECIOUS.has(t.name)) {
           await uploadFile(token, keyDir, `${t.name}.json`, enc.encode(text), 'application/json')
         }
+        await sleep(PAUSE_TABLE_MS)
       } catch (e) {
         /* ตารางเดียวล้มต้องไม่ทำให้ทั้งไม้ล้ม · ของที่เหลืออีกแปดสิบกว่าตารางมีค่ากว่า
            แต่ต้องบันทึกไว้ในสรุป ไม่งั้นจะกลายเป็นสำเนาที่ขาดโดยไม่มีใครรู้ */
@@ -371,6 +433,7 @@ Deno.serve(async (req) => {
             แถวรวม: Object.values(report).reduce((a, b) => a + b, 0),
             ขนาดบีบแล้ว: `${(bytes / 1024 / 1024).toFixed(2)} MB`,
             ใช้เวลา: `${Math.round((Date.now() - t0) / 1000)} วินาที`,
+            รอหน้างาน: `${Math.round(waitedMs / 1000)} วินาที`,
             แต่ละตาราง: report,
             วิธีกู้คืน: 'node scripts/restore-backup.mjs <โฟลเดอร์ที่โหลดมา>',
           },
@@ -390,9 +453,19 @@ Deno.serve(async (req) => {
          ยิงไปแล้วไม่ถึงใคร และเงียบสนิทเพราะเราไม่ได้รอคำตอบอยู่แล้ว
          อาการคือไม้แรกจบสวยงาม เขียนสรุปครบ แล้วไม่มีไม้สองเกิดขึ้นเลย */
       const selfUrl = (await setting('backup_url')) ?? req.url
+
+      /* ต้องแนบ Authorization ไปด้วย ไม่งั้นประตูของ Supabase ปฏิเสธตั้งแต่หน้าประตู
+         ด้วย 401 UNAUTHORIZED_NO_AUTH_HEADER โดยที่โค้ดเราไม่เคยถูกเรียกเลย
+         บทเรียนข้อเดียวกับที่เขียนเตือนไว้ใน migration 037 เรื่องนาฬิกาแจ้งเตือน
+         ซึ่งรอบนี้ก็ยังพลาดซ้ำจนไม้สองไม่เกิด ทั้งที่ไม้แรกจบสวยงาม */
+      const anon = await setting('push_anon_key')
       const next = fetch(selfUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-cron-key': key },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(anon ? { Authorization: `Bearer ${anon}` } : {}),
+          'x-cron-key': key,
+        },
         body: JSON.stringify({ dated, allDir, keyDir, from: i, part: part + 1 }),
       }).catch(() => undefined)
 
