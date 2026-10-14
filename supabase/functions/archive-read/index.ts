@@ -370,6 +370,10 @@ Deno.serve(async (req) => {
     const rows: Record<string, unknown>[] = []
     const touched: { tab: string; ms: number; n: number; ไล่อ่าน?: number }[] = []
     const problems: string[] = []
+    /* เดือนที่ยังไม่มีแท็บ ไม่ใช่ความผิดพลาด · แค่ตอนนั้นงานนี้ยังไม่เริ่มใช้
+       แยกออกจากปัญหาจริง ไม่งั้นหน้าจอจะขึ้นเตือนสีแดงทุกครั้งที่ขอช่วงยาว ๆ
+       แล้วคนจะเลิกอ่านข้อความเตือน ซึ่งอันตรายกว่าไม่มีข้อความเตือน */
+    const noTab: string[] = []
 
     for (const mo of months) {
       if (rows.length >= limit) break
@@ -411,7 +415,9 @@ Deno.serve(async (req) => {
       } catch (e) {
         /* แท็บเดียวมีปัญหาไม่ควรทำให้ทั้งคำขอล้ม · เดือนที่เหลือยังมีค่า
            แต่ต้องบอกออกไปด้วย ไม่งั้นคนจะคิดว่าเดือนนั้นไม่มีข้อมูลจริง ๆ */
-        problems.push(`${tab}: ${(e as Error).message}`)
+        const msg = (e as Error).message
+        if (msg.includes('400')) noTab.push(tab)
+        else problems.push(`${tab}: ${msg}`)
       }
     }
 
@@ -421,6 +427,7 @@ Deno.serve(async (req) => {
       rows,
       นับได้: rows.length,
       แท็บที่อ่าน: touched,
+      เดือนที่ยังไม่มีข้อมูล: noTab,
       ปัญหา: problems,
       หมายเหตุ: 'ข้อมูลชุดนี้มาจากคลังเก่าในชีต ไม่ใช่ฐานข้อมูลหลัก',
     })
