@@ -213,6 +213,34 @@ const BREAK_HEADER = [
  * ถ้าคนเปลี่ยนเครื่องแล้วแก้ทะเบียน แถวเก่าในชีตจะเปลี่ยนตามตอนส่งซ้ำ
  * ซึ่งยอมรับได้ เพราะสิ่งที่ต้องตรวจย้อนหลังคือใครเข้าเมื่อไหร่และติดธงไหม
  */
+/**
+ * ประวัติการแก้ไขบัตรเบรค · อยู่ในไฟล์ ประวัติเบรค ใบเดิม แยกเป็นแท็บของตัวเอง
+ *
+ * ─────────────────────────────────────────────────────────────────
+ * ชีตนี้เป็นที่เก็บถาวรจริง ไม่ใช่สำเนาไว้ดูเฉย ๆ
+ *
+ * ฐานข้อมูลเก็บตารางนี้ไว้แค่จนกว่ารอบส่งคืนถัดไปจะทำงาน แล้วลบทิ้ง
+ * เพราะมันโตเกือบเท่าตัวใบเบรคเอง ราวสามแถวต่อใบหนึ่งใบ
+ * แถวที่ไม่ได้ขึ้นชีตก่อนถูกลบ จะหายไปเลยโดยไม่มีที่ไหนเหลือ
+ *
+ * และนี่คือหลักฐานว่าใครแก้หรือลบใบเบรคทิ้ง
+ * **ต้องล็อกแท็บนี้ในชีตด้วย Protect sheet** ไม่งั้นคนลบร่องรอยตัวเองได้
+ * ขั้นตอนนั้นทำจากฝั่งโค้ดไม่ได้ ต้องกดเองในหน้า Google Sheet
+ * ─────────────────────────────────────────────────────────────────
+ */
+const AUDIT_HEADER = [
+  'วันเวลา',
+  'เลขที่ใบ',
+  'บัตร',
+  'ทำอะไร',
+  'ช่องที่แก้',
+  'ค่าเดิม',
+  'ค่าใหม่',
+  'เหตุผล',
+  'โดย',
+  'รหัสพนักงาน',
+]
+
 const OSSCAN_HEADER = [
   'วันเวลาที่สแกน',
   'ผล',
@@ -678,6 +706,21 @@ interface DbBy {
   handled_at: string | null
   profiles: { full_name: string; employee_code: string } | null
   by_barcode_photos: { file_id: string }[] | null
+}
+
+interface DbAudit {
+  id: number
+  at: string
+  pass_id: number | null
+  ref_no: string | null
+  card_code: string | null
+  action: string
+  field: string | null
+  before_val: string | null
+  after_val: string | null
+  reason: string | null
+  by_name: string | null
+  by_code: string | null
 }
 
 interface DbIssue {
@@ -1453,6 +1496,54 @@ at: b.issued_at,
               .filter(Boolean),
           ),
         })
+      }
+
+      /* ------------------------------------------- ประวัติการแก้ไขบัตรเบรค
+         อยู่ใน scope เดียวกับบัตรเบรค เพราะเป็นเรื่องเดียวกัน
+         และจะได้ใช้นาฬิกาตัวเดิมที่ตั้งไว้แล้ว ไม่ต้องมีงานตั้งเวลาเพิ่มให้ดูแลอีกตัว */
+      const aqs = new URLSearchParams({ order: 'at.asc,id.asc' })
+      if (payload.from) aqs.append('at', `gte.${payload.from}`)
+      if (payload.to) aqs.append('at', `lte.${payload.to}`)
+
+      const audits = await dbPaged<DbAudit>(`break_audit_export_rows?${aqs}`)
+      const arows: OutRow[] = audits.map((a) => ({
+        key: a.id,
+        tab: `แก้ไขเบรค ${monthOf(a.at)}`,
+        at: a.at,
+        values: [
+          thaiDateTime(a.at),
+          a.ref_no ?? '',
+          a.card_code ?? '',
+          a.action,
+          a.field ?? '',
+          a.before_val ?? '',
+          a.after_val ?? '',
+          a.reason ?? '',
+          a.by_name ?? '',
+          a.by_code ?? '',
+        ],
+      }))
+
+      if (arows.length > 0) {
+        const placedA = await lookupPlaced('break_audit_exports', 'audit_id', arows.map((r) => r.key))
+        const outA = await pushRows(bkSheet, token, arows, placedA, AUDIT_HEADER)
+        updated += outA.updated
+        appended += outA.appended
+        outA.tabs.forEach((t) => tabs.add(t))
+
+        if (outA.fresh.length > 0) {
+          await db('break_audit_exports?on_conflict=audit_id', {
+            method: 'POST',
+            headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+            body: JSON.stringify(
+              outA.fresh.map((r, i) => ({
+                audit_id: r.key,
+                tab: r.tab,
+                row_no: outA.rowNos[i],
+              })),
+            ),
+          })
+        }
       }
     }
 
