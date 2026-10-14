@@ -918,6 +918,9 @@ function Zones({
       })
   }, [groups])
 
+  /* อันดับตามจำนวนจริง ใช้เฉพาะเรื่องสี · ลำดับที่วางยังเป็นของ zones เหมือนเดิม */
+  const byItems = useMemo(() => zones.slice().sort((a, b) => b.items - a.items), [zones])
+
   const total = zones.reduce((a, z) => a + z.items, 0)
   const allText = groups.flatMap((g) => g.rows.map((r) => r.tracking)).join('\n')
 
@@ -959,10 +962,14 @@ function Zones({
         )}
       </div>
 
-      {/* การ์ดสรุปรายโซน · เห็นครบทุกโซนในแถวเดียว */}
+      {/* การ์ดสรุปรายโซน · เห็นครบทุกโซนในแถวเดียว
+          สีคิดจากอันดับ "จำนวน" ไม่ใช่ลำดับที่วาง
+          เพราะโซนที่ยังไม่ได้ตั้งถูกดันไปท้ายสุดเสมอไม่ว่าจะมีของเยอะแค่ไหน
+          ถ้าให้สีตามตำแหน่ง มันจะขึ้นเขียวทั้งที่ของเยอะกว่าโซนที่ขึ้นเหลือง
+          ซึ่งหลอกตาคนที่กวาดดูทั้งแถวแล้วตัดสินจากสี */}
       <div className="flex flex-wrap gap-2">
-        {zones.map((z, i) => {
-          const heat = heatRank(i, zones.length)
+        {zones.map((z) => {
+          const heat = heatRank(byItems.indexOf(z), zones.length)
           return (
             <div
               key={z.zone || 'none'}
