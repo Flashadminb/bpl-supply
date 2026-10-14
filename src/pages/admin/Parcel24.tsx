@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { useAsync } from '../../lib/useAsync'
 import { Spinner } from '../../components/ui'
+import BoardThemeToggle from '../../components/BoardTheme'
 import { readableError } from '../../lib/supabase'
 import { C, CARD, HEAT_RED, field, heat, heatRank, nf, tabOff, tabOn, thFull } from '../../lib/boardTheme'
 import {
@@ -126,15 +127,15 @@ export default function Parcel24() {
         {/* ───────── หัวจอ ───────── */}
         <div
           className="mb-2 flex flex-wrap items-center gap-3 px-3 py-2"
-          style={{ borderRadius: 14, background: 'linear-gradient(180deg,#121922,#0C1116)', border: `1px solid ${C.line2}` }}
+          style={{ borderRadius: 14, background: 'var(--b-head)', border: `1px solid ${C.line2}` }}
         >
           <button type="button" aria-label="ย้อนกลับ" className="h-tap w-tap rounded-btn text-xl" style={{ color: C.mute }} onClick={() => nav('/admin')}>
             ←
           </button>
-          <span className="rounded px-2 py-[2px] text-[13px] font-extrabold" style={{ background: C.brand, color: '#111' }}>
+          <span className="rounded px-2 py-[2px] text-[13px] font-extrabold" style={{ background: 'var(--b-tab-on)', color: '#111' }}>
             FLASH
           </span>
-          <span className="rounded-lg px-[9px] py-[2px] font-mono text-[15px] font-extrabold" style={{ background: '#1E3246', color: '#8FD0FF' }}>
+          <span className="rounded-lg px-[9px] py-[2px] font-mono text-[15px] font-extrabold" style={{ background: 'var(--b-zone-bg)', color: 'var(--b-zone-ink)' }}>
             24
           </span>
           <span className="text-lg font-bold">
@@ -190,7 +191,7 @@ export default function Parcel24() {
           <button
             type="button"
             className="h-tap rounded-btn px-4 text-sm font-bold"
-            style={{ background: C.brand, color: '#111' }}
+            style={{ background: 'var(--b-tab-on)', color: '#111' }}
             disabled={busy}
             onClick={() => fileRef.current?.click()}
           >
@@ -238,6 +239,7 @@ export default function Parcel24() {
               </button>
             ))}
           </div>
+          <BoardThemeToggle />
           <span className="flex-1" />
           {!mayUpload && (
             <span className="text-xs" style={{ color: C.faint }}>
@@ -313,7 +315,7 @@ function Zone({ z }: { z: string | null }) {
   return (
     <span
       className="shrink-0 rounded px-[5px] py-[1px] font-mono text-[10px] font-bold"
-      style={z ? { background: '#1E3246', color: '#8FD0FF' } : { background: C.chip, color: C.faint, fontWeight: 400 }}
+      style={z ? { background: 'var(--b-zone-bg)', color: 'var(--b-zone-ink)' } : { background: C.chip, color: C.faint, fontWeight: 400 }}
     >
       {z ?? '—'}
     </span>
@@ -420,8 +422,8 @@ function Graph({
                 className="flex w-full items-center gap-2 px-[9px] py-[7px] text-left"
                 style={{
                   borderRadius: 10,
-                  background: on ? '#1E0F13' : C.groove,
-                  border: on ? `1.5px solid ${'#A32D2D'}` : `1px solid ${C.line2}`,
+                  background: on ? 'var(--b-red-sel-bg)' : C.groove,
+                  border: on ? `1.5px solid ${'var(--b-red-sel-line)'}` : `1px solid ${C.line2}`,
                 }}
               >
                 <span
@@ -483,7 +485,7 @@ function Graph({
           <button
             type="button"
             className="mt-2 w-full rounded-lg px-3 py-2 text-[12px] font-bold"
-            style={{ background: '#2A1116', color: C.redInk, border: `1px solid #5A2127` }}
+            style={{ background: 'var(--b-red-soft-bg)', color: C.redInk, border: `1px solid var(--b-red-soft-line)` }}
             onClick={() => onCopy(allText, zone === null ? `ทั้งหมด ${nf(shownItems)} เลข` : `${zone || 'ไม่มีโซน'} ${nf(shownItems)} เลข`)}
           >
             คัดลอก{zone === null ? 'ทั้ง' : `${zone || 'ไม่มีโซน'} `}
@@ -517,7 +519,7 @@ function Graph({
               : 'หัวข้อนี้มีเยอะ จึงกางเท่าที่ไหว สาขาละ 10 เลขแรก · เลือกโซนเพื่อกางครบ หรือกดกางต่อรายสาขา'}
           </p>
           {zones.length > 1 && (
-            <p className="mt-1 text-center text-[11.5px]" style={{ color: subOpen ? '#8FD0FF' : C.faint }}>
+            <p className="mt-1 text-center text-[11.5px]" style={{ color: subOpen ? 'var(--b-zone-ink)' : C.faint }}>
               {subOpen ? '▾' : '▾ ชี้หรือกดเพื่อแยกตามโซน D0'}
             </p>
           )}
@@ -538,19 +540,19 @@ function Graph({
             className="mt-[6px] p-2"
             style={{
               borderRadius: 13,
-              background: 'linear-gradient(180deg,#0E1A25,#0A121A)',
+              background: 'var(--b-rail)',
               border: `2px solid #2F5A80`,
               boxShadow: 'inset 0 1px 0 rgba(143,208,255,.07)',
             }}
           >
-            <p className="mb-[6px] flex items-baseline gap-2 px-[3px] font-mono text-[12px] font-extrabold" style={{ color: '#8FD0FF' }}>
+            <p className="mb-[6px] flex items-baseline gap-2 px-[3px] font-mono text-[12px] font-extrabold" style={{ color: 'var(--b-zone-ink)' }}>
               แยกตามโซน D0 <Cn>D0 分区</Cn>
             </p>
             <div className="relative pl-4">
             <span
               aria-hidden
               className="absolute"
-              style={{ left: 9, top: -2, bottom: 22, width: 1.5, background: '#24445F' }}
+              style={{ left: 9, top: -2, bottom: 22, width: 1.5, background: 'var(--b-zone-line)' }}
             />
             {zones.map((z) => {
               const k = z.zone ?? ''
@@ -560,7 +562,7 @@ function Graph({
                   <span
                     aria-hidden
                     className="absolute"
-                    style={{ left: -7, top: 'calc(50% - 3px)', width: 11, height: 1.5, background: on ? '#8FD0FF' : '#24445F' }}
+                    style={{ left: -7, top: 'calc(50% - 3px)', width: 11, height: 1.5, background: on ? 'var(--b-zone-ink)' : 'var(--b-zone-line)' }}
                   />
                   {/*
                     ช่องโซนต้องใหญ่พอจะอยู่คู่กับตัวเลขใหญ่กลางการ์ดได้
@@ -573,14 +575,14 @@ function Graph({
                     className="mb-[5px] flex w-full items-center gap-2 px-[10px] py-[7px] text-left"
                     style={{
                       borderRadius: 10,
-                      background: on ? '#19354A' : '#0C1620',
-                      border: `1.5px solid ${on ? '#8FD0FF' : '#24445F'}`,
+                      background: on ? 'var(--b-zone-on-bg)' : 'var(--b-zone-off-bg)',
+                      border: `1.5px solid ${on ? 'var(--b-zone-ink)' : 'var(--b-zone-line)'}`,
                     }}
                   >
                     <span className="min-w-0 flex-1">
                       <b
                         className="block font-mono text-[19px] font-extrabold leading-none"
-                        style={{ color: on ? '#8FD0FF' : C.mute }}
+                        style={{ color: on ? 'var(--b-zone-ink)' : C.mute }}
                       >
                         {z.zone ?? 'ไม่มีโซน'}
                       </b>
@@ -590,7 +592,7 @@ function Graph({
                     </span>
                     <span
                       className="font-mono text-[24px] font-extrabold leading-none"
-                      style={{ color: on ? '#8FD0FF' : C.lhHi }}
+                      style={{ color: on ? 'var(--b-zone-ink)' : C.lhHi }}
                     >
                       {nf(z.items)}
                     </span>
@@ -643,7 +645,7 @@ function Branch({
       style={{
         borderRadius: 12,
         background: `${heat(i, n, HEAT_RED)}, ${C.groove}`,
-        border: `1px solid ${big ? '#55202A' : C.line2}`,
+        border: `1px solid ${big ? 'var(--b-red-edge)' : C.line2}`,
         gridColumn: big ? '1 / -1' : undefined,
       }}
     >
@@ -672,7 +674,7 @@ function Branch({
               onClick={() => onCopy(r.tracking, r.tracking)}
               className="rounded-md px-[6px] py-[2px] font-mono text-[11.5px]"
               style={{
-                background: '#101720',
+                background: C.slot,
                 color: C.mute,
                 border: `1px solid ${C.line2}`,
                 borderTopRightRadius: r.bag_no ? 0 : undefined,
@@ -785,13 +787,13 @@ function Cards({
               <span className="w-[160px] shrink-0 truncate text-[12.5px]" style={{ color: a.action === CANCEL ? C.redInk : C.mute }}>
                 {a.action}
               </span>
-              <span className="flex h-[13px] flex-1" style={{ background: '#101720', borderRadius: 4, overflow: 'hidden' }}>
+              <span className="flex h-[13px] flex-1" style={{ background: C.slot, borderRadius: 4, overflow: 'hidden' }}>
                 <i
                   style={{
                     display: 'block',
                     height: '100%',
                     width: `${(a.n / max) * 100}%`,
-                    background: a.action === CANCEL ? `linear-gradient(90deg,#5A1620,${C.red})` : `linear-gradient(90deg,${C.lhLo},${C.lh})`,
+                    background: a.action === CANCEL ? `linear-gradient(90deg,var(--b-bar-red-lo),${C.red})` : `linear-gradient(90deg,${C.lhLo},${C.lh})`,
                   }}
                 />
               </span>
@@ -1141,7 +1143,7 @@ function Zones({
                           type="button"
                           onClick={() => onCopy(r.tracking, r.tracking)}
                           className="rounded-md px-[6px] py-[2px] font-mono text-[11.5px]"
-                          style={{ background: '#101720', color: C.mute, border: `1px solid ${C.line2}` }}
+                          style={{ background: C.slot, color: C.mute, border: `1px solid ${C.line2}` }}
                         >
                           {r.tracking}
                         </button>
@@ -1233,7 +1235,7 @@ function Table({ rows, snapAt, onCopy }: { rows: P24Row[]; snapAt: string; onCop
         <button
           type="button"
           className="h-tap rounded-btn px-4 text-sm font-bold"
-          style={{ background: C.brand, color: '#111' }}
+          style={{ background: 'var(--b-tab-on)', color: '#111' }}
           onClick={() => onCopy(shown.map((r) => r.tracking).join('\n'), `${shown.length} เลขที่กรองอยู่`)}
         >
           คัดลอกเลขพัสดุทั้ง {nf(shown.length)}
@@ -1264,7 +1266,7 @@ function Table({ rows, snapAt, onCopy }: { rows: P24Row[]; snapAt: string; onCop
                       type="button"
                       onClick={() => onCopy(r.tracking, r.tracking)}
                       className="rounded-md px-[6px] py-[2px] font-mono text-[12px]"
-                      style={{ background: '#101720', color: C.mute, border: `1px solid ${C.line2}` }}
+                      style={{ background: C.slot, color: C.mute, border: `1px solid ${C.line2}` }}
                     >
                       {r.tracking}
                     </button>

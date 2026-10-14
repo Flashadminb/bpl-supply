@@ -129,3 +129,120 @@
   @keyframes bplUrgent { 0%, 100% { box-shadow: none; } }
   @keyframes bplEdge { 0%, 100% { opacity: .6; } }
 }
+
+/* =====================================================================
+   สีของจอกลางคลัง · สองธีม
+
+   ใช้โดยของค้างส่งออก พัสดุค้างเกิน 24 ชม ปล่อยรถ รถรอลงงาน และจับคู่
+   โค้ดฝั่ง React อ่านผ่าน C ใน boardTheme.ts ซึ่งชี้มาที่ตัวแปรพวกนี้
+
+   พื้นดำคือค่าตั้งต้น เพราะจอแขวนในคลังที่ไฟสลัวและเปิดค้างทั้งกะ
+   พื้นขาวมีไว้สำหรับคนที่เปิดกลางแดดหรือจะแคปหน้าจอส่งต่อ
+
+   ไม่ได้กลับสีจากธีมดำ · สีที่อ่านออกบนพื้นดำหลายสีอ่านไม่ออกเลยบนพื้นขาว
+   เหลือง #FFC400 บนขาวแทบมองไม่เห็น เขียวอ่อนกับแดงอ่อนก็เช่นกัน
+   ธีมขาวจึงใช้เฉดเข้มของสีเดียวกัน ให้สื่อความหมายเดิมแต่อ่านออกจริง
+   ===================================================================== */
+:root {
+  --b-bg: #0B0E11;
+  --b-panel: #121820;
+  --b-panel2: #151C26;
+  --b-groove: #0A0E13;
+  --b-line: #243040;
+  --b-line2: #1E2733;
+  --b-ink: #F0F4F9;
+  --b-mute: #AFC0D4;
+  --b-faint: #5A646F;
+  --b-chip: #1B2430;
+  --b-slot: #101720;
+  --b-brand: #FFC400;
+  --b-red: #FF5C5C;
+  --b-red-bg: #351317;
+  --b-red-ink: #FF9A9A;
+  --b-amber: #FFB038;
+  --b-amber-bg: #352714;
+  --b-amber-ink: #FFC77A;
+  --b-green: #35D98A;
+  --b-green-bg: #11301F;
+  --b-green-ink: #8FE8BC;
+  --b-lh: #4FA3E3;
+  --b-lh-hi: #9BD4FF;
+  --b-lh-lo: #1E5C92;
+  --b-fd: #F0B21E;
+  --b-fd-hi: #FFE089;
+  --b-fd-lo: #9A6E06;
+  --b-tab-on: #FFC400;
+  --b-tab-off: #161E28;
+  --b-card:
+    radial-gradient(120% 90% at 50% -20%, rgba(255, 255, 255, .045), transparent 60%),
+    linear-gradient(180deg, #161D27, #10151C);
+  --b-zone-bg: #1E3246;
+  --b-zone-ink: #8FD0FF;
+  --b-zone-line: #24445F;
+  --b-zone-on-bg: #19354A;
+  --b-zone-off-bg: #0C1620;
+  --b-red-sel-bg: #1E0F13;
+  --b-red-sel-line: #A32D2D;
+  --b-red-soft-bg: #2A1116;
+  --b-red-soft-line: #5A2127;
+  --b-red-edge: #55202A;
+  --b-head: linear-gradient(180deg,#121922,#0C1116);
+  --b-rail: linear-gradient(180deg,#0E1A25,#0A121A);
+  --b-bar-red-lo: #5A1620;
+  --b-card-shadow: 0 18px 40px -22px #000, inset 0 1px 0 rgba(255, 255, 255, .05);
+}
+
+:root[data-board='light'] {
+  --b-bg: #F2F5F9;
+  --b-panel: #FFFFFF;
+  --b-panel2: #F1F4F8;
+  --b-groove: #E9EEF4;
+  --b-line: #C7D2DF;
+  --b-line2: #E1E8F0;
+  --b-ink: #0F172A;
+  --b-mute: #43516A;
+  --b-faint: #7A869A;
+  --b-chip: #EDF2F8;
+  --b-slot: #F4F7FB;
+
+  /* เหลืองสดอ่านไม่ออกบนขาว · ใช้เฉดน้ำตาลทองที่ยังสื่อว่าเป็นสีเดียวกัน */
+  --b-brand: #9A6B00;
+
+  --b-red: #D92D20;
+  --b-red-bg: #FEE4E2;
+  --b-red-ink: #B42318;
+  --b-amber: #B54708;
+  --b-amber-bg: #FEF0C7;
+  --b-amber-ink: #93370D;
+  --b-green: #079455;
+  --b-green-bg: #DCFAE6;
+  --b-green-ink: #067647;
+
+  /* เฉด Hi กับ Lo สลับทิศ · บนพื้นดำเด่นคือสว่าง บนพื้นขาวเด่นคือเข้ม */
+  --b-lh: #1570EF;
+  --b-lh-hi: #0B4A9E;
+  --b-lh-lo: #A9CDF5;
+  --b-fd: #B54708;
+  --b-fd-hi: #7A2E05;
+  --b-fd-lo: #F3D9A6;
+
+  /* แท็บที่เลือกยังเป็นเหลืองสดกับตัวอักษรดำ เพราะคู่นี้อ่านออกทั้งสองธีม */
+  --b-tab-on: #F5B301;
+  --b-tab-off: #E8EDF4;
+
+  --b-card: linear-gradient(180deg, #FFFFFF, #FBFCFE);
+  --b-zone-bg: #DCEBFB;
+  --b-zone-ink: #0B4A9E;
+  --b-zone-line: #A9CDF5;
+  --b-zone-on-bg: #CFE4FA;
+  --b-zone-off-bg: #F5F8FC;
+  --b-red-sel-bg: #FEE4E2;
+  --b-red-sel-line: #F04438;
+  --b-red-soft-bg: #FEF3F2;
+  --b-red-soft-line: #FDA29B;
+  --b-red-edge: #FDA29B;
+  --b-head: linear-gradient(180deg,#FFFFFF,#F7F9FC);
+  --b-rail: linear-gradient(180deg,#F6FAFE,#EEF4FA);
+  --b-bar-red-lo: #FDA29B;
+  --b-card-shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .1);
+}

@@ -1,54 +1,71 @@
 /**
  * ชุดสีและตัวช่วยของจอกลางคลัง
  *
- * ใช้ร่วมกันระหว่างของค้างส่งออกกับพัสดุค้างเกิน 24 ชม เพราะเจ้าของระบบสั่งว่า
- * หน้าใหม่ต้อง "เป็นฟิลเดียวกับของค้างส่งออก"
+ * ใช้ร่วมกันห้าจอ · ของค้างส่งออก · พัสดุค้างเกิน 24 ชม · ปล่อยรถ · รถรอลงงาน · จับคู่
+ * เจ้าของระบบสั่งว่าทุกจอต้อง "เป็นฟิลเดียวกัน" จึงรวมไว้ที่เดียว
+ * ไม่ก็อปไปวางทีละหน้า เพราะวันที่ใครปรับสีจอหนึ่ง อีกสี่จอจะเพี้ยนตามไม่ได้
+ * แล้วจอที่แขวนอยู่ข้างกันในคลังจะดูเป็นคนละระบบ
  *
- * ที่แยกออกมาเป็นไฟล์กลาง ไม่ใช่ก็อปไปวางอีกหน้า เพราะวันที่ใครปรับสีจอหนึ่ง
- * อีกจอจะเพี้ยนตามไม่ได้ แล้วสองจอที่แขวนอยู่ข้างกันในคลังจะดูเป็นคนละระบบ
+ * ─────────────────────────────────────────────────────────────────
+ * ทำไมค่าสีเป็น var() ไม่ใช่รหัสสีตรง ๆ
  *
- * จอพวกนี้ไม่ได้ใช้ token จาก design-tokens.css เพราะนั่นเป็นชุดสีของแอพฝั่ง
- * พนักงานซึ่งเป็นพื้นครีมสว่างสำหรับมือถือกลางแดด ส่วนจอนี้แขวนในคลังที่ไฟสลัว
- * และเปิดค้างทั้งกะ พื้นสว่างจะแสบตาและกินไฟจอมากกว่า
+ * เจ้าของระบบขอให้สลับพื้นขาวได้ ซึ่งไม่ใช่แค่กลับพื้นกับตัวอักษร
+ * สีที่อ่านออกบนพื้นดำหลายสีอ่านไม่ออกเลยบนพื้นขาว
+ * เหลือง #FFC400 บนขาวแทบมองไม่เห็น เขียวอ่อนกับแดงอ่อนก็เช่นกัน
+ * ทั้งสองธีมจึงต้องมีค่าของตัวเองทุกสี ไม่ใช่ค่าเดียวแล้วปรับความสว่าง
+ *
+ * ใช้ตัวแปร CSS เพราะโค้ดหน้าจอที่เขียนไว้แล้วทั้งห้าหน้าไม่ต้องแก้เลยสักบรรทัด
+ * มันอ่าน C.panel เหมือนเดิม แค่ค่าข้างในกลายเป็นตัวแปรที่เบราว์เซอร์สลับให้เอง
+ * ค่าจริงของทั้งสองธีมอยู่ใน index.css
+ * ─────────────────────────────────────────────────────────────────
  */
 
 export const C = {
-  bg: '#0B0E11',
-  panel: '#121820',
-  panel2: '#151C26',
-  groove: '#0A0E13',
-  line: '#243040',
-  line2: '#1E2733',
-  ink: '#F0F4F9',
-  mute: '#AFC0D4',
-  faint: '#5A646F',
-  chip: '#1B2430',
-  brand: '#FFC400',
-  red: '#FF5C5C',
-  redBg: '#351317',
-  redInk: '#FF9A9A',
-  amber: '#FFB038',
-  amberBg: '#352714',
-  amberInk: '#FFC77A',
-  greenBg: '#11301F',
-  greenInk: '#8FE8BC',
-  green: '#35D98A',
-  /* สายหลัก ฟ้า · สายรอง เหลือง · สามเฉดต่อสาย ไว้ไล่สีให้แท่งนูน */
-  lh: '#4FA3E3',
-  lhHi: '#9BD4FF',
-  lhLo: '#1E5C92',
-  fd: '#F0B21E',
-  fdHi: '#FFE089',
-  fdLo: '#9A6E06',
+  bg: 'var(--b-bg)',
+  panel: 'var(--b-panel)',
+  panel2: 'var(--b-panel2)',
+  groove: 'var(--b-groove)',
+  line: 'var(--b-line)',
+  line2: 'var(--b-line2)',
+  ink: 'var(--b-ink)',
+  mute: 'var(--b-mute)',
+  faint: 'var(--b-faint)',
+  chip: 'var(--b-chip)',
+  brand: 'var(--b-brand)',
+  red: 'var(--b-red)',
+  redBg: 'var(--b-red-bg)',
+  redInk: 'var(--b-red-ink)',
+  amber: 'var(--b-amber)',
+  amberBg: 'var(--b-amber-bg)',
+  amberInk: 'var(--b-amber-ink)',
+  greenBg: 'var(--b-green-bg)',
+  greenInk: 'var(--b-green-ink)',
+  green: 'var(--b-green)',
+  /* สายหลัก ฟ้า · สายรอง เหลือง · สามเฉดต่อสาย ไว้ไล่สีให้แท่งนูน
+     บนพื้นขาวเฉด Hi กับ Lo สลับทิศกัน เพราะ "เด่น" บนพื้นดำคือสว่าง
+     แต่บนพื้นขาวคือเข้ม · ค่าจริงจัดการให้แล้วใน index.css */
+  lh: 'var(--b-lh)',
+  lhHi: 'var(--b-lh-hi)',
+  lhLo: 'var(--b-lh-lo)',
+  fd: 'var(--b-fd)',
+  fdHi: 'var(--b-fd-hi)',
+  fdLo: 'var(--b-fd-lo)',
+  /** พื้นของชิปเลขพัสดุ · เข้มกว่าการ์ดหนึ่งขั้นเสมอไม่ว่าธีมไหน */
+  slot: 'var(--b-slot)',
 }
 
-/** การ์ดมาตรฐาน · ไล่สีอ่อน ๆ กับเงาใต้การ์ด ให้ลอยขึ้นจากพื้น */
+/**
+ * การ์ดมาตรฐาน · ลอยขึ้นจากพื้นเล็กน้อย
+ *
+ * พื้นดำใช้ไล่สีกับเงาเข้มเพื่อให้การ์ดดูนูน
+ * พื้นขาวใช้เงาบางกับเส้นขอบคมแทน เพราะเงาเข้มบนขาวดูเลอะไม่ได้ดูนูน
+ * ต่างกันพอให้ทั้งสองธีมดูตั้งใจ ไม่ใช่ธีมเดียวที่ถูกกลับสี
+ */
 export const CARD: React.CSSProperties = {
   borderRadius: 16,
   border: `1px solid ${C.line2}`,
-  background:
-    'radial-gradient(120% 90% at 50% -20%, rgba(255,255,255,.045), transparent 60%), linear-gradient(180deg, #161D27, #10151C)',
-  boxShadow: '0 18px 40px -22px #000, inset 0 1px 0 rgba(255,255,255,.05)',
+  background: 'var(--b-card)',
+  boxShadow: 'var(--b-card-shadow)',
 }
 
 export const field: React.CSSProperties = {
@@ -57,8 +74,14 @@ export const field: React.CSSProperties = {
   color: C.ink,
 }
 
-export const tabOn: React.CSSProperties = { background: C.brand, color: '#111', fontWeight: 800 }
-export const tabOff: React.CSSProperties = { background: '#161E28', color: C.mute, border: `1px solid ${C.line2}` }
+/* แท็บที่เลือกอยู่ใช้เหลืองเข้มพอให้ตัวอักษรดำอ่านออกทั้งสองธีม
+   จึงไม่ได้ใช้ C.brand ที่สลับค่าตามธีม เพราะบนพื้นขาวมันเข้มจนตัวดำจม */
+export const tabOn: React.CSSProperties = { background: 'var(--b-tab-on)', color: '#111', fontWeight: 800 }
+export const tabOff: React.CSSProperties = {
+  background: 'var(--b-tab-off)',
+  color: C.mute,
+  border: `1px solid ${C.line2}`,
+}
 
 export const TH_MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 export const p2 = (n: number) => String(n).padStart(2, '0')
@@ -108,3 +131,46 @@ export function heatRank(i: number, n: number): { bg: string; bar: string } {
 /** สีของไล่เฉด · ฟ้าสำหรับของค้างทั่วไป แดงสำหรับของที่ต้องรีบ */
 export const HEAT_BLUE = '79,163,227'
 export const HEAT_RED = '226,75,74'
+
+
+/* ------------------------------------------------------------- ธีมจอ */
+
+/**
+ * จอกลางคลังสลับพื้นขาว-ดำได้
+ *
+ * เก็บไว้ในเครื่องของแต่ละคน ไม่ได้เก็บในฐานข้อมูล
+ * เพราะจอที่แขวนในคลังกับมือถือที่เดินถือไปด้วยต้องการคนละแบบ
+ * จอแขวนในที่ไฟสลัวใช้พื้นดำสบายตากว่าและกินไฟน้อยกว่า
+ * ส่วนคนที่เปิดกลางแดดหรือจะแคปส่งไลน์ต้องการพื้นขาว
+ *
+ * ตั้งไว้ที่ documentElement เพื่อให้ทุกจอที่เปิดในเครื่องเดียวกันเป็นธีมเดียวกัน
+ * และไม่ต้องส่งค่าธีมลงไปทุกชั้นของหน้าจอ
+ */
+export type BoardTheme = 'dark' | 'light'
+
+const THEME_KEY = 'bpl.board.theme'
+
+export function boardTheme(): BoardTheme {
+  try {
+    return localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark'
+  } catch {
+    /* โหมดส่วนตัวอ่านไม่ได้ · ตกมาใช้พื้นดำซึ่งเป็นของเดิม */
+    return 'dark'
+  }
+}
+
+export function setBoardTheme(t: BoardTheme): void {
+  try {
+    if (t === 'dark') localStorage.removeItem(THEME_KEY)
+    else localStorage.setItem(THEME_KEY, t)
+  } catch {
+    /* เก็บไม่ได้ก็ยังสลับได้ แค่จำไม่ได้ข้ามการรีเฟรช */
+  }
+  applyBoardTheme(t)
+}
+
+export function applyBoardTheme(t: BoardTheme): void {
+  if (typeof document === 'undefined') return
+  if (t === 'light') document.documentElement.setAttribute('data-board', 'light')
+  else document.documentElement.removeAttribute('data-board')
+}
