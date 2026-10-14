@@ -4,7 +4,7 @@ import { useAuth } from '../../lib/auth'
 import { useAsync } from '../../lib/useAsync'
 import { Spinner } from '../../components/ui'
 import { readableError } from '../../lib/supabase'
-import { C, CARD, HEAT_RED, field, heat, nf, tabOff, tabOn, thFull } from '../../lib/boardTheme'
+import { C, CARD, HEAT_RED, field, heat, heatRank, nf, tabOff, tabOn, thFull } from '../../lib/boardTheme'
 import {
   CANCEL,
   byCust,
@@ -36,7 +36,7 @@ const MAX_OPEN = 160
 export default function Parcel24() {
   const nav = useNavigate()
   const board = useAsync(() => p24Board(), [])
-  const [page, setPage] = useState<'tv' | 'main' | 'table'>('tv')
+  const [page, setPage] = useState<'tv' | 'main' | 'table' | 'zones'>('tv')
   const [pick, setPick] = useState<string | null>(null)
   const [clock, setClock] = useState(() => new Date())
   const [copied, setCopied] = useState<string | null>(null)
@@ -231,6 +231,7 @@ export default function Parcel24() {
               ['tv', 'จอทีวี', '电视屏'],
               ['main', 'หน้าหลัก', '主页'],
               ['table', 'ตาราง', '表格'],
+              ['zones', 'แยกตามโซน', '分区'],
             ] as const).map(([k, label, cn]) => (
               <button key={k} type="button" className="h-tap rounded-btn px-4 text-sm" style={page === k ? tabOn : tabOff} onClick={() => setPage(k)}>
                 {label} <Cn>{cn}</Cn>
@@ -290,6 +291,10 @@ export default function Parcel24() {
         {snap && page === 'main' && <Cards rows={rows} snapAt={snap.data_at} actions={actions} vs={vs} snapCancelPrev={snap.prev_cancel} />}
 
         {snap && page === 'table' && <Table rows={rows} snapAt={snap.data_at} onCopy={copy} />}
+
+        {snap && page === 'zones' && (
+          <Zones groups={groups} actions={actions} current={current} onPick={setPick} onCopy={copy} />
+        )}
       </div>
     </div>
   )
@@ -850,6 +855,221 @@ function Tile({
       <span className="block text-[11px]" style={{ color: C.faint }}>
         {vs}
       </span>
+    </div>
+  )
+}
+
+/* --------------------------------------------------------- แยกตามโซน */
+
+/**
+ * ทุกโซนในหน้าเดียว
+ *
+ * ─────────────────────────────────────────────────────────────────
+ * ต่างจากหน้าหลักตรงไหน
+ *
+ * หน้าหลักให้เลือกทีละโซนแล้วค่อยดูสาขาข้างใน ซึ่งดีตอนรู้แล้วว่าจะตามโซนไหน
+ * หน้านี้ตอบอีกคำถามหนึ่ง · คืนนี้ของกองอยู่โซนไหนมากที่สุด
+ * ต้องเห็นครบทุกโซนพร้อมกันในจอเดียวโดยไม่ต้องกดสลับไปมา
+ * ─────────────────────────────────────────────────────────────────
+ *
+ * เลขพัสดุซ่อนไว้ก่อนโดยตั้งใจ
+ * ถ้ากางหมดทุกสาขาตั้งแต่แรก จอจะยาวเป็นกิโลจนหาโซนไม่เจอ
+ * ซึ่งทำลายเหตุผลเดียวที่หน้านี้มีอยู่
+ */
+function Zones({
+  groups,
+  actions,
+  current,
+  onPick,
+  onCopy,
+}: {
+  groups: P24Group[]
+  actions: { action: string; n: number }[]
+  current: string
+  onPick: (a: string) => void
+  onCopy: (text: string, what: string) => void
+}) {
+  const [open, setOpen] = useState<Set<string>>(new Set())
+
+  const toggle = (k: string) =>
+    setOpen((s) => {
+      const n = new Set(s)
+      if (n.has(k)) n.delete(k)
+      else n.add(k)
+      return n
+    })
+
+  /* จัดกองตามโซน · เรียงโซนจากของเยอะไปน้อย และดันโซนว่างไว้ท้ายสุดเสมอ
+     โซนว่างคือสาขาที่ยังไม่ได้ตั้งโซน ซึ่งเป็นงานค้างของหลังบ้าน ไม่ใช่โซนจริง */
+  const zones = useMemo(() => {
+    const m = new Map<string, { zone: string; branches: P24Group[]; items: number }>()
+    for (const g of groups) {
+      const k = g.zone ?? ''
+      const cur = m.get(k) ?? { zone: k, branches: [], items: 0 }
+      cur.branches.push(g)
+      cur.items += g.rows.length
+      m.set(k, cur)
+    }
+    return [...m.values()]
+      .map((z) => ({ ...z, branches: z.branches.slice().sort((a, b) => b.rows.length - a.rows.length) }))
+      .sort((a, b) => {
+        if (!a.zone !== !b.zone) return a.zone ? -1 : 1
+        return b.items - a.items || a.zone.localeCompare(b.zone)
+      })
+  }, [groups])
+
+  const total = zones.reduce((a, z) => a + z.items, 0)
+  const allText = groups.flatMap((g) => g.rows.map((r) => r.tracking)).join('\n')
+
+  return (
+    <div className="space-y-3">
+      {/* เลือกว่าจะดูการดำเนินการล่าสุดแบบไหน · ค่าตั้งต้นคือยกเลิกการส่งต่อ */}
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2" style={CARD}>
+        <span className="text-xs" style={{ color: C.faint }}>
+          การดำเนินการล่าสุด <Cn>最新操作</Cn>
+        </span>
+        <select
+          value={current}
+          onChange={(e) => onPick(e.target.value)}
+          className="h-tap rounded-btn px-2 text-sm"
+          style={{ background: C.panel2, color: C.mute, border: `1px solid ${C.line2}` }}
+        >
+          {actions.map((a) => (
+            <option key={a.action} value={a.action}>
+              {a.action} ({nf(a.n)})
+            </option>
+          ))}
+        </select>
+        <span className="flex-1" />
+        <b className="font-mono text-[17px]" style={{ color: C.brand }}>
+          {nf(total)}
+        </b>
+        <span className="text-xs" style={{ color: C.faint }}>
+          ชิ้น · {zones.length} โซน · {groups.length} สาขา
+        </span>
+        {total > 0 && (
+          <button
+            type="button"
+            className="h-tap rounded-btn px-3 text-xs"
+            style={{ background: C.panel2, color: C.mute, border: `1px solid ${C.line2}` }}
+            onClick={() => onCopy(allText, `ทุกโซน ${total} เลข`)}
+          >
+            คัดลอกทั้งหมด
+          </button>
+        )}
+      </div>
+
+      {/* การ์ดสรุปรายโซน · เห็นครบทุกโซนในแถวเดียว */}
+      <div className="flex flex-wrap gap-2">
+        {zones.map((z, i) => {
+          const heat = heatRank(i, zones.length)
+          return (
+            <div
+              key={z.zone || 'none'}
+              className="min-w-[120px] flex-1 px-3 py-2"
+              style={{ ...CARD, background: heat.bg, borderColor: heat.bar }}
+            >
+              <div className="font-mono text-[11px] uppercase tracking-wider" style={{ color: C.faint }}>
+                {z.zone || 'ไม่มีโซน'}
+              </div>
+              <div className="font-mono text-[22px] font-extrabold leading-tight" style={{ color: heat.bar }}>
+                {nf(z.items)}
+              </div>
+              <div className="text-[10.5px]" style={{ color: C.faint }}>
+                {z.branches.length} สาขา
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* ช่องของแต่ละโซน · ข้างในไล่สีจากสาขาที่มีเยอะสุดลงมา */}
+      {zones.map((z) => (
+        <div key={z.zone || 'none'} className="px-3 py-2" style={CARD}>
+          <div className="mb-2 flex items-center gap-2">
+            <b className="font-mono text-sm" style={{ color: C.brand }}>
+              {z.zone || 'ไม่มีโซน'}
+            </b>
+            <span className="text-xs" style={{ color: C.faint }}>
+              {nf(z.items)} ชิ้น · {z.branches.length} สาขา
+            </span>
+            <span className="flex-1" />
+            <button
+              type="button"
+              className="h-tap rounded-btn px-3 text-xs"
+              style={{ background: C.panel2, color: C.mute, border: `1px solid ${C.line2}` }}
+              onClick={() =>
+                onCopy(
+                  z.branches.flatMap((g) => g.rows.map((r) => r.tracking)).join('\n'),
+                  `${z.zone || 'ไม่มีโซน'} ${z.items} เลข`,
+                )
+              }
+            >
+              คัดลอกทั้งโซน
+            </button>
+          </div>
+
+          <div className="space-y-1">
+            {z.branches.map((g, i) => {
+              const heat = heatRank(i, z.branches.length)
+              const key = `${z.zone}|${g.dest}`
+              const isOpen = open.has(key)
+              return (
+                <div key={g.dest} className="rounded-lg" style={{ background: heat.bg, border: `1px solid ${C.line2}` }}>
+                  <div className="flex items-center gap-2 px-2 py-1">
+                    <button
+                      type="button"
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                      onClick={() => toggle(key)}
+                      title={isOpen ? 'กดเพื่อซ่อนเลขพัสดุ' : 'กดเพื่อดูเลขพัสดุ'}
+                    >
+                      <span className="shrink-0 text-xs" style={{ color: C.faint }}>
+                        {isOpen ? '▾' : '▸'}
+                      </span>
+                      <span className="truncate text-[12.5px]" style={{ color: C.mute }}>
+                        {g.dest}
+                      </span>
+                      <b className="ml-auto shrink-0 font-mono text-[15px]" style={{ color: heat.bar }}>
+                        {nf(g.rows.length)}
+                      </b>
+                    </button>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded-md px-2 py-[2px] text-[11px]"
+                      style={{ background: C.panel2, color: C.mute, border: `1px solid ${C.line}` }}
+                      onClick={() => onCopy(g.rows.map((r) => r.tracking).join('\n'), `${g.dest} ${g.rows.length} เลข`)}
+                    >
+                      คัดลอก
+                    </button>
+                  </div>
+
+                  {isOpen && (
+                    <div className="flex flex-wrap gap-[3px] px-2 pb-2">
+                      {g.rows.map((r) => (
+                        <button
+                          key={r.tracking}
+                          type="button"
+                          onClick={() => onCopy(r.tracking, r.tracking)}
+                          className="rounded-md px-[6px] py-[2px] font-mono text-[11.5px]"
+                          style={{ background: '#101720', color: C.mute, border: `1px solid ${C.line2}` }}
+                        >
+                          {r.tracking}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+
+      {zones.length === 0 && (
+        <p className="px-3 py-6 text-center text-sm" style={{ ...CARD, color: C.faint }}>
+          หัวข้อนี้ไม่มีของเลยในรอบนี้
+        </p>
+      )}
     </div>
   )
 }

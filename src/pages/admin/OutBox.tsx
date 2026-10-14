@@ -4,7 +4,7 @@ import { useAsync } from '../../lib/useAsync'
 import { useAuth } from '../../lib/auth'
 import { Spinner } from '../../components/ui'
 import { readableError } from '../../lib/supabase'
-import { heat } from '../../lib/boardTheme'
+import { heat, heatRank } from '../../lib/boardTheme'
 import {
   OUT_RANK,
   OUT_STATE_TH,
@@ -1154,14 +1154,9 @@ const ZONE_MAX = 24
  * ความเข้มยังไล่ลงเหมือนของเดิม บนสุดเข้มสุด · ถ้าเข้มเท่ากันหมด
  * ทั้งการ์ดจะกลายเป็นแถบสีรุ้งที่สวยแต่ไม่ได้บอกว่าต้องเริ่มตรงไหน
  */
-function heatVal(i: number, n: number): { bg: string; bar: string } {
-  const t = n > 1 ? i / (n - 1) : 0
-  const hue = Math.round(t * 120)
-  return {
-    bg: `hsla(${hue}, 80%, 50%, ${(0.3 - t * 0.17).toFixed(3)})`,
-    bar: `hsl(${hue}, 85%, ${Math.round(60 - t * 8)}%)`,
-  }
-}
+/* สูตรเดิมย้ายไปอยู่ที่ boardTheme แล้ว เพราะหน้า 24 ชม. ใช้สเกลเดียวกัน
+   สองนิยามที่ต้องแก้พร้อมกันเสมอ คือสองนิยามที่วันหนึ่งจะไม่ตรงกัน */
+const heatVal = heatRank
 
 function ZonePanel({
   z,
