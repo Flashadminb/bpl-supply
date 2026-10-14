@@ -4,7 +4,8 @@ import { useAsync } from '../../lib/useAsync'
 import { useAuth } from '../../lib/auth'
 import { Spinner } from '../../components/ui'
 import { readableError } from '../../lib/supabase'
-import { heat, heatRank } from '../../lib/boardTheme'
+import { C, heat, heatRank } from '../../lib/boardTheme'
+import BoardThemeToggle from '../../components/BoardTheme'
 import {
   OUT_RANK,
   OUT_STATE_TH,
@@ -38,36 +39,8 @@ import {
  * เปิดให้เจ้าของระบบกับผู้ดูแลระบบ · ด่านจริงอยู่ที่ RLS ของ hub_out_* ที่ตรวจ my_can_outbox()
  */
 
-const C = {
-  bg: '#0B0E11',
-  panel: '#121820',
-  panel2: '#151C26',
-  groove: '#0A0E13',
-  line: '#243040',
-  line2: '#1E2733',
-  ink: '#F0F4F9',
-  mute: '#AFC0D4',
-  faint: '#5A646F',
-  chip: '#1B2430',
-  brand: '#FFC400',
-  red: '#FF5C5C',
-  redBg: '#351317',
-  redInk: '#FF9A9A',
-  amber: '#FFB038',
-  amberBg: '#352714',
-  amberInk: '#FFC77A',
-  greenBg: '#11301F',
-  greenInk: '#8FE8BC',
-  green: '#35D98A',
-  /* สายหลัก ฟ้า · สายรอง เหลือง · สามเฉดต่อสาย ไว้ไล่สีให้แท่งนูน */
-  lh: '#4FA3E3',
-  lhHi: '#9BD4FF',
-  lhLo: '#1E5C92',
-  fd: '#F0B21E',
-  fdHi: '#FFE089',
-  fdLo: '#9A6E06',
-}
-
+/* ชุดสีย้ายไปอยู่ไฟล์กลางแล้ว · เดิมหน้านี้ประกาศซ้ำไว้เองทั้งชุด
+   ซึ่งเป็นเหตุผลที่มันไม่เปลี่ยนตามธีมตอนทำปุ่มสลับพื้นขาว */
 const LANE: Record<'LH' | 'FD', string> = { LH: 'สายหลัก LH', FD: 'สายรอง FD' }
 /**
  * คำจีนกำกับ · ใช้คำเดียวกับที่อยู่ในไฟล์ต้นทางของบริษัท
@@ -100,7 +73,7 @@ const CARD: React.CSSProperties = {
   borderRadius: 16,
   border: `1px solid ${C.line2}`,
   background:
-    'radial-gradient(120% 90% at 50% -20%, rgba(255,255,255,.045), transparent 60%), linear-gradient(180deg, #161D27, #10151C)',
+    'radial-gradient(120% 90% at 50% -20%, rgba(255,255,255,.045), transparent 60%), linear-gradient(180deg, var(--b-card-a), var(--b-card-b))',
   boxShadow: '0 18px 40px -22px #000, inset 0 1px 0 rgba(255,255,255,.05)',
 }
 
@@ -178,12 +151,12 @@ function Zone({ z, dim, big, huge }: { z: string | null; dim?: boolean; big?: bo
     )
   if (z === 'LH')
     return (
-      <span className={box} style={{ background: dim ? C.chip : '#10263C', color: C.lhHi, ...w }}>
+      <span className={box} style={{ background: dim ? C.chip : 'var(--b-zone-on-bg)', color: C.lhHi, ...w }}>
         LH
       </span>
     )
   return (
-    <span className={box} style={{ background: dim ? C.chip : '#1E3246', color: '#8FD0FF', ...w }}>
+    <span className={box} style={{ background: dim ? C.chip : 'var(--b-zone-bg)', color: 'var(--b-zone-ink)', ...w }}>
       {z}
     </span>
   )
@@ -208,9 +181,9 @@ const EDGE: Record<OutState, string> = {
   late: C.red,
   soon: C.amber,
   down: C.green,
-  clear: '#2A3542',
-  flat: '#2A3542',
-  new: '#2A3542',
+  clear: C.line,
+  flat: C.line,
+  new: C.line,
 }
 
 /** ร่องของแท่ง · จมลงไปในพื้น ให้แท่งที่อยู่ข้างในดูลอยขึ้นมา */
@@ -452,6 +425,7 @@ export default function OutBox() {
                 {label} <Cn>{cn}</Cn>
               </button>
             ))}
+            <BoardThemeToggle />
             {mayUpload && lastId !== null && (
               <button
                 type="button"
@@ -707,7 +681,7 @@ function UploadLog({ onChanged }: { onChanged: () => void }) {
                   <td className="whitespace-nowrap px-2 py-[7px] font-mono">
                     {thFull(r.snap_at)}
                     {i === 0 && (
-                      <span className="ml-2 rounded px-[5px] py-[1px] text-[10px] font-bold" style={{ background: '#11301F', color: C.greenInk }}>
+                      <span className="ml-2 rounded px-[5px] py-[1px] text-[10px] font-bold" style={{ background: C.greenBg, color: C.greenInk }}>
                         ใช้อยู่
                       </span>
                     )}
@@ -1173,7 +1147,7 @@ function ZonePanel({
       {/* ---- หัวช่อง ---- */}
       <div
         className="flex items-center gap-2 px-3 py-2"
-        style={{ borderBottom: `1px solid ${C.line2}`, background: 'linear-gradient(180deg,#17202B,#121922)' }}
+        style={{ borderBottom: `1px solid ${C.line2}`, background: 'linear-gradient(180deg,var(--b-rail-a),var(--b-rail-b))' }}
       >
         <Zone z={z.zone} big />
         <span className="text-[11px]" style={{ color: C.faint }}>
@@ -1472,7 +1446,7 @@ function TvRow({ r, open, onToggle }: { r: OutCalc; open: boolean; onToggle: () 
         className="flex w-full items-center gap-3 px-3 py-2 text-left"
         style={{
           borderRadius: 13,
-          background: 'linear-gradient(180deg, #121922, #0C1116)',
+          background: 'linear-gradient(180deg, var(--b-head-a), var(--b-head-b))',
           border: `1px solid ${C.line2}`,
           borderLeft: `6px solid ${EDGE[r.state]}`,
           boxShadow: '0 6px 14px -10px #000, inset 0 1px 0 rgba(255,255,255,.04)',

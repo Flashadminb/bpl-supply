@@ -189,6 +189,26 @@
   --b-head: linear-gradient(180deg,#121922,#0C1116);
   --b-rail: linear-gradient(180deg,#0E1A25,#0A121A);
   --b-bar-red-lo: #5A1620;
+  --b-head-a: #121922;
+  --b-head-b: #0C1116;
+  --b-card-a: #161D27;
+  --b-card-b: #10151C;
+  --b-rail-a: #17202B;
+  --b-rail-b: #121922;
+  --b-cust-shopee-bg: #3A2210;
+  --b-cust-shopee-fg: #FFB071;
+  --b-cust-tiktok-bg: #331726;
+  --b-cust-tiktok-fg: #FF8FC0;
+  --b-cust-lazada-bg: #17253E;
+  --b-cust-lazada-fg: #8FB8FF;
+  --b-cust-ka-bg: #2A1F3A;
+  --b-cust-ka-fg: #C0A6FF;
+  --b-cust-other-bg: #1F2730;
+  --b-cust-other-fg: #9FB0C2;
+  --b-ghost: #3D454E;
+  --b-dim: #4A5460;
+  --b-well: #141B24;
+  --b-dash: #17202B;
   --b-card-shadow: 0 18px 40px -22px #000, inset 0 1px 0 rgba(255, 255, 255, .05);
 }
 
@@ -244,5 +264,25 @@
   --b-head: linear-gradient(180deg,#FFFFFF,#F7F9FC);
   --b-rail: linear-gradient(180deg,#F6FAFE,#EEF4FA);
   --b-bar-red-lo: #FDA29B;
+  --b-head-a: #FFFFFF;
+  --b-head-b: #F7F9FC;
+  --b-card-a: #FFFFFF;
+  --b-card-b: #FBFCFE;
+  --b-rail-a: #F6FAFE;
+  --b-rail-b: #EEF4FA;
+  --b-cust-shopee-bg: #FFEAD5;
+  --b-cust-shopee-fg: #B54708;
+  --b-cust-tiktok-bg: #FCE7F3;
+  --b-cust-tiktok-fg: #A21056;
+  --b-cust-lazada-bg: #DCEBFB;
+  --b-cust-lazada-fg: #0B4A9E;
+  --b-cust-ka-bg: #EDE9FE;
+  --b-cust-ka-fg: #5B21B6;
+  --b-cust-other-bg: #EDF2F8;
+  --b-cust-other-fg: #475569;
+  --b-ghost: #A8B2BF;
+  --b-dim: #8A94A3;
+  --b-well: #F4F7FB;
+  --b-dash: #F6F9FC;
   --b-card-shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .1);
 }

@@ -7,6 +7,7 @@ import { Spinner } from '../../components/ui'
 import { readableError } from '../../lib/supabase'
 import { code128Png, code128Svg } from '../../lib/code128'
 import { C, CARD, field, nf, tabOff, tabOn, thFull } from '../../lib/boardTheme'
+import BoardThemeToggle from '../../components/BoardTheme'
 import {
   CJK,
   P48_FIELDS,
@@ -75,12 +76,12 @@ const SLAS = [
 ]
 
 const CUST_COLOR: Record<string, { bg: string; fg: string }> = {
-  Shopee: { bg: '#3A2210', fg: '#FFB071' },
-  Tiktok: { bg: '#331726', fg: '#FF8FC0' },
-  Lazada: { bg: '#17253E', fg: '#8FB8FF' },
-  KA: { bg: '#2A1F3A', fg: '#C0A6FF' },
+  Shopee: { bg: 'var(--b-cust-shopee-bg)', fg: 'var(--b-cust-shopee-fg)' },
+  Tiktok: { bg: 'var(--b-cust-tiktok-bg)', fg: 'var(--b-cust-tiktok-fg)' },
+  Lazada: { bg: 'var(--b-cust-lazada-bg)', fg: 'var(--b-cust-lazada-fg)' },
+  KA: { bg: 'var(--b-cust-ka-bg)', fg: 'var(--b-cust-ka-fg)' },
 }
-const CUST_FALLBACK = { bg: '#1F2730', fg: '#9FB0C2' }
+const CUST_FALLBACK = { bg: 'var(--b-cust-other-bg)', fg: 'var(--b-cust-other-fg)' }
 
 export default function Pair() {
   const nav = useNavigate()
@@ -306,7 +307,7 @@ export default function Pair() {
           </span>
           <span
             className="flex items-center rounded-lg px-[7px] py-[3px]"
-            style={{ background: '#1E3246', color: '#8FD0FF' }}
+            style={{ background: 'var(--b-zone-bg)', color: 'var(--b-zone-ink)' }}
           >
             <svg
               viewBox="0 0 24 24"
@@ -375,6 +376,7 @@ export default function Pair() {
               {busy ? 'กำลังอัป…' : 'เลือกไฟล์'}
             </button>
             <span className="flex-1" />
+            <BoardThemeToggle compact />
             {maySeeLog && (
               <button type="button" className="h-tap rounded-btn px-3 text-xs" style={showLog ? tabOn : tabOff} onClick={() => setShowLog((v) => !v)}>
                 ประวัติอัป
@@ -817,7 +819,7 @@ function Table({
               className="sticky top-0 z-[2] px-[9px] py-[7px] text-left font-mono text-[10.5px] font-semibold uppercase tracking-wide"
               style={{
                 width: w || undefined,
-                background: '#141B24',
+                background: 'var(--b-well)',
                 color: C.faint,
                 borderBottom: `1px solid ${C.line}`,
                 textAlign: i === 4 || i === 5 ? 'right' : 'left',
@@ -842,7 +844,7 @@ function Table({
               onClick={() => onOpen(sel ? null : r.tracking)}
               className="group cursor-pointer"
               style={{
-                background: sel ? '#17293A' : undefined,
+                background: sel ? 'var(--b-zone-on-bg)' : undefined,
                 boxShadow: sel ? `inset 3px 0 0 ${C.lh}` : undefined,
               }}
             >
@@ -854,7 +856,7 @@ function Table({
                   {hasBag && (
                     <span
                       className="ml-[5px] whitespace-nowrap rounded px-[4px] py-[1px] font-mono text-[9.5px] font-bold"
-                      style={{ background: '#2A2412', color: '#E8C86A' }}
+                      style={{ background: 'var(--b-amber-bg)', color: 'var(--b-amber-ink)' }}
                     >
                       ◧ {r.bag_no}
                     </span>
@@ -877,7 +879,7 @@ function Table({
                 <span className="flex min-w-0 items-center">
                   <span
                     className="truncate text-[12px]"
-                    style={r.detail ? undefined : { color: '#4a5460', fontStyle: 'italic' }}
+                    style={r.detail ? undefined : { color: 'var(--b-dim)', fontStyle: 'italic' }}
                   >
                     {r.detail || 'ไม่มีในไฟล์สินค้า'}
                   </span>
@@ -959,7 +961,7 @@ function Side({
         <span>
           กดที่แถวไหนก็ได้
           <br />
-          <span style={{ color: '#3d454e' }}>
+          <span style={{ color: 'var(--b-ghost)' }}>
             รายละเอียดทุกช่องในไฟล์จะขึ้นตรงนี้
             <br />
             และทุกช่องกดคัดลอกได้
@@ -1048,7 +1050,7 @@ function Side({
         ))}
         <p
           className="mt-3 rounded-lg px-[10px] py-[7px] text-[11.5px] leading-relaxed"
-          style={{ background: '#17202B', border: `1px dashed ${C.line}`, color: C.mute }}
+          style={{ background: 'var(--b-dash)', border: `1px dashed ${C.line}`, color: C.mute }}
         >
           ทุกช่องในไฟล์ถูกเก็บไว้ครบ ไม่ได้ตัดทิ้งช่องไหน ตารางหน้าแรกโชว์แค่ 7 ช่อง เพราะต้องจบใน 1 หน้าจอ
           <br />
@@ -1282,7 +1284,7 @@ function Copyable({
   className?: string
   empty?: string
 }) {
-  if (!text) return <span className={className} style={{ color: '#3d454e' }}>{empty}</span>
+  if (!text) return <span className={className} style={{ color: 'var(--b-ghost)' }}>{empty}</span>
   return (
     <button
       type="button"
