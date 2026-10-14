@@ -91,10 +91,28 @@ const tables = files
 
 console.log(`เจอสำเนา ${tables.length} ตาราง ที่ ${allDir}`)
 
-if (existsSync(join(root, '_สรุป.json'))) {
-  const s = JSON.parse(readFileSync(join(root, '_สรุป.json'), 'utf8'))
-  console.log(`สำเนานี้ทำเมื่อ ${s['เมื่อ']} · ${s['แถวรวม']} แถว · ${s['ขนาดบีบแล้ว']}`)
-  if (s['ล้มเหลว']?.length) console.log(`  มีตารางที่สำรองไม่สำเร็จ: ${s['ล้มเหลว'].join(', ')}`)
+/* สรุปมีหลายใบเพราะการสำรองแบ่งเป็นหลายไม้วิ่งผลัดกัน
+   อ่านทุกใบ และที่สำคัญคือดูว่าใบสุดท้ายบอกว่าจบรอบแล้วจริงไหม
+   สำเนาที่ไม่มีใบไหนบอกว่าจบ แปลว่าขาดกลางทาง ซึ่งต้องเตือนก่อนเอาไปกู้ */
+const sums = readdirSync(root)
+  .filter((f) => f.startsWith('_สรุป') && f.endsWith('.json'))
+  .sort()
+if (sums.length) {
+  let rows = 0
+  let done = false
+  const bad = []
+  for (const f of sums) {
+    const s = JSON.parse(readFileSync(join(root, f), 'utf8'))
+    rows += Number(s['แถวรวม'] ?? 0)
+    if (s['จบรอบแล้ว'] === true) done = true
+    if (s['ล้มเหลว']?.length) bad.push(...s['ล้มเหลว'])
+    console.log(`  ไม้ที่ ${s['ไม้ที่']} · ${s['เมื่อ']} · ${s['ทำไปถึงตารางลำดับ']} · ใช้ ${s['ใช้เวลา']}`)
+  }
+  console.log(`รวม ${rows} แถว จาก ${sums.length} ไม้`)
+  if (bad.length) console.log(`  มีตารางที่สำรองไม่สำเร็จ: ${bad.join(', ')}`)
+  if (!done) console.log('  ⚠ ไม่มีไม้ไหนบอกว่าจบรอบ · สำเนานี้อาจขาดกลางทาง')
+} else {
+  console.log('  ⚠ ไม่เจอไฟล์สรุปเลย · ไม่รู้ว่าสำเนานี้ครบหรือเปล่า')
 }
 
 if (dryRun) {
