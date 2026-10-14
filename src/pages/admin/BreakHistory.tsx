@@ -568,6 +568,14 @@ export default function BreakHistory() {
             <EmptyState title="ไม่มีรายการในช่วงนี้" hint="ลองขยายช่วงวันที่หรือเอาตัวกรองออก" />
           ) : (
             <>
+              {/* บอกตรง ๆ เมื่อบางใบไม่ได้มาจากฐานข้อมูล
+                  ของเก่าที่เลยกำหนดเก็บถูกลบออกไปแล้ว หน้านี้ไปหยิบจากชีตมาต่อให้
+                  ถ้าไม่บอก คนจะงงว่าทำไมบางใบกดดูรายละเอียดแล้วได้ข้อมูลไม่ครบเท่าใบใหม่ */}
+              {rows.data?.archiveNote && (
+                <p className="mb-3 rounded-card bg-warn-bg px-3 py-2 text-sm text-warn-txt">
+                  ⏳ {rows.data.archiveNote} · ใบจากคลังเก่าจะไม่มีบางช่องที่ชีตไม่ได้เก็บไว้
+                </p>
+              )}
               <p className="mb-3 rounded-card border border-line bg-surface p-3 text-sm">
                 <b>{sum.total}</b> ใบ · <b>{sum.people}</b> คน · เกินเวลา{' '}
                 <b className="text-danger-txt">{sum.over}</b> ใบ · แจ้งปัญหา{' '}

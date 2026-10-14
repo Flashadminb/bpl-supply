@@ -1,4 +1,5 @@
 import { supabase, readableError } from './supabase'
+import { archiveRead, aFileIds, aNum, aStr } from './archive'
 
 /**
  * บัตรเบรค OS — ตัวเรียกฝั่งเว็บ
@@ -435,6 +436,66 @@ export interface BreakPage {
   rows: BreakRow[]
   /** จำนวนทั้งหมดที่เข้าเงื่อนไข ไม่ใช่เฉพาะหน้านี้ · ไว้คิดว่ามีกี่หน้า */
   total: number
+  /** กี่ใบในหน้านี้ที่มาจากคลังเก่าในชีต ไม่ได้มาจากฐานข้อมูล */
+  fromArchive?: number
+  /** คลังเก่ามีปัญหาอะไรไหม · ว่างคือไม่ได้ไปแตะคลังเก่าเลย */
+  archiveNote?: string
+}
+
+/**
+ * ─────────────────────────────────────────────────────────────────
+ * แปลงแถวจากชีตให้หน้าตาเหมือนแถวจากฐานข้อมูล
+ *
+ * ชีตเก็บคอลัมน์สวย ๆ ไว้ให้คนอ่าน เช่น 03:45 หรือ ขาด 2 คน
+ * แต่ตอนเติมคอลัมน์ดิบเมื่อ 14 ต.ค. เราใส่ตัวเลขล้วนต่อท้ายไว้ด้วย
+ * ตัวแปลงนี้จึงหยิบของดิบเป็นหลัก ไม่ต้องมาแกะข้อความไทย
+ *
+ * บางช่องชีตไม่ได้เก็บไว้เลย เช่น รหัสเหตุผล uuid คนปล่อย ชื่อซัพ
+ * ช่องพวกนั้นเป็น null ซึ่งถูกต้องกว่าการเดาค่าขึ้นมาเอง
+ * หน้าจอที่ใช้ช่องเหล่านั้นจะแสดงเป็นขีด ไม่ใช่แสดงของผิด
+ * ─────────────────────────────────────────────────────────────────
+ */
+function rowFromSheet(o: Record<string, unknown>): BreakRow | null {
+  const id = aNum(o['รหัสแถว'])
+  const at = aStr(o['เวลาเต็ม'])
+  if (id === null || !at) return null
+
+  const issue = aFileIds(o['รูปตอนปล่อย'])
+  const back = aFileIds(o['รูปตอนรับกลับ'])
+
+  return {
+    id,
+    ref_no: aStr(o['เลขที่ใบ']),
+    card_code: aStr(o['บัตร']),
+    group_code: '',
+    nickname: null,
+    reason_code: '',
+    reason_label: aStr(o['เหตุผล']),
+    people: aNum(o['จำนวนคน']) ?? 0,
+    minutes: aNum(o['ขอไว้ (นาที)']) ?? 0,
+    issued_at: at,
+    issued_by: '',
+    issued_by_name: aStr(o['ปล่อยโดย']) || null,
+    issued_by_code: aStr(o['รหัสพนักงาน']) || null,
+    gate_out_at: null,
+    returned_at: null,
+    closed_at: null,
+    closed_by_name: aStr(o['รับกลับโดย']) || null,
+    close_kind: (aStr(o['ปิดแบบ']) || null) as BreakRow['close_kind'],
+    returned_people: null,
+    problem_code: null,
+    problem_note: aStr(o['หมายเหตุ']) || null,
+    in_ban: Boolean(aStr(o['ช่วงห้าม'])),
+    ban_reason: aStr(o['ช่วงห้าม']) || null,
+    exported_at: at,
+    walk_sec: null,
+    out_sec: aNum(o['วินาทีที่ออกไป']),
+    over_sec: aNum(o['วินาทีที่เกิน']),
+    missing_people: aNum(o['ขาดกี่คน']) ?? 0,
+    issue_shots: issue.length,
+    return_shots: back.length,
+    supplier: null,
+  } as unknown as BreakRow
 }
 
 /**
@@ -457,6 +518,8 @@ export async function listBreakRows(args: {
   q?: string
   page?: number
   size?: number
+  /** ไม่ต้องไปแตะคลังเก่า · ไว้ให้หน้าที่รีเฟรชตัวเองเป็นรอบ ๆ ใช้ */
+  noArchive?: boolean
 }): Promise<BreakPage> {
   const size = Math.max(10, Math.min(args.size ?? 50, 200))
   const page = Math.max(0, args.page ?? 0)
@@ -483,7 +546,73 @@ export async function listBreakRows(args: {
   }
   const { data, error, count } = await q
   if (error) throw new Error(readableError(error))
-  return { rows: (data ?? []) as BreakRow[], total: count ?? 0 }
+  const rows = (data ?? []) as BreakRow[]
+  const total = count ?? 0
+
+  /* ─────────────────────────────────────────────────────────────────
+     ของที่เก่ากว่าที่ฐานข้อมูลเก็บไว้ ไปหยิบจากคลังเก่าในชีตต่อให้
+
+     รู้ได้ยังไงว่าต้องไปหยิบ · ดูว่าช่วงที่ขอเริ่มก่อนใบที่เก่าสุดที่ยังอยู่ไหม
+     ถ้าใช่ แปลว่าช่วงนั้นเคยมีของแต่ถูกลบไปแล้ว หรือไม่เคยมีเลยก็ได้
+     ทั้งสองกรณีไปถามคลังเก่าแล้วรู้คำตอบ
+
+     วิธีนี้ปรับตัวเองตามจำนวนวันที่ตั้งไว้ โดยไม่ต้องบอกมันว่าตั้งไว้กี่วัน
+     วันที่เปลี่ยนจาก 90 เป็น 2 วัน ก็ไม่ต้องมาแก้ตรงนี้
+
+     วันนี้ยังไม่มีอะไรถูกลบ ใบเก่าสุดจึงเป็นใบแรกจริง ๆ
+     เงื่อนไขนี้จึงแทบไม่เคยเป็นจริง และไม่มีใครต้องรอชีตโดยไม่จำเป็น
+     ───────────────────────────────────────────────────────────────── */
+  let fromArchive = 0
+  let archiveNote: string | undefined
+
+  if (!args.noArchive) {
+    const oldest = await oldestKeptAt()
+    if (oldest && args.from < oldest) {
+      const got = await archiveRead('break', {
+        from: args.from,
+        to: args.to < oldest ? args.to : oldest,
+        q: args.q,
+        cols: ['บัตร', 'เลขที่ใบ', 'ปล่อยโดย', 'รหัสพนักงาน', 'เหตุผล'],
+        limit: size,
+      })
+
+      /* กันซ้ำด้วยรหัสใบ · ช่วงรอยต่ออาจมีใบที่ทั้งยังอยู่ในฐานข้อมูลและขึ้นชีตแล้ว */
+      const have = new Set(rows.map((r) => r.id))
+      for (const o of got.rows) {
+        const r = rowFromSheet(o)
+        if (!r || have.has(r.id)) continue
+        have.add(r.id)
+        rows.push(r)
+        fromArchive++
+      }
+      rows.sort((a, b) => (a.issued_at < b.issued_at ? 1 : -1))
+
+      if (got.problems.length) archiveNote = got.problems.join(' · ')
+      else if (fromArchive) archiveNote = `${fromArchive} ใบมาจากคลังเก่าในชีต`
+    }
+  }
+
+  return { rows, total: total + fromArchive, fromArchive, archiveNote }
+}
+
+/**
+ * ใบที่เก่าสุดที่ยังอยู่ในฐานข้อมูล
+ *
+ * จำไว้ห้านาที · ค่านี้ขยับวันละครั้งตอนงานกลางคืนทำงาน
+ * ถามใหม่ทุกครั้งที่เปลี่ยนตัวกรองคือยิงคำถามซ้ำโดยได้คำตอบเดิม
+ */
+let oldestMemo: { at: number; v: string | null } | null = null
+
+async function oldestKeptAt(): Promise<string | null> {
+  if (oldestMemo && Date.now() - oldestMemo.at < 5 * 60_000) return oldestMemo.v
+  const { data } = await supabase
+    .from('break_rows')
+    .select('issued_at')
+    .order('issued_at', { ascending: true })
+    .limit(1)
+  const v = (data?.[0]?.issued_at as string | undefined) ?? null
+  oldestMemo = { at: Date.now(), v }
+  return v
 }
 
 export interface BreakFilterOptions {
